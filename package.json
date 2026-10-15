@@ -23,7 +23,8 @@
     "build": "tsc",
     "test": "tsc && node --test dist/test/*.test.js",
     "prepare": "tsc",
-    "test:e2e": "tsc && playwright test"
+    "test:e2e": "tsc && playwright test",
+    "record-demo": "tsc && node scripts/record-demo.mjs"
   },
   "dependencies": {
     "parse5": "^8.0.1"
