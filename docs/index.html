@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>inplace: edit the page while your agent edits the file</title>
+<meta name="description" content="inplace lets you type on a hand-written HTML document in your coding agent's browser while the agent edits the same file. Comments point the agent at the exact element. Your layout stays as it is.">
+<meta property="og:title" content="inplace">
+<meta property="og:description" content="Type on the page while your coding agent edits the file.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23233128'/%3E%3Cpath d='M9 9h14M9 15h14M9 21h8' stroke='%23f4efe4' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M21 19v7' stroke='%23e9b949' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f4efe4; --paper-2:#ebe4d4; --sheet:#fffdf8; --ink:#1f2a23; --ink-2:#4d5a52; --ink-3:#7b867f;
+  --line:#d9d1bf; --accent:#2f6b4f; --accent-ink:#fff; --mark:#f3d27a; --mark-soft:#fbefc8;
+  --focus:#3d6fd1; --code-bg:#1f2a23; --code-ink:#e9e4d6; --code-dim:#93a199; --add:#9fd3a8; --del:#e9a596;
+  --shadow:0 1px 2px #1f2a2314, 0 8px 28px #1f2a231f;
+  --serif:"Newsreader",Georgia,serif; --sans:"Instrument Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#161b18; --paper-2:#1d2420; --sheet:#232b26; --ink:#ece6d8; --ink-2:#b5bdb6; --ink-3:#86908a;
+    --line:#35403a; --accent:#7cc39c; --accent-ink:#10160f; --mark:#b8902f; --mark-soft:#4a3e1d;
+    --focus:#7ea5ef; --code-bg:#0f1311; --code-ink:#e3ddcf; --code-dim:#7e8a83;
+    --shadow:0 1px 2px #0006, 0 10px 30px #0008;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#161b18; --paper-2:#1d2420; --sheet:#232b26; --ink:#ece6d8; --ink-2:#b5bdb6; --ink-3:#86908a;
+  --line:#35403a; --accent:#7cc39c; --accent-ink:#10160f; --mark:#b8902f; --mark-soft:#4a3e1d;
+  --focus:#7ea5ef; --code-bg:#0f1311; --code-ink:#e3ddcf; --code-dim:#7e8a83;
+  --shadow:0 1px 2px #0006, 0 10px 30px #0008;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 var(--sans);overflow-x:hidden}
+a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+code,pre{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* top bar */
+.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.brand{display:flex;align-items:center;gap:10px;font:600 18px var(--sans);text-decoration:none}
+.brand svg{width:26px;height:26px}
+.top nav{display:flex;gap:22px;font-size:15px;color:var(--ink-2)}
+.top nav a{text-decoration:none}.top nav a:hover{color:var(--ink)}
+
+/* hero */
+.hero{padding:56px 0 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:28px}
+.eyebrow{font:500 13px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+h1{font:400 clamp(40px,6.4vw,76px)/1.02 var(--serif);letter-spacing:-.02em;margin:0;max-width:15ch}
+h1 em{font-style:italic;background:linear-gradient(transparent 62%,var(--mark-soft) 62%);padding:0 .06em}
+.lede{font-size:clamp(18px,2vw,21px);line-height:1.55;color:var(--ink-2);max-width:60ch;margin:0}
+.cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.cmd{display:flex;align-items:center;gap:12px;background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:12px 12px 12px 16px;font:14px var(--mono);max-width:100%;box-shadow:var(--shadow)}
+.cmd span{white-space:nowrap;overflow:auto;scrollbar-width:none}
+.cmd span::before{content:"$ ";color:var(--code-dim)}
+.copy{flex:none;border:1px solid #ffffff2a;background:transparent;color:var(--code-ink);font:500 12px var(--sans);border-radius:6px;padding:5px 9px;cursor:pointer}
+.copy:hover{background:#ffffff14}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:10px;border:1px solid var(--line);font:500 15px var(--sans);text-decoration:none;background:var(--sheet)}
+.btn:hover{border-color:var(--ink-3)}
+.btn svg{width:18px;height:18px}
+
+/* demo */
+.demo{margin:36px 0 24px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:18px;align-items:stretch}
+.window{background:var(--paper-2);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.chrome{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.url{flex:1;font:12px var(--mono);color:var(--ink-3);background:var(--sheet);border-radius:6px;padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewport{position:relative;padding:22px;flex:1}
+.sheet{background:var(--sheet);border-radius:4px;padding:30px 34px 34px;box-shadow:0 1px 3px #1f2a231a;font-family:Georgia,var(--serif);color:var(--ink);position:relative;transition:opacity .25s}
+.sheet.reloading{opacity:.35}
+.sheet .kicker{font:500 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
+.sheet h3{font:400 28px/1.15 var(--serif);margin:0 0 12px}
+.sheet p{margin:0 0 14px;font-size:16px;line-height:1.55}
+.sheet table{width:100%;border-collapse:collapse;font:14px var(--sans)}
+.sheet th,.sheet td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+.sheet th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.sheet td:last-child,.sheet th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.sheet tr.total td{font-weight:600}
+.editing{outline:2px solid var(--focus);outline-offset:5px;border-radius:2px}
+.caret{display:inline-block;width:1.5px;height:1.05em;background:var(--focus);vertical-align:-2px;margin-left:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.typed{background:var(--mark-soft)}
+.fresh td{animation:fresh 2.4s ease-out}
+.changed{animation:fresh 2.4s ease-out;border-radius:3px}
+@keyframes fresh{0%,40%{background:var(--mark-soft)}100%{background:transparent}}
+.row-enter td{padding-top:0;padding-bottom:0;line-height:0;opacity:0}
+.sheet tr td{transition:padding .35s,line-height .35s,opacity .35s}
+.pill{position:absolute;right:30px;bottom:30px;font:500 12px var(--sans);background:var(--ink);color:var(--paper);border-radius:7px;padding:6px 10px;opacity:0;transform:translateY(4px);transition:.25s}
+.pill.show{opacity:.92;transform:none}
+.comment{position:absolute;width:min(270px,80%);background:var(--sheet);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:11px 12px;font:14px/1.45 var(--sans);opacity:0;transform:translateY(6px);transition:.3s;pointer-events:none;z-index:2}
+.comment.show{opacity:1;transform:none}
+.comment .who{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;margin-bottom:4px}
+.comment .who b{width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:11px}
+.comment .target{font:11px var(--mono);color:var(--ink-3);margin-top:6px}
+.selected{outline:2px dashed var(--accent);outline-offset:4px;border-radius:2px}
+
+.agent{background:var(--code-bg);color:var(--code-ink);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;min-height:260px}
+.agent header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #ffffff14;font:500 13px var(--sans)}
+.agent header span{color:var(--code-dim);font-weight:400}
+.agent:has(.log .show) .idle{display:none}
+.idle{margin:0;padding:14px 16px 0;font:13px/1.6 var(--mono);color:var(--code-dim)}
+.log{padding:14px 16px;font:13px/1.6 var(--mono);flex:1;display:flex;flex-direction:column;gap:10px}
+.log div{opacity:0;transform:translateY(4px);transition:.3s}
+.log div.show{opacity:1;transform:none}
+.log .u{color:var(--code-dim)}
+.log .a{color:var(--code-ink)}
+.log .c{color:var(--add)}
+.log code{color:var(--mark)}
+.replay{margin:0 16px 14px;align-self:flex-start;border:1px solid #ffffff2a;background:transparent;color:var(--code-ink);font:500 12px var(--sans);border-radius:6px;padding:6px 10px;cursor:pointer}
+.replay:hover{background:#ffffff14}
+.caption{font-size:14px;color:var(--ink-3);margin:6px 0 0}
+
+/* sections */
+section{padding:64px 0}
+section+section{border-top:1px solid var(--line)}
+h2{font:400 clamp(30px,3.6vw,42px)/1.12 var(--serif);letter-spacing:-.01em;margin:0 0 14px;max-width:24ch}
+.intro{color:var(--ink-2);max-width:62ch;margin:0 0 34px}
+.points{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:34px 48px}
+.points h3{font:600 17px var(--sans);margin:0 0 6px}
+.points p{margin:0;color:var(--ink-2)}
+.points .n{font:400 15px var(--serif);font-style:italic;color:var(--ink-3);display:block;margin-bottom:6px}
+
+.steps{list-style:none;padding:0;margin:0;display:grid;gap:26px;counter-reset:s}
+.steps li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 14px;counter-increment:s}
+.steps li::before{content:counter(s);grid-row:span 2;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font:400 17px var(--serif);color:var(--ink-2);background:var(--sheet)}
+.steps h3{font:600 17px var(--sans);margin:4px 0 2px}
+.steps p{margin:0 0 10px;color:var(--ink-2)}
+.steps li>*{grid-column:2}
+.steps .cmd{display:inline-flex;justify-self:start;box-shadow:none}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:48px;align-items:start}
+pre.diff{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:18px 0;font-size:13px;line-height:1.7;overflow:auto;box-shadow:var(--shadow)}
+pre.diff span{display:block;padding:0 18px;white-space:pre}
+pre.diff .h{color:var(--code-dim)}
+pre.diff .d{color:var(--del);background:#e9a59614}
+pre.diff .p{color:var(--add);background:#9fd3a814}
+.split p{color:var(--ink-2)}
+.split p:first-of-type{margin-top:0}
+.split code{font-size:.88em;background:var(--paper-2);padding:1px 5px;border-radius:4px}
+
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.note{background:var(--sheet);border:1px solid var(--line);border-radius:12px;padding:20px}
+.note h3{font:600 16px var(--sans);margin:0 0 6px}
+.note p{margin:0;color:var(--ink-2);font-size:15px}
+
+footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between;border-top:1px solid var(--line)}
+.theme{border:1px solid var(--line);background:transparent;color:var(--ink-2);border-radius:6px;padding:4px 9px;font:13px var(--sans);cursor:pointer}
+
+@media (max-width:860px){
+  .demo{grid-template-columns:minmax(0,1fr)}
+  .agent{min-height:0}
+  .points,.split,.notes{grid-template-columns:minmax(0,1fr)}
+  .split{gap:28px}
+}
+@media (max-width:560px){
+  .wrap{padding:0 16px}
+  .top nav{gap:14px;font-size:14px}.top nav .hide-sm{display:none}
+  .hero{padding:32px 0 20px}
+  .viewport{padding:10px}
+  .sheet{padding:20px 18px 24px}
+  .sheet h3{font-size:23px}
+  .pill{right:16px;bottom:16px}
+  section{padding:48px 0}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="brand" href="#">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor"/><path d="M9 9h14M9 15h14M9 21h8" stroke="var(--paper)" stroke-width="2.4" stroke-linecap="round"/><path d="M21 19v7" stroke="#e9b949" stroke-width="2.4" stroke-linecap="round"/></svg>
+    inplace
+  </a>
+  <nav>
+    <a href="#how" class="hide-sm">How it works</a>
+    <a href="#start">Get started</a>
+    <a href="https://github.com/jonasjancarik/inplace">GitHub</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div class="eyebrow">For Claude Code, Codex and other coding agents</div>
+  <h1>Type on the page while your agent <em>edits the file.</em></h1>
+  <p class="lede">inplace opens a hand-written HTML document in your agent's browser so you can fix the wording right where you read it. For anything bigger, leave a comment on the page and the agent changes the same file. Nothing is converted, and your layout stays exactly as it was.</p>
+  <div class="cta">
+    <div class="cmd"><span>npx github:jonasjancarik/inplace report.html</span><button class="copy" data-copy="npx github:jonasjancarik/inplace report.html">Copy</button></div>
+    <a class="btn" href="https://github.com/jonasjancarik/inplace"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>View on GitHub</a>
+  </div>
+</div>
+
+<div class="demo" aria-label="Animated example: the user edits a paragraph, then asks the agent to add a table row">
+  <div class="window">
+    <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:8765 · garden-proposal.html</div></div>
+    <div class="viewport">
+      <div class="sheet" id="sheet">
+        <div class="kicker">Linden Street Residents · Draft</div>
+        <h3>A garden on the roof</h3>
+        <p id="d-para">The committee proposes shared raised beds on the roof of building B, open to all residents from May.<span id="d-typed"></span></p>
+        <table id="d-table">
+          <thead><tr><th>Item</th><th>Cost</th></tr></thead>
+          <tbody id="d-body">
+            <tr><td>Raised beds</td><td>€3,600</td></tr>
+            <tr><td>Soil and compost</td><td>€1,150</td></tr>
+            <tr class="total"><td>Total</td><td id="d-total">€4,750</td></tr>
+          </tbody>
+        </table>
+        <div class="pill" id="d-pill">Saved</div>
+      </div>
+      <div class="comment" id="d-comment">
+        <div class="who"><b>J</b>You</div>
+        Add the rain barrel, €400.
+        <div class="target">on &lt;table data-id="table-1"&gt;</div>
+      </div>
+    </div>
+  </div>
+  <div class="agent">
+    <header>Agent <span>garden-proposal.html</span></header>
+    <p class="idle">Waiting for comments on the page…</p>
+    <div class="log" id="d-log">
+      <div class="u">Comment on <code>table-1</code>: “Add the rain barrel, €400.”</div>
+      <div class="a">Found <code>data-id="table-1"</code> in garden-proposal.html.</div>
+      <div class="a">Added a row and updated the total to €5,150.</div>
+      <div class="c">The page reloaded with your edit and mine.</div>
+    </div>
+    <button class="replay" id="d-replay" type="button">Replay</button>
+  </div>
+</div>
+<p class="caption">You fix a sentence on the page, then ask for a new row. The agent finds the table by its id, edits the file, and the page reloads.</p>
+
+<section id="how">
+  <h2>Why not just use a rich-text editor?</h2>
+  <p class="intro">Agents now write documents as hand-crafted HTML, with real typography, colour-coded tables, charts and print layouts. Rich-text editors turn that into their own format and lose half of it. inplace leaves the file alone and only lets you change what you can see.</p>
+  <div class="points">
+    <div><span class="n">One</span><h3>The HTML file is the document</h3><p>There's no editor format, database or export step. What you see in the browser is the file on disk, and what you print or send is that same file.</p></div>
+    <div><span class="n">Two</span><h3>Your edits touch one block</h3><p>Typing changes the text inside a single paragraph, heading, list item or table cell. CSS, SVG charts and the rest of the markup stay byte-for-byte as they were, so a diff shows exactly what you changed.</p></div>
+    <div><span class="n">Three</span><h3>Comments point at the right place</h3><p>Every block and table gets a stable <code>data-id</code>. When you comment on an element in your agent's browser, the agent gets that id and finds the exact spot in the file, even after the wording has changed.</p></div>
+    <div><span class="n">Four</span><h3>You can both work at once</h3><p>Edits to different blocks never get in each other's way. If the agent rewrites the paragraph you're typing in, your save is refused instead of overwriting its text, and what you typed goes to your clipboard.</p></div>
+  </div>
+</section>
+
+<section id="start">
+  <h2>Get started</h2>
+  <p class="intro">You need Node.js 22 or newer and an agent with a built-in browser, such as Claude Code in the Claude app or Codex.</p>
+  <ol class="steps">
+    <li><h3>Give your agent the skill</h3><p>It teaches the agent to start inplace, find commented elements by their id, keep the ids intact, and check totals and charts after you change a number.</p><div class="cmd"><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div></li>
+    <li><h3>Open your document</h3><p>Ask the agent to open it in inplace, or start it yourself and open <code>localhost:8765</code> in the agent's browser.</p><div class="cmd"><span>npx github:jonasjancarik/inplace path/to/document.html</span><button class="copy" data-copy="npx github:jonasjancarik/inplace path/to/document.html">Copy</button></div></li>
+    <li><h3>Type, or leave a comment</h3><p>Click into any paragraph, heading or table cell and type; changes save after a short pause. For new sections, rows, layout or charts, comment on the element and let the agent do it.</p></li>
+  </ol>
+</section>
+
+<section>
+  <div class="split">
+    <div>
+      <h2>What happens to your file</h2>
+      <p>The first time the page opens, inplace adds a <code>data-id</code> to each block and container that doesn't have one. The ids don't change how the page looks or prints, and existing ids are never renamed.</p>
+      <p>After that, the file only changes when you type, and then only inside the block you typed in. If the document is in git, every edit shows up as a small, readable diff.</p>
+    </div>
+    <pre class="diff" aria-label="Example diff"><span class="h">@@ garden-proposal.html @@</span><span class="d">-&lt;h1&gt;A garden on the roof&lt;/h1&gt;</span><span class="p">+&lt;h1 data-id="h1-1"&gt;A garden on the roof&lt;/h1&gt;</span><span class="d">-&lt;table aria-label="Estimated costs"&gt;</span><span class="p">+&lt;table data-id="table-1" aria-label="Estimated costs"&gt;</span><span class="h"> …</span><span class="d">-&lt;p data-id="p-4"&gt;Volunteers water in summer.&lt;/p&gt;</span><span class="p">+&lt;p data-id="p-4"&gt;Volunteers take turns watering in summer.&lt;/p&gt;</span></pre>
+  </div>
+</section>
+
+<section>
+  <h2>Good to know</h2>
+  <div class="notes" style="margin-top:26px">
+    <div class="note"><h3>Text on the page, structure through the agent</h3><p>You change the words. Adding paragraphs or rows, styling and charts are the agent's job, asked for with a comment.</p></div>
+    <div class="note"><h3>Numbers don't recalculate</h3><p>If you change an amount that feeds a total or a chart, the agent updates the rest. Mark values you want frozen with <code>data-locked</code>.</p></div>
+    <div class="note"><h3>Made for your own computer</h3><p>It serves one document with no login. Keep it on a network you trust, or start it with <code>--host 127.0.0.1</code>.</p></div>
+  </div>
+</section>
+
+<footer class="site">
+  <span>inplace · MIT licensed · by <a href="https://github.com/jonasjancarik">Jonas Jancarik</a></span>
+  <span><a href="https://github.com/jonasjancarik/inplace">Source and documentation</a> · <button class="theme" id="theme" type="button">Dark mode</button></span>
+</footer>
+
+</div>
+
+<script>
+// Copy buttons
+document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; }
+  catch { b.textContent = "Select and copy"; }
+  setTimeout(() => (b.textContent = "Copy"), 1600);
+}));
+
+// Theme toggle (remembered per browser when storage is available)
+const root = document.documentElement, themeBtn = document.getElementById("theme");
+const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+const label = () => (themeBtn.textContent = dark() ? "Light mode" : "Dark mode");
+try { const t = localStorage.getItem("inplace-theme"); if (t) root.dataset.theme = t; } catch {}
+label();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", label);
+themeBtn.addEventListener("click", () => {
+  root.dataset.theme = dark() ? "light" : "dark";
+  try { localStorage.setItem("inplace-theme", root.dataset.theme); } catch {}
+  label();
+});
+
+// Demo timeline
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const para = $("d-para"), typed = $("d-typed"), pill = $("d-pill"), table = $("d-table"), body = $("d-body"),
+        total = $("d-total"), comment = $("d-comment"), sheet = $("sheet"), log = [...$("d-log").children];
+  const TEXT = " Children are welcome with an adult.";
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let run = 0, visible = false;
+
+  const sleep = (ms, id) => new Promise((r, x) => setTimeout(() => (id === run ? r() : x()), ms));
+  const caret = () => { const c = document.createElement("span"); c.className = "caret"; return c; };
+
+  function placeComment() {
+    const vp = sheet.parentElement.getBoundingClientRect(), t = table.getBoundingClientRect();
+    const w = comment.offsetWidth;
+    comment.style.left = Math.max(8, Math.min(t.right - vp.left - w + 10, vp.width - w - 8)) + "px";
+    comment.style.top = (t.top - vp.top - comment.offsetHeight - 12) + "px";
+  }
+
+  function reset() {
+    typed.textContent = ""; typed.className = ""; para.classList.remove("editing");
+    para.querySelectorAll(".caret").forEach((c) => c.remove());
+    body.querySelectorAll(".added").forEach((r) => r.remove());
+    total.textContent = "€4,750"; total.classList.remove("changed");
+    pill.classList.remove("show"); comment.classList.remove("show"); table.classList.remove("selected");
+    sheet.classList.remove("reloading"); log.forEach((l) => l.classList.remove("show"));
+  }
+
+  function addRow(animate) {
+    const tr = document.createElement("tr");
+    tr.className = "added" + (animate ? " row-enter fresh" : "");
+    tr.innerHTML = "<td>Rain barrel</td><td>€400</td>";
+    body.insertBefore(tr, body.lastElementChild);
+    if (animate) requestAnimationFrame(() => requestAnimationFrame(() => tr.classList.remove("row-enter")));
+    total.textContent = "€5,150";
+  }
+
+  function finalState() {
+    reset();
+    typed.textContent = TEXT; addRow(false);
+    log.forEach((l) => l.classList.add("show"));
+  }
+
+  async function play() {
+    const id = ++run;
+    reset();
+    try {
+      await sleep(900, id);
+      para.classList.add("editing"); const c = caret(); para.append(c);
+      await sleep(600, id);
+      typed.className = "typed";
+      for (const ch of TEXT) { typed.textContent += ch; await sleep(38 + Math.random() * 45, id); }
+      await sleep(500, id);
+      pill.textContent = "Saved"; pill.classList.add("show");
+      await sleep(1100, id);
+      c.remove(); para.classList.remove("editing"); pill.classList.remove("show");
+      await sleep(500, id);
+      table.classList.add("selected"); placeComment(); comment.classList.add("show");
+      await sleep(1400, id);
+      log[0].classList.add("show");
+      await sleep(1100, id);
+      log[1].classList.add("show");
+      await sleep(1200, id);
+      log[2].classList.add("show");
+      await sleep(500, id);
+      comment.classList.remove("show"); table.classList.remove("selected");
+      sheet.classList.add("reloading");
+      await sleep(350, id);
+      addRow(true); sheet.classList.remove("reloading");
+      total.classList.remove("changed"); void total.offsetWidth; total.classList.add("changed");
+      await sleep(700, id);
+      log[3].classList.add("show");
+      await sleep(5200, id);
+      if (visible) play();
+    } catch { /* superseded by a newer run */ }
+  }
+
+  $("d-replay").addEventListener("click", () => (reduced ? finalState() : play()));
+  addEventListener("resize", () => comment.classList.contains("show") && placeComment());
+
+  if (reduced) { finalState(); return; }
+  // Play while the demo is on screen; stop the loop when it scrolls away.
+  new IntersectionObserver(([e]) => {
+    if (e.isIntersecting && !visible) { visible = true; play(); }
+    else if (!e.isIntersecting && visible) { visible = false; run++; finalState(); }
+  }, { threshold: 0.35 }).observe(sheet);
+})();
+</script>
+</body>
+</html>
