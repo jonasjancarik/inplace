@@ -22,37 +22,29 @@ npx github:jonasjancarik/inplace report.html
 
 ## Getting started
 
-You need Node.js 22 or newer.
-
-1. Start inplace on your document:
-
-   ```bash
-   npx github:jonasjancarik/inplace path/to/document.html
-   ```
-
-   The first run takes a little longer while npm downloads and builds it. Or install it once with `npm install -g github:jonasjancarik/inplace` and run `inplace path/to/document.html`.
-
-2. Open `http://localhost:8765/` in the built-in browser of Claude or Codex.
-
-3. Click into any paragraph, heading, list item or table cell and type. Press Enter to start a new paragraph or list item, or click the + next to a block or table row to add one below. Select text to make it bold, italic, code or a link, or type Markdown such as `**bold**`. To move a paragraph, list item, table row or section, drag the handle that appears to its left. Changes are saved after a short pause, when you click elsewhere, or with ⌘S / Ctrl+S.
-
-4. To ask for something bigger, comment on an element with the browser's comment tool. Install the agent skill (below) so the agent knows how to handle it.
-
-To try it on the example, copy it first, because inplace writes to the file it serves:
-
-```bash
-cp examples/garden-proposal.html /tmp/ && npx github:jonasjancarik/inplace /tmp/garden-proposal.html
-```
-
-## The agent skill
-
-The repository includes a skill that teaches Claude Code, Codex and other agents how to work with inplace: how to start it, find a commented element by its `data-id`, keep the ids intact, and check totals and charts after you change a number. Install it with the [skills CLI](https://skills.sh):
+You need Node.js 22 or newer. Install the agent skill with the [skills CLI](https://skills.sh):
 
 ```bash
 npx skills add jonasjancarik/inplace
 ```
 
-After that, you can just ask the agent to open a document in inplace, and comments you leave on the page will be handled the right way.
+Then tell your agent, such as Claude Code or Codex, that you want to work on a document together in inplace, for example: "Let's work on report.html together in inplace." The agent starts inplace and opens the page in its built-in browser. Click into any paragraph, heading, list item or table cell to type, and comment on an element with the browser's comment tool when you want the agent to change something.
+
+The skill tells the agent how to run inplace, find a commented element by its `data-id`, keep the ids intact, and check totals and charts after you change a number.
+
+### Running it yourself
+
+You can also start inplace without an agent and open `http://localhost:8765/` in any browser:
+
+```bash
+npx github:jonasjancarik/inplace path/to/document.html
+```
+
+The first run takes a little longer while npm downloads and builds it. inplace writes to the file it serves, so to try it on the example, copy it first:
+
+```bash
+cp examples/garden-proposal.html /tmp/ && npx github:jonasjancarik/inplace /tmp/garden-proposal.html
+```
 
 ## What you can and can't edit on the page
 
