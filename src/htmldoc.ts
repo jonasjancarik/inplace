@@ -437,3 +437,30 @@ export function removeBlock(source: string, blockId: string): string {
   if (!isBlank(source, node)) throw new BlockConflict(source.slice(node.openEnd, node.innerEnd));
   return source.slice(0, cutStart(source, node)) + source.slice(node.end);
 }
+
+/**
+ * Replace the inside (`part: "inner"`) or the whole (`"outer"`) of the element
+ * with this id, if it still matches `expected`, for agents that edit through
+ * tools rather than the file. A replacement element keeps the id: it's added
+ * when the new start tag has none, and a different one is refused.
+ */
+export function replaceElement(
+  source: string, id: string, part: "inner" | "outer", expected: string, html: string,
+): string {
+  const node = findBlock(parse(source), id);
+  if (!node) throw new BlockNotFound(id);
+  const [from, to] = part === "inner" ? [node.openEnd, node.innerEnd] : [node.start, node.end];
+  const current = source.slice(from, to);
+  if (!sameContent(current, expected)) throw new BlockConflict(current);
+  if (part === "outer") {
+    const tag = /^\s*<([a-zA-Z][\w-]*)([^>]*)>/.exec(html);
+    if (!tag) throw new Error("the new HTML must start with an element");
+    const given = /\sdata-id\s*=\s*["']?([^"'\s>]+)/.exec(tag[2])?.[1];
+    if (given && given !== id) throw new Error(`the new element has data-id="${given}"; keep data-id="${id}"`);
+    if (!given) {
+      const at = tag.index + tag[0].indexOf(tag[1]) + tag[1].length;
+      html = html.slice(0, at) + ` ${ID_ATTR}="${id}"` + html.slice(at);
+    }
+  }
+  return source.slice(0, from) + html + source.slice(to);
+}

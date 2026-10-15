@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
-  removeBlock, retagBlock,
+  removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 
 const EDITOR_PREFIX = "/__inplace/";
@@ -163,6 +163,38 @@ export class Document {
       this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true);
     }
     return this.version;
+  }
+
+  /** The whole file, or the element with this id, as it is now (with ids added). */
+  source(id?: string): string {
+    const { text } = this.load();
+    if (id === undefined) return text;
+    const node = findBlock(parse(text), id);
+    if (!node) throw new BlockNotFound(id);
+    return text.slice(node.start, node.end);
+  }
+
+  /** An agent's edit through tools rather than the file; see replaceElement. */
+  replaceElement(id: string, part: "inner" | "outer", expected: string, html: string): void {
+    const text = this.load().text;
+    const replaced = replaceElement(text, id, part, expected, html);
+    if (replaced === text) return;
+    this.write(replaced);
+    this.log(`${time()} the agent replaced ${part === "inner" ? "the inside of " : ""}${id}`, false);
+  }
+
+  /** Replace `find` with `replace` in the file's source; returns how many were replaced. */
+  findReplace(find: string, replace: string, all: boolean): number {
+    if (!find) throw new Error("find is empty");
+    const text = this.load().text;
+    const count = text.split(find).length - 1;
+    if (!count) throw new Error("not found in the file");
+    if (count > 1 && !all) throw new Error(`found ${count} times; make find longer so it's unique, or pass all: true`);
+    const replaced = all ? text.split(find).join(replace) : text.replace(find, () => replace);
+    if (replaced === text) return 0;
+    this.write(replaced);
+    this.log(`${time()} the agent replaced ${count} occurrence${count === 1 ? "" : "s"} of ${JSON.stringify(clip(find, 60))}`, false);
+    return count;
   }
 
   /** Re-read the file if its size or mtime changed. Cheap enough to call every few hundred ms. */
