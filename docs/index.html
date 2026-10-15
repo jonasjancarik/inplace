@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>inplace: write with your coding agent without breaking your flow</title>
-<meta name="description" content="Open an HTML document your agent wrote and keep working on it as you read: type, format, move things around, and leave comments for your agent, which edits the same file and sees every change you make.">
-<meta property="og:title" content="inplace">
-<meta property="og:description" content="Write with your coding agent without breaking your flow.">
+<meta name="description" content="Edit an HTML document your agent wrote right on the page. Only the element you change is touched, and your agent sees every edit as you make it.">
+<meta property="og:title" content="inplace: change one word, and only that word changes">
+<meta property="og:description" content="Edit an HTML document your agent wrote right on the page. Only the element you change is touched, and your agent sees every edit as you make it.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23233128'/%3E%3Cpath d='M9 9h14M9 15h14M9 21h8' stroke='%23f4efe4' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M21 19v7' stroke='%23e9b949' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -230,9 +230,9 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 </header>
 
 <div class="hero">
-  <div class="eyebrow">For Claude Code, Codex and other coding agents</div>
-  <h1>Write with your coding agent <em>without breaking your flow.</em></h1>
-  <p class="lede">Open an HTML document your agent wrote and keep working on it as you read: type, format, move things around. When something needs more than a quick edit, leave a comment and carry on writing. Your agent picks it up, edits the same file, and sees every change you've made. Nothing gets converted, so your layout stays exactly as it is.</p>
+  <div class="eyebrow">For Claude Code, Codex, ChatGPT and other agents</div>
+  <h1>Change one word, and <em>only that word changes.</em></h1>
+  <p class="lede">Open an HTML document your agent wrote and edit it right on the page. inplace writes your change into that one paragraph, cell or heading and leaves the rest of the file exactly as it was, so the layout, charts and print styles survive and <code>git diff</code> shows only what you did. Your agent sees each edit as you make it, so when you change an amount it fixes the total, and anything bigger you leave as a comment.</p>
   <div class="cta">
     <div class="install">
       <div class="tabs" role="tablist" aria-label="How to install the skill">
@@ -289,16 +289,27 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 </div>
 <p class="caption">You bold a word and add a row on the page. The agent sees the new row and fixes the total, then writes the paragraph you asked for in a comment.</p>
 
+<section>
+  <div class="split">
+    <div>
+      <h2>What happens to your file</h2>
+      <p>The first time the page opens, inplace adds a <code>data-id</code> to each block and container that doesn't have one. The ids don't change how the page looks or prints, and existing ids are never renamed.</p>
+      <p>After that, the file only changes when you make a change on the page, and then only in the block you edited or the element you moved. If the document is in git, every edit shows up as a small, readable diff.</p>
+    </div>
+    <pre class="diff" aria-label="Example diff"><span class="h">@@ garden-proposal.html @@</span><span class="d">-&lt;h1&gt;A garden on the roof&lt;/h1&gt;</span><span class="p">+&lt;h1 data-id="h1-1"&gt;A garden on the roof&lt;/h1&gt;</span><span class="d">-&lt;table aria-label="Estimated costs"&gt;</span><span class="p">+&lt;table data-id="table-1" aria-label="Estimated costs"&gt;</span><span class="h"> …</span><span class="d">-&lt;p data-id="p-4"&gt;Volunteers water in summer.&lt;/p&gt;</span><span class="p">+&lt;p data-id="p-4"&gt;Volunteers take turns watering in summer.&lt;/p&gt;</span></pre>
+  </div>
+</section>
+
 <section id="how">
   <h2>Why not just use a rich-text editor?</h2>
   <p class="intro">Agents now write documents as hand-crafted HTML, with real typography, colour-coded tables, charts and print layouts. Rich-text editors turn that into their own format and lose half of it. inplace leaves the file alone and only lets you change what you can see.</p>
   <div class="points">
-    <div><span class="n">One</span><h3>The HTML file is the document</h3><p>There's no editor format, database or export step. What you see in the browser is the file on disk, and what you print or send is that same file.</p></div>
-    <div><span class="n">Two</span><h3>Your edits touch one element</h3><p>Typing changes the text inside a single paragraph, heading, list item or table cell. Adding or moving something touches only that element's markup. CSS, SVG charts and everything else stay byte-for-byte the same.</p></div>
-    <div><span class="n">Three</span><h3>Comments point at the right place</h3><p>Every block and table gets a stable <code>data-id</code>. When you comment on an element in your agent's browser, the agent gets that id and finds the exact spot in the file, even after the wording has changed.</p></div>
-    <div><span class="n">Four</span><h3>The agent sees what you changed</h3><p>inplace reports every edit you make. The agent reads that before it acts, so a changed amount gets its total fixed and a moved section gets its references updated, without you having to ask.</p></div>
-    <div><span class="n">Five</span><h3>Formatting stays plain HTML</h3><p>Bold, italics, code and links are written as <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;code&gt;</code> and <code>&lt;a&gt;</code>, so the document's own styles decide how they look.</p></div>
-    <div><span class="n">Six</span><h3>You can both work at once</h3><p>Edits to different blocks never get in each other's way. If the agent rewrites the paragraph you're typing in, your save is refused instead of overwriting its text, and what you typed goes to your clipboard.</p></div>
+    <div><span class="n">One</span><h3>Your edits touch one element</h3><p>Typing changes the text inside a single paragraph, heading, list item or table cell. Adding or moving something touches only that element's markup. CSS, SVG charts and everything else stay byte-for-byte the same.</p></div>
+    <div><span class="n">Two</span><h3>The agent sees what you changed</h3><p>inplace reports every edit you make. The agent reads that before it acts, so a changed amount gets its total fixed and a moved section gets its references updated, without you having to ask.</p></div>
+    <div><span class="n">Three</span><h3>You can both work at once</h3><p>Edits to different blocks never get in each other's way. If the agent rewrites the paragraph you're typing in, your save is refused instead of overwriting its text, and what you typed goes to your clipboard.</p></div>
+    <div><span class="n">Four</span><h3>The HTML file is the document</h3><p>There's no editor format, database or export step. What you see in the browser is the file on disk, and what you print or send is that same file.</p></div>
+    <div><span class="n">Five</span><h3>Comments point at the right place</h3><p>Every block and table gets a stable <code>data-id</code>. When you comment on an element in your agent's browser, the agent gets that id and finds the exact spot in the file, even after the wording has changed.</p></div>
+    <div><span class="n">Six</span><h3>Formatting stays plain HTML</h3><p>Bold, italics, code and links are written as <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;code&gt;</code> and <code>&lt;a&gt;</code>, so the document's own styles decide how they look.</p></div>
   </div>
 </section>
 
@@ -332,17 +343,6 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
     <li><h3>Give your agent the skill</h3><p>It teaches the agent to start inplace, find commented elements by their id, keep the ids intact, and check totals and charts after you change a number.</p><div class="cmd"><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div></li>
     <li><h3>Tell your agent what you want to work on</h3><p>For example: &ldquo;Let&rsquo;s work on report.html together in inplace.&rdquo; The agent starts inplace and opens the page in its browser, where you can type straight into the document and leave comments for the agent.</p></li>
   </ol>
-</section>
-
-<section>
-  <div class="split">
-    <div>
-      <h2>What happens to your file</h2>
-      <p>The first time the page opens, inplace adds a <code>data-id</code> to each block and container that doesn't have one. The ids don't change how the page looks or prints, and existing ids are never renamed.</p>
-      <p>After that, the file only changes when you make a change on the page, and then only in the block you edited or the element you moved. If the document is in git, every edit shows up as a small, readable diff.</p>
-    </div>
-    <pre class="diff" aria-label="Example diff"><span class="h">@@ garden-proposal.html @@</span><span class="d">-&lt;h1&gt;A garden on the roof&lt;/h1&gt;</span><span class="p">+&lt;h1 data-id="h1-1"&gt;A garden on the roof&lt;/h1&gt;</span><span class="d">-&lt;table aria-label="Estimated costs"&gt;</span><span class="p">+&lt;table data-id="table-1" aria-label="Estimated costs"&gt;</span><span class="h"> …</span><span class="d">-&lt;p data-id="p-4"&gt;Volunteers water in summer.&lt;/p&gt;</span><span class="p">+&lt;p data-id="p-4"&gt;Volunteers take turns watering in summer.&lt;/p&gt;</span></pre>
-  </div>
 </section>
 
 <section>
