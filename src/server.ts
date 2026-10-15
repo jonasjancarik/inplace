@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { hostname } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -194,6 +195,13 @@ async function readBody(req: IncomingMessage): Promise<string> {
 }
 
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+/** The URLs a server listening on `host`:`port` can be opened at. */
+export function serverUrls(port: number, host: string): string[] {
+  const urls = [`http://localhost:${port}/`];
+  if (host === "0.0.0.0") urls.push(`http://${hostname().replace(/\.local$/, "")}.local:${port}/`);
+  return urls;
+}
 
 export function createInplaceServer(doc: Document): Server {
   const rootDir = dirname(resolve(doc.path));

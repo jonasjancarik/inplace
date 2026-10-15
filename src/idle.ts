@@ -23,6 +23,12 @@ export class PauseWatcher {
     this.timer = setTimeout(() => this.flush(), this.delayMs);
   }
 
+  /** Drop the changes still waiting for a pause. */
+  cancel(): void {
+    clearTimeout(this.timer);
+    this.lines = [];
+  }
+
   private flush(): void {
     const lines = this.lines;
     this.lines = [];
