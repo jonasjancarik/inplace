@@ -59,8 +59,15 @@ export class Document {
   private stamp = "";
   private listeners = new Set<(version: string) => void>();
 
-  /** `log` receives one line per change made from the page, for the agent to read. */
-  constructor(readonly path: string, readonly writeIds = true, readonly log: (line: string) => void = () => {}) {
+  /**
+   * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
+   * changes inplace makes on its own, such as adding ids.
+   */
+  constructor(
+    readonly path: string,
+    readonly writeIds = true,
+    readonly log: (line: string, byUser: boolean) => void = () => {},
+  ) {
     this.refresh();
   }
 
@@ -102,7 +109,7 @@ export class Document {
       if (result.added) {
         text = result.source;
         this.write(text);
-        this.log(`${time()} added data-id to ${result.added} element${result.added === 1 ? "" : "s"}`);
+        this.log(`${time()} added data-id to ${result.added} element${result.added === 1 ? "" : "s"}`, false);
       }
     }
     return { text, version: this.version };
@@ -113,7 +120,7 @@ export class Document {
     const patched = patchBlock(text, id, oldInner, newInner);
     if (patched !== text) {
       this.write(patched);
-      this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`);
+      this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`, true);
     }
     return this.version;
   }
@@ -124,7 +131,7 @@ export class Document {
     if (moved !== text) {
       this.write(moved);
       const parent = findBlock(parse(moved), id)?.parent?.attrs.get("data-id");
-      this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`);
+      this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true);
     }
     return this.version;
   }
@@ -135,16 +142,16 @@ export class Document {
     const text = this.refresh();
     const inserted = insertBlock(text, id, position, tag, content, split);
     this.write(inserted.source);
-    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`);
+    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`, true);
     const what = squash(content) ? `: ${JSON.stringify(clip(squash(content), 200))}` : " (empty)";
-    this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`);
+    this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`, true);
     return { id: inserted.id, html: inserted.html };
   }
 
   removeBlock(id: string): void {
     const text = this.refresh();
     this.write(removeBlock(text, id));
-    this.log(`${time()} removed ${id}, which the user had emptied`);
+    this.log(`${time()} removed ${id}, which the user had emptied`, true);
   }
 
   retagBlock(id: string, from: string, to: string): string {
@@ -152,7 +159,7 @@ export class Document {
     const retagged = retagBlock(text, id, from, to);
     if (retagged !== text) {
       this.write(retagged);
-      this.log(`${time()} changed ${id} from <${from}> to <${to}>`);
+      this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true);
     }
     return this.version;
   }
