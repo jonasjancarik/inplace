@@ -109,6 +109,10 @@ h1 em{font-style:italic;background:linear-gradient(transparent 62%,var(--mark-so
 .tb .mono{font-family:ui-monospace,monospace}
 #d-toolbar{position:absolute;z-index:3;opacity:0;transform:translateY(4px);transition:opacity .2s,transform .2s;pointer-events:none}
 #d-toolbar.show{opacity:1;transform:none}
+.gutter{position:absolute;z-index:3;display:flex;gap:3px;opacity:0;transition:opacity .15s;pointer-events:none}
+.gutter.show{opacity:1}
+.grip.plus{letter-spacing:0;font-size:16px}
+.grip.on{background:#eef2fb;color:#1f2a24;box-shadow:0 0 0 2px var(--focus)}
 .grip{display:inline-block;width:18px;height:22px;border-radius:4px;background:#fff;color:#7a8580;box-shadow:0 1px 4px #0002;font:14px/22px system-ui,sans-serif;letter-spacing:-3px;text-align:center;flex:none}
 
 .agent{background:var(--code-bg);color:var(--code-ink);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;min-height:260px}
@@ -159,7 +163,7 @@ pre.changelog i{font-style:normal;color:var(--code-dim)}
 .split p:first-of-type{margin-top:0}
 .split code{font-size:.88em;background:var(--paper-2);padding:1px 5px;border-radius:4px}
 
-.features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .feature{background:var(--sheet);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .feature .vis{height:150px;background:var(--paper-2);border-bottom:1px solid var(--line);display:grid;place-items:center;padding:16px;position:relative}
 .feature .body{padding:18px 20px 20px}
@@ -173,6 +177,8 @@ pre.changelog i{font-style:normal;color:var(--code-dim)}
 .vis .stack .lift b{box-shadow:0 0 0 2px var(--focus),0 6px 16px #1f2a2333;transform:translateX(6px) rotate(-.6deg)}
 .vis .stack .ghost{height:3px;margin-left:26px;border-radius:2px;background:var(--focus)}
 .vis .stack .ghost b{display:none}
+.vis .stack .empty b{box-shadow:0 0 0 2px var(--focus);min-height:31px}
+.vis .stack .pad{width:18px;flex:none}
 .notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
 .note{background:var(--sheet);border:1px solid var(--line);border-radius:12px;padding:20px}
 .note h3{font:600 16px var(--sans);margin:0 0 6px}
@@ -196,6 +202,7 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
   .sheet{padding:20px 18px 24px}
   .sheet h3{font-size:23px}
   .pill{right:12px;top:10px}
+  .gutter .grip:not(.plus){display:none}
   section{padding:48px 0}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -226,7 +233,7 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
   </div>
 </div>
 
-<div class="demo" aria-label="Animated example: the user bolds a word and changes an amount, the agent fixes the total, then adds a table row the user asks for in a comment">
+<div class="demo" aria-label="Animated example: the user bolds a word and adds a table row, the agent fixes the total, then adds a paragraph the user asks for in a comment">
   <div class="window">
     <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">localhost:8765 · garden-proposal.html</div></div>
     <div class="viewport">
@@ -238,7 +245,7 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
           <thead><tr><th>Item</th><th>Cost</th></tr></thead>
           <tbody id="d-body">
             <tr><td>Raised beds</td><td>€3,600</td></tr>
-            <tr><td>Soil and compost</td><td id="d-soil">€1,150</td></tr>
+            <tr id="d-soil-row"><td>Soil and compost</td><td>€1,150</td></tr>
             <tr class="total"><td>Total</td><td id="d-total">€4,750</td></tr>
           </tbody>
         </table>
@@ -247,9 +254,10 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
       <div class="tb" id="d-toolbar" aria-hidden="true"><span id="d-bold"><b>B</b></span><span><i>I</i></span><span><s>S</s></span><span class="mono">&lt;/&gt;</span><span>Link</span><span class="sep"></span><span class="on">Text</span><span>H1</span><span>H2</span><span>H3</span></div>
       <div class="comment" id="d-comment">
         <div class="who"><b>J</b>You</div>
-        Add the rain barrel, €400.
+        Mention the 10% discount if we order before March.
         <div class="target">on &lt;table data-id="table-1"&gt;</div>
       </div>
+      <div class="gutter" id="d-gutter" aria-hidden="true"><span class="grip plus" id="d-plus">+</span><span class="grip">⋮⋮</span></div>
     </div>
   </div>
   <div class="agent">
@@ -257,23 +265,23 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
     <p class="idle">Waiting for changes on the page…</p>
     <div class="log" id="d-log">
       <div class="o"><span class="tag">inplace</span>edited <code>p-1</code>: “shared” → “&lt;strong&gt;shared&lt;/strong&gt;”</div>
-      <div class="o"><span class="tag">inplace</span>edited <code>td-4</code>: “€1,150” → “€1,350”</div>
-      <div class="a"><span class="tag">agent</span>That amount feeds the total, so I updated <code>td-6</code> to €4,950.</div>
-      <div class="o"><span class="tag">comment</span>on <code>table-1</code>: “Add the rain barrel, €400.”</div>
-      <div class="a"><span class="tag">agent</span>Added the row and updated the total to €5,350.</div>
+      <div class="o"><span class="tag">inplace</span>added <code>tr-3</code> after <code>tr-2</code>: “Rain barrel”, “€400”</div>
+      <div class="a"><span class="tag">agent</span>That row feeds the total, so I updated <code>td-6</code> to €5,150.</div>
+      <div class="o"><span class="tag">comment</span>on <code>table-1</code>: “Mention the 10% discount if we order before March.”</div>
+      <div class="a"><span class="tag">agent</span>Added a paragraph below <code>table-1</code>.</div>
       <div class="c">The page reloaded with your edits and mine.</div>
     </div>
     <button class="replay" id="d-replay" type="button">Replay</button>
   </div>
 </div>
-<p class="caption">You bold a word and change an amount on the page. The agent reads the change, fixes the total, then adds the row you asked for in a comment.</p>
+<p class="caption">You bold a word and add a row on the page. The agent sees the new row and fixes the total, then writes the paragraph you asked for in a comment.</p>
 
 <section id="how">
   <h2>Why not just use a rich-text editor?</h2>
   <p class="intro">Agents now write documents as hand-crafted HTML, with real typography, colour-coded tables, charts and print layouts. Rich-text editors turn that into their own format and lose half of it. inplace leaves the file alone and only lets you change what you can see.</p>
   <div class="points">
     <div><span class="n">One</span><h3>The HTML file is the document</h3><p>There's no editor format, database or export step. What you see in the browser is the file on disk, and what you print or send is that same file.</p></div>
-    <div><span class="n">Two</span><h3>Your edits touch one element</h3><p>Typing changes the text inside a single paragraph, heading, list item or table cell, and moving cuts and pastes one element's markup as it is. CSS, SVG charts and everything else stay byte-for-byte the same.</p></div>
+    <div><span class="n">Two</span><h3>Your edits touch one element</h3><p>Typing changes the text inside a single paragraph, heading, list item or table cell. Adding or moving something touches only that element's markup. CSS, SVG charts and everything else stay byte-for-byte the same.</p></div>
     <div><span class="n">Three</span><h3>Comments point at the right place</h3><p>Every block and table gets a stable <code>data-id</code>. When you comment on an element in your agent's browser, the agent gets that id and finds the exact spot in the file, even after the wording has changed.</p></div>
     <div><span class="n">Four</span><h3>The agent sees what you changed</h3><p>inplace reports every edit you make. The agent reads that before it acts, so a changed amount gets its total fixed and a moved section gets its references updated, without you having to ask.</p></div>
     <div><span class="n">Five</span><h3>Formatting stays plain HTML</h3><p>Bold, italics, code and links are written as <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;code&gt;</code> and <code>&lt;a&gt;</code>, so the document's own styles decide how they look.</p></div>
@@ -283,11 +291,15 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 
 <section id="page">
   <h2>What you can do on the page</h2>
-  <p class="intro">Everything here is saved straight to the file after a short pause. Anything bigger, like new sections, rows or a different layout, you ask for with a comment.</p>
+  <p class="intro">Everything here is saved straight to the file after a short pause. Anything bigger, like a new section, a chart or a different layout, you ask for with a comment.</p>
   <div class="features">
     <div class="feature">
       <div class="vis" aria-hidden="true"><div class="doc">Open to all residents from May<span class="caret"></span></div></div>
-      <div class="body"><h3>Type</h3><p>Click into any paragraph, heading, list item or table cell and change the text. Enter leaves the block, and pasted text arrives without stray formatting.</p></div>
+      <div class="body"><h3>Type</h3><p>Click into any paragraph, heading, list item or table cell and change the text. Pasted text arrives without stray formatting.</p></div>
+    </div>
+    <div class="feature">
+      <div class="vis" aria-hidden="true"><div class="stack"><div><span class="pad"></span><span class="grip">⋮⋮</span><b>Raised beds</b></div><div><span class="grip plus on">+</span><span class="grip">⋮⋮</span><b>Soil and compost</b></div><div class="empty"><span class="pad"></span><span class="pad"></span><b><span class="caret"></span></b></div></div></div>
+      <div class="body"><h3>Add and remove</h3><p>Press Enter for a new paragraph or list item, or click the + beside a block or table row to add one below. It looks like its neighbours. To remove one, empty it and press Backspace once more.</p></div>
     </div>
     <div class="feature">
       <div class="vis" aria-hidden="true"><div style="display:grid;gap:10px;justify-items:center"><div class="tb"><span class="on"><b>B</b></span><span><i>I</i></span><span><s>S</s></span><span class="mono">&lt;/&gt;</span><span>Link</span><span class="sep"></span><span class="on">Text</span><span>H1</span><span>H2</span></div><div class="doc">proposes <strong>shared</strong> raised beds</div></div></div>
@@ -306,7 +318,7 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
   <ol class="steps">
     <li><h3>Give your agent the skill</h3><p>It teaches the agent to start inplace, find commented elements by their id, keep the ids intact, and check totals and charts after you change a number.</p><div class="cmd"><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div></li>
     <li><h3>Open your document</h3><p>Ask the agent to open it in inplace, or start it yourself and open <code>localhost:8765</code> in the agent's browser.</p><div class="cmd"><span>npx github:jonasjancarik/inplace path/to/document.html</span><button class="copy" data-copy="npx github:jonasjancarik/inplace path/to/document.html">Copy</button></div></li>
-    <li><h3>Edit, or leave a comment</h3><p>Type, format and drag things around on the page; changes save after a short pause. For new sections, rows, layout or charts, comment on the element and let the agent do it.</p></li>
+    <li><h3>Edit, or leave a comment</h3><p>Type, add paragraphs and rows, format and drag things around on the page; changes save after a short pause. For new sections, layout or charts, comment on the element and let the agent do it.</p></li>
   </ol>
 </section>
 
@@ -328,14 +340,14 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
       <p>While it runs, inplace prints one line for every change made on the page, showing only the part that changed. The skill has the agent start inplace in the background and read these lines before it handles a comment or touches the file.</p>
       <p>That way it notices a changed amount and fixes the totals and charts that depend on it, or a moved section and the “see the table below” that now points the wrong way. You can also just tell it to check your edits.</p>
     </div>
-    <pre class="diff changelog" aria-label="Example of inplace's change log"><span><i>16:34:18</i> edited p-1: "…proposes shared raised…" → "…proposes &lt;strong&gt;shared&lt;/strong&gt; raised…"</span><span><i>16:34:40</i> edited td-4: "€1,150" → "€1,350"</span><span><i>16:34:52</i> changed p-3 from &lt;p&gt; to &lt;h2&gt;</span><span><i>16:35:21</i> moved li-1 before li-3 (inside ul-1)</span></pre>
+    <pre class="diff changelog" aria-label="Example of inplace's change log"><span><i>16:34:18</i> edited p-1: "…proposes shared raised…" → "…proposes &lt;strong&gt;shared&lt;/strong&gt; raised…"</span><span><i>16:34:40</i> edited td-4: "€1,150" → "€1,350"</span><span><i>16:34:52</i> changed p-3 from &lt;p&gt; to &lt;h2&gt;</span><span><i>16:35:21</i> moved li-1 before li-3 (inside ul-1)</span><span><i>16:36:02</i> added p-5 &lt;p&gt; after p-2: "A structural survey last autumn confirmed…"</span></pre>
   </div>
 </section>
 
 <section>
   <h2>Good to know</h2>
   <div class="notes" style="margin-top:26px">
-    <div class="note"><h3>Small changes on the page, the rest through the agent</h3><p>You can type, format and reorder things among their neighbours. New paragraphs or rows, moving something into another section, styling and charts are asked for with a comment.</p></div>
+    <div class="note"><h3>Small changes on the page, the rest through the agent</h3><p>You can type, format, add and remove paragraphs, list items and rows, and reorder things among their neighbours. New sections or tables, moving something into another section, styling and charts are asked for with a comment.</p></div>
     <div class="note"><h3>The page doesn't do the maths</h3><p>When you change an amount, the agent sees it and updates totals and charts, as long as it has the skill. Mark values that shouldn't change by hand with <code>data-locked</code>.</p></div>
     <div class="note"><h3>Made for your own computer</h3><p>It serves one document with no login. Keep it on a network you trust, or start it with <code>--host 127.0.0.1</code>.</p></div>
   </div>
@@ -372,16 +384,18 @@ themeBtn.addEventListener("click", () => {
 // Demo timeline
 (() => {
   const $ = (id) => document.getElementById(id);
-  const para = $("d-para"), word = $("d-word"), toolbar = $("d-toolbar"), bold = $("d-bold"), soil = $("d-soil"),
+  const para = $("d-para"), word = $("d-word"), toolbar = $("d-toolbar"), bold = $("d-bold"),
+        soilRow = $("d-soil-row"), gutter = $("d-gutter"), plus = $("d-plus"),
         pill = $("d-pill"), table = $("d-table"), body = $("d-body"), total = $("d-total"), comment = $("d-comment"),
         sheet = $("sheet"), viewport = sheet.parentElement, log = [...$("d-log").children];
+  const NOTE = "The garden centre gives 10% off the beds if we order before March.";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let run = 0, visible = false;
 
   const sleep = (ms, id) => new Promise((r, x) => setTimeout(() => (id === run ? r() : x()), ms));
   const caret = () => { const c = document.createElement("span"); c.className = "caret"; return c; };
   const box = (el) => { const v = viewport.getBoundingClientRect(), r = el.getBoundingClientRect();
-    return { left: r.left - v.left, top: r.top - v.top, right: r.right - v.left, bottom: r.bottom - v.top, width: v.width }; };
+    return { left: r.left - v.left, top: r.top - v.top, right: r.right - v.left, bottom: r.bottom - v.top, height: r.height, width: v.width }; };
 
   function placeToolbar() {
     const w = box(word), tw = toolbar.offsetWidth;
@@ -393,36 +407,51 @@ themeBtn.addEventListener("click", () => {
     comment.style.left = Math.max(8, Math.min(t.right - cw + 10, t.width - cw - 8)) + "px";
     comment.style.top = (t.top - comment.offsetHeight - 12) + "px";
   }
-  function flash(el) { el.classList.remove("changed"); void el.offsetWidth; el.classList.add("changed"); }
-  async function saved(id) {
-    pill.classList.add("show"); await sleep(1000, id); pill.classList.remove("show");
+  function placeGutter() {
+    const r = box(soilRow);
+    gutter.style.left = Math.max(2, r.left - gutter.offsetWidth - 6) + "px";
+    gutter.style.top = (r.top + (r.height - 22) / 2) + "px";
   }
-  async function reload(id) {
-    sheet.classList.add("reloading"); await sleep(320, id); sheet.classList.remove("reloading");
+  function flash(el) { el.classList.remove("changed"); void el.offsetWidth; el.classList.add("changed"); }
+  async function saved(id) { pill.classList.add("show"); await sleep(1000, id); pill.classList.remove("show"); }
+  async function reload(id) { sheet.classList.add("reloading"); await sleep(320, id); sheet.classList.remove("reloading"); }
+  async function type(el, text, id, speed = 70) {
+    const c = caret(); el.append(c);
+    for (const ch of text) { c.before(ch); await sleep(speed + Math.random() * 50, id); }
+    c.remove();
   }
 
   function setBold(on) { word.innerHTML = on ? "<strong>shared</strong>" : "shared"; word.className = ""; }
-  function addRow(animate) {
+  function newRow(animate, filled) {
     const tr = document.createElement("tr");
-    tr.className = "added" + (animate ? " row-enter fresh" : "");
-    tr.innerHTML = "<td>Rain barrel</td><td>€400</td>";
-    body.insertBefore(tr, body.lastElementChild);
+    tr.className = "added" + (animate ? " row-enter" : "");
+    tr.innerHTML = filled ? "<td>Rain barrel</td><td>€400</td>" : "<td></td><td></td>";
+    soilRow.after(tr);
     if (animate) requestAnimationFrame(() => requestAnimationFrame(() => tr.classList.remove("row-enter")));
+    return tr;
+  }
+  function addNote(animate) {
+    const note = document.createElement("p");
+    note.className = "added" + (animate ? " changed" : "");
+    note.style.margin = "14px 0 0";
+    note.textContent = NOTE;
+    table.after(note);
   }
 
   function reset() {
-    setBold(false); soil.textContent = "€1,150"; soil.className = "";
-    body.querySelectorAll(".added").forEach((r) => r.remove());
+    setBold(false);
+    sheet.querySelectorAll(".added").forEach((el) => el.remove());
     total.textContent = "€4,750"; total.classList.remove("changed");
     sheet.querySelectorAll(".caret").forEach((c) => c.remove());
     para.classList.remove("editing"); toolbar.classList.remove("show"); bold.classList.remove("on");
+    gutter.classList.remove("show"); plus.classList.remove("on");
     pill.classList.remove("show"); comment.classList.remove("show"); table.classList.remove("selected");
     sheet.classList.remove("reloading"); log.forEach((l) => l.classList.remove("show"));
   }
 
   function finalState() {
     reset();
-    setBold(true); soil.textContent = "€1,350"; addRow(false); total.textContent = "€5,350";
+    setBold(true); newRow(false, true); total.textContent = "€5,150"; addNote(false);
     log.forEach((l) => l.classList.add("show"));
   }
 
@@ -444,31 +473,34 @@ themeBtn.addEventListener("click", () => {
       await saved(id);
       log[0].classList.add("show");
 
-      // 2. Change an amount; the agent fixes the total
-      await sleep(700, id);
-      soil.className = "cell-edit sel";
-      await sleep(700, id);
-      soil.className = "cell-edit"; soil.textContent = ""; const c = caret(); soil.append(c);
-      for (const ch of "€1,350") { c.before(ch); await sleep(90 + Math.random() * 60, id); }
+      // 2. Add a row with +; the agent fixes the total
+      await sleep(600, id);
+      placeGutter(); gutter.classList.add("show");
+      await sleep(800, id);
+      plus.classList.add("on");
+      await sleep(300, id);
+      gutter.classList.remove("show"); plus.classList.remove("on");
+      const row = newRow(true, false), [name, cost] = row.children;
       await sleep(400, id);
-      c.remove(); soil.className = "";
+      name.className = "cell-edit"; await type(name, "Rain barrel", id); name.className = "";
+      cost.className = "cell-edit"; await type(cost, "€400", id, 110); cost.className = "";
       await saved(id);
       log[1].classList.add("show");
       await sleep(1300, id);
       log[2].classList.add("show");
       await reload(id);
-      total.textContent = "€4,950"; flash(total);
+      total.textContent = "€5,150"; flash(total);
 
-      // 3. Comment on the table; the agent adds a row
+      // 3. Comment asking for more than a quick edit; the agent writes it
       await sleep(1600, id);
       table.classList.add("selected"); placeComment(); comment.classList.add("show");
-      await sleep(1300, id);
+      await sleep(1400, id);
       log[3].classList.add("show");
       await sleep(1400, id);
       log[4].classList.add("show");
       comment.classList.remove("show"); table.classList.remove("selected");
       await reload(id);
-      addRow(true); total.textContent = "€5,350"; flash(total);
+      addNote(true);
       await sleep(700, id);
       log[5].classList.add("show");
       await sleep(5500, id);
@@ -480,6 +512,7 @@ themeBtn.addEventListener("click", () => {
   addEventListener("resize", () => {
     if (comment.classList.contains("show")) placeComment();
     if (toolbar.classList.contains("show")) placeToolbar();
+    if (gutter.classList.contains("show")) placeGutter();
   });
 
   if (reduced) { finalState(); return; }
