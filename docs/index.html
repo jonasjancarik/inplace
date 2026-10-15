@@ -351,8 +351,9 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
       <h2>How the agent finds out about your edits</h2>
       <p>While it runs, inplace prints one line for every change made on the page, showing only the part that changed. The skill has the agent start inplace in the background and read these lines before it handles a comment or touches the file.</p>
       <p>That way it notices a changed amount and fixes the totals and charts that depend on it, or a moved section and the “see the table below” that now points the wrong way. You can also just tell it to check your edits.</p>
+      <p>When you stop typing for a few seconds, inplace sums up what you changed. Claude Code watches for that and catches up straight away. Codex can check in every few minutes, and any agent with a headless mode can be started by inplace itself.</p>
     </div>
-    <pre class="diff changelog" aria-label="Example of inplace's change log"><span><i>16:34:18</i> edited p-1: "…proposes shared raised…" → "…proposes &lt;strong&gt;shared&lt;/strong&gt; raised…"</span><span><i>16:34:40</i> edited td-4: "€1,150" → "€1,350"</span><span><i>16:34:52</i> changed p-3 from &lt;p&gt; to &lt;h2&gt;</span><span><i>16:35:21</i> moved li-1 before li-3 (inside ul-1)</span><span><i>16:36:02</i> added p-5 &lt;p&gt; after p-2: "A structural survey last autumn confirmed…"</span></pre>
+    <pre class="diff changelog" aria-label="Example of inplace's change log"><span><i>16:34:18</i> edited p-1: "…proposes shared raised…" → "…proposes &lt;strong&gt;shared&lt;/strong&gt; raised…"</span><span><i>16:34:40</i> edited td-4: "€1,150" → "€1,350"</span><span><i>16:34:52</i> changed p-3 from &lt;p&gt; to &lt;h2&gt;</span><span><i>16:35:21</i> moved li-1 before li-3 (inside ul-1)</span><span><i>16:36:02</i> added p-5 &lt;p&gt; after p-2: "A structural survey last autumn confirmed…"</span><span><i>16:36:07</i> paused after 5 changes: edited p-1, edited td-4, changed p-3, moved li-1, added p-5</span></pre>
   </div>
 </section>
 

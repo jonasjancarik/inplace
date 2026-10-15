@@ -95,14 +95,30 @@ While it runs, inplace prints one line for every change made on the page:
 16:35:21 moved li-1 before li-3 (inside ul-1)
 16:36:02 added p-5 <p> after p-2: "A structural survey last autumn confirmed…"
 16:36:40 removed tr-7, which the user had emptied
+16:36:45 paused after 5 changes: edited p-1, changed p-3, moved li-1, added p-5, removed tr-7
 ```
 
-Only the changed part of a block is shown, with a little context. The skill tells the agent to start inplace in the background and to read this output before it handles a comment or edits the file, so it notices a changed number and fixes the totals and charts that depend on it, or a moved section and the references that point to it. You can also just tell the agent to check your edits.
+Only the changed part of a block is shown, with a little context. Once you've stopped making changes for a few seconds, a `paused after` line sums up what you did since the last one. The skill tells the agent to start inplace in the background and to read this output before it handles a comment or edits the file, so it notices a changed number and fixes the totals and charts that depend on it, or a moved section and the references that point to it. You can also just tell the agent to check your edits.
+
+### Letting the agent react while you work
+
+An agent normally reads these lines only when it next does something: when you leave a comment or send it a message. How soon it can react on its own depends on the agent:
+
+- **Claude Code** can watch the output with its Monitor tool and wake up at each `paused after` line. The skill tells it to do this, so after you change an amount, the total is usually fixed a few seconds after you stop typing.
+- **Codex** can check in on a schedule with a heartbeat, which keeps the conversation's context. Ask it to check your inplace edits every few minutes. It reads the log file (`--log`) and stops straight away when nothing has changed.
+- **Any agent with a headless mode**, such as `claude -p` or `codex exec`, can be started by inplace itself with `--on-pause`. The command gets the changes on standard input and the document's path in `INPLACE_FILE`:
+
+  ```bash
+  inplace report.html --on-pause 'claude -p "I edited $INPLACE_FILE as listed below. Update any totals, charts or references that depend on these changes, and change nothing else." --allowedTools Read,Edit'
+  ```
+
+  The headless agent doesn't know your conversation with your main agent, and both could edit the file at the same time, so keep its job narrow. Runs never overlap: changes made while one is running go to the next run.
 
 ## Options
 
 ```text
 inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
+                    [--pause 5] [--log <file>] [--on-pause <command>]
 ```
 
 | Option | Default | |
@@ -110,6 +126,9 @@ inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
 | `--port` | `8765` | Port to listen on. |
 | `--host` | `0.0.0.0` | Address to listen on. The default makes the page reachable from other devices on your network, such as a tablet; use `127.0.0.1` to keep it on this computer. |
 | `--no-write-ids` | off | Don't add `data-id` attributes to the file. |
+| `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
+| `--log` | none | Also append every change line to this file. |
+| `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
 
 Images, stylesheets and other files next to the document are served too, so relative links keep working.
 
