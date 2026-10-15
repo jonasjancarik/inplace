@@ -116,7 +116,7 @@ An agent normally reads these lines only when it next does something: when you l
 
 ### Running inplace as an MCP server for Claude Code
 
-`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets three tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, and `close_document` stops serving it. One server handles one document at a time.
+`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
 
 The server is also a Claude Code [channel](https://code.claude.com/docs/en/channels): each time you pause, it sends the session one message with that burst of changes, and Claude reacts even if it's sitting idle. Unlike a Monitor watch, this doesn't expire after 30 minutes.
 
@@ -141,12 +141,52 @@ Some things to know before you rely on it:
 
 MCP is working on a standard way for servers to send events like this. Once Claude Code, Codex and other agents support it, inplace will send its pauses that way too, so the same setup works beyond Claude Code and without the development flag.
 
+### Using inplace with ChatGPT in the browser
+
+ChatGPT on the web can't open files on your computer, but it can use inplace's MCP tools through a tunnel. The document stays on your disk and you edit it on the inplace page as usual. ChatGPT reads it with `read_document`, changes it with `replace_element` (one element by its `data-id`) or `find_replace`, and sees your edits with `get_edits`.
+
+There are two ways to connect:
+
+- **OpenAI's [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).** You create a tunnel in the OpenAI Platform settings and run OpenAI's `tunnel-client` on your computer. It can start inplace itself, so nothing is exposed to the internet:
+
+  ```bash
+  tunnel-client init --sample sample_mcp_stdio_local --profile inplace --tunnel-id <your tunnel id> --mcp-command "npx -y github:jonasjancarik/inplace mcp"
+  ```
+
+  ```bash
+  tunnel-client run --profile inplace
+  ```
+
+  This needs an OpenAI Platform organization with tunnel permissions and an API key for `tunnel-client`; the guide linked above covers both.
+
+- **Any other HTTPS tunnel**, such as `cloudflared` or ngrok. Run inplace's HTTP mode with a token you choose, then point the tunnel at it:
+
+  ```bash
+  INPLACE_TOKEN=<a long random string> npx -y github:jonasjancarik/inplace mcp --http
+  ```
+
+  ```bash
+  cloudflared tunnel --url http://127.0.0.1:8766
+  ```
+
+  The MCP URL is the tunnel's address followed by `/mcp/<your token>`. It listens on `127.0.0.1:8766` by default (`--port` and `--host` change that) and answers nothing without the token. Anyone who has the full URL can read and change the documents you open, so treat it like a password.
+
+Then, in ChatGPT on the web, go to [Plugins](https://chatgpt.com/plugins), choose **Add custom MCP server**, and either select your tunnel or enter the URL, with **No authentication**. In a conversation, type `@`, pick the plugin, and ask it to open your document, giving the full path. Open the URL it returns in your own browser.
+
+Some things to know before you rely on it:
+
+- Whether you can add custom MCP servers depends on your ChatGPT plan and, in a workspace, on your admin. OpenAI's documentation only says workspace permissions apply. Reports differ on Plus and Pro; Business, Enterprise and Edu workspaces are the most consistently reported to allow it. Check under Settings in your own account.
+- ChatGPT can't be woken by inplace. It sees your page edits only when you next send it a message, so tell it to check your edits.
+- ChatGPT asks you to confirm each edit unless you tell it to remember your choice for the conversation.
+- A server reached through a tunnel can only be your own, private plugin. Listing inplace in ChatGPT's plugin directory would need a public HTTPS service.
+
 ## Options
 
 ```text
 inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
 inplace mcp [--pause 5] [--log <file>]
+inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
 ```
 
 | Option | Default | |
@@ -157,6 +197,8 @@ inplace mcp [--pause 5] [--log <file>]
 | `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
 | `--log` | none | Also append every change line to this file. |
 | `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
+| `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
+| `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
 
 Images, stylesheets and other files next to the document are served too, so relative links keep working.
 
