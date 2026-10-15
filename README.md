@@ -104,7 +104,7 @@ Only the changed part of a block is shown, with a little context. Once you've st
 
 An agent normally reads these lines only when it next does something: when you leave a comment or send it a message. How soon it can react on its own depends on the agent:
 
-- **Claude Code** can watch the output with its Monitor tool and wake up at each `paused after` line. The skill tells it to do this, so after you change an amount, the total is usually fixed a few seconds after you stop typing.
+- **Claude Code** can run inplace as an MCP server and get a message each time you pause, through a channel (see below). Without that, it can watch the output with its Monitor tool and wake up at each `paused after` line. Either way, after you change an amount, the total is usually fixed a few seconds after you stop typing.
 - **Codex** can check in on a schedule with a heartbeat, which keeps the conversation's context. Ask it to check your inplace edits every few minutes. It reads the log file (`--log`) and stops straight away when nothing has changed.
 - **Any agent with a headless mode**, such as `claude -p` or `codex exec`, can be started by inplace itself with `--on-pause`. The command gets the changes on standard input and the document's path in `INPLACE_FILE`:
 
@@ -114,11 +114,37 @@ An agent normally reads these lines only when it next does something: when you l
 
   The headless agent doesn't know your conversation with your main agent, and both could edit the file at the same time, so keep its job narrow. Runs never overlap: changes made while one is running go to the next run.
 
+### Running inplace as an MCP server for Claude Code
+
+`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets three tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, and `close_document` stops serving it. One server handles one document at a time.
+
+The server is also a Claude Code [channel](https://code.claude.com/docs/en/channels): each time you pause, it sends the session one message with that burst of changes, and Claude reacts even if it's sitting idle. Unlike a Monitor watch, this doesn't expire after 30 minutes.
+
+Add it once for all your projects, then start Claude Code with the channel turned on:
+
+```bash
+claude mcp add --scope user inplace -- npx -y github:jonasjancarik/inplace mcp
+```
+
+```bash
+claude --dangerously-load-development-channels server:inplace
+```
+
+Some things to know before you rely on it:
+
+- Channels are a research preview and need Claude Code 2.1.80 or newer. Team and Enterprise organizations have to enable them first.
+- inplace isn't on Claude Code's list of approved channels, so it only works with `--dangerously-load-development-channels`. Claude Code shows a warning each time you start it this way; choose **I am using this for local development**. The flag is ignored in non-interactive runs (`claude -p`).
+- Started without the flag, the tools still work, but no messages arrive while Claude is idle. It sees your edits through `get_edits` when it next does something.
+- Anyone who can open the page can type into it, and what they type reaches Claude. inplace marks it as document content, not instructions, and the skill tells Claude not to follow it, but keep the page on `127.0.0.1` (ask Claude to open it with that host) unless you need it on other devices.
+
+`--pause` and `--log` work as below; add them after `mcp` in the `claude mcp add` command. In this mode the change lines go to standard error and the log file, because standard output carries the MCP messages.
+
 ## Options
 
 ```text
 inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
+inplace mcp [--pause 5] [--log <file>]
 ```
 
 | Option | Default | |
