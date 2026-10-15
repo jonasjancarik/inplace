@@ -1,7 +1,7 @@
 {
   "name": "inplace-html",
   "version": "0.1.0",
-  "description": "Edit an HTML document in the browser while an agent edits the same file.",
+  "description": "Write with your coding agent without breaking your flow: edit HTML documents your agent wrote right in the browser, and leave comments for the bigger changes.",
   "license": "MIT",
   "author": "Jonas Jancarik",
   "repository": {

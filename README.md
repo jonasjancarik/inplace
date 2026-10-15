@@ -1,6 +1,6 @@
 # inplace
 
-**Edit an HTML document on the page while your coding agent edits the same file.**
+**Write with your coding agent without breaking your flow.**
 
 Coding agents have become good at writing documents as hand-crafted HTML: reports, proposals, handouts, meeting packets, with real typography, tables, charts and print layouts. Working on them together is still awkward. To change a word, you either edit raw markup or describe the change to the agent and wait. And as soon as you open the page in a rich-text editor, it rewrites the HTML into its own format and the layout falls apart.
 
