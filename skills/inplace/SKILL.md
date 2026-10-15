@@ -14,10 +14,10 @@ The HTML file is the only source of truth. There is no separate content store, e
 inplace needs Node.js 22 or newer. Run it with npx, with no install step:
 
 ```bash
-npx -y inplace-html path/to/document.html --port 8765
+npx -y github:jonasjancarik/inplace path/to/document.html --port 8765
 ```
 
-If the user has installed it (`npm install -g inplace-html`), `inplace path/to/document.html` is enough.
+If the user has installed it (`npm install -g github:jonasjancarik/inplace`), `inplace path/to/document.html` is enough.
 
 - Run it in the background; it keeps running until stopped. Check the port is free first and pick another if not.
 - It listens on all interfaces by default (`--host 0.0.0.0`) and prints the URLs it can be reached at. Use `--host 127.0.0.1` if the document shouldn't be reachable from other machines on the network.

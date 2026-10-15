@@ -7,7 +7,7 @@ Coding agents have become good at writing documents as hand-crafted HTML: report
 inplace takes a different approach. It serves your HTML file exactly as it is and lets you click into the rendered page and type. For anything bigger, such as rewording a section, adding a row or fixing a chart, you leave a comment on the page with the browser's comment tool in Claude or Codex, and the agent edits the file. Every open page reloads as soon as the file changes, so you always see the current version.
 
 ```bash
-npx inplace-html report.html
+npx github:jonasjancarik/inplace report.html
 ```
 
 ## Why it works this way
@@ -24,10 +24,10 @@ You need Node.js 22 or newer.
 1. Start inplace on your document:
 
    ```bash
-   npx inplace-html path/to/document.html
+   npx github:jonasjancarik/inplace path/to/document.html
    ```
 
-   Or install it once with `npm install -g inplace-html` and run `inplace path/to/document.html`.
+   The first run takes a little longer while npm downloads and builds it. Or install it once with `npm install -g github:jonasjancarik/inplace` and run `inplace path/to/document.html`.
 
 2. Open `http://localhost:8765/` in the built-in browser of Claude or Codex.
 
@@ -38,7 +38,7 @@ You need Node.js 22 or newer.
 To try it on the example, copy it first, because inplace writes to the file it serves:
 
 ```bash
-cp examples/garden-proposal.html /tmp/ && npx inplace-html /tmp/garden-proposal.html
+cp examples/garden-proposal.html /tmp/ && npx github:jonasjancarik/inplace /tmp/garden-proposal.html
 ```
 
 ## The agent skill
