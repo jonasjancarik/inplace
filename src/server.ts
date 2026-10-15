@@ -190,6 +190,9 @@ const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;
 
 export function createInplaceServer(doc: Document): Server {
   const rootDir = dirname(resolve(doc.path));
+  // Read once, so a running server always serves the editor that matches its
+  // own endpoints, even after the checkout is updated underneath it.
+  const editorScript = readFileSync(join(STATIC_DIR, "editor.js"));
 
   const page = (res: ServerResponse) => {
     const { text, version } = doc.load();
@@ -279,7 +282,7 @@ export function createInplaceServer(doc: Document): Server {
         }
         if (path === "/" || path === "/" + basename(doc.path)) return page(res);
         if (path === EDITOR_PREFIX + "editor.js") {
-          return send(res, 200, readFileSync(join(STATIC_DIR, "editor.js")), "text/javascript; charset=utf-8");
+          return send(res, 200, editorScript, "text/javascript; charset=utf-8");
         }
         if (path === EDITOR_PREFIX + "events") return events(req, res);
         return staticFile(path, res);
