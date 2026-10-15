@@ -32,7 +32,7 @@ You need Node.js 22 or newer.
 
 2. Open `http://localhost:8765/` in the built-in browser of Claude or Codex.
 
-3. Click into any paragraph, heading, list item or table cell and type. Select text to make it bold, italic, code or a link, or type Markdown such as `**bold**`. To move a paragraph, list item, table row or section, drag the handle that appears to its left. Changes are saved after a short pause, when you click elsewhere, or with ⌘S / Ctrl+S.
+3. Click into any paragraph, heading, list item or table cell and type. Press Enter to start a new paragraph or list item, or click the + next to a block or table row to add one below. Select text to make it bold, italic, code or a link, or type Markdown such as `**bold**`. To move a paragraph, list item, table row or section, drag the handle that appears to its left. Changes are saved after a short pause, when you click elsewhere, or with ⌘S / Ctrl+S.
 
 4. To ask for something bigger, comment on an element with the browser's comment tool. Install the agent skill (below) so the agent knows how to handle it.
 
@@ -68,9 +68,13 @@ You can change the text of any paragraph, heading, list item, table cell, captio
 
 The toolbar also turns a paragraph into a heading (H1–H3) or back. Typing `#`, `##` or `###` and a space at the start of a paragraph does the same. The formatting is written as plain HTML (`<strong>`, `<em>`, `<s>`, `<code>`, `<a>`), so the document's own styles decide how it looks.
 
+**Adding and removing.** Enter in a paragraph, heading or list item starts a new one, and if the caret is in the middle of the text, the rest of it moves to the new one. After a heading you get a paragraph. Hover over a block or table row and click the + beside it to add one below; a new row has the same cells as the others, empty. To get rid of a paragraph, item or row, delete its text and press Backspace once more. Only empty elements can be removed this way, so text is never thrown away by accident.
+
+A new element copies how its neighbours are written: the same tag, classes and other attributes as most of its siblings, so it looks like them without bringing any markup of its own. After an introduction paragraph with a special class, the next paragraph looks like the ordinary ones, and a new table row looks like the other item rows, not the totals row. Enter in a table cell or caption still just leaves it.
+
 **Moving things.** Hover over a paragraph, heading, list item, table row, figure or section and a handle (⋮⋮) appears to its left; drag it to put the element somewhere else among its neighbours. A list item stays in its list and a row in its table. When elements are nested, such as a row inside a table, each gets its own handle. In the file, the element's markup is moved as it is, with nothing else changed.
 
-Everything else structural is the agent's job: adding or removing paragraphs, rows and sections, moving something into a different list or section, changing styles or layout, and anything inside SVG charts. Tables, rows, lists, figures and charts can't be typed into as a whole, but they have ids too, so you can comment on them.
+Everything else structural is the agent's job: adding sections, figures, tables or lists, removing anything that still has content, moving something into a different list or section, changing styles or layout, and anything inside SVG charts. Tables, rows, lists, figures and charts can't be typed into as a whole, but they have ids too, so you can comment on them.
 
 To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can't be typed into or moved, but it can still be commented on.
 
@@ -95,6 +99,8 @@ While it runs, inplace prints one line for every change made on the page:
 16:34:18 edited p-1: "…the flat roof of building B into a shared vegetable…" → "…the flat roof of building B into a <strong>shared</strong> vegetable…"
 16:34:52 changed p-3 from <p> to <h2>
 16:35:21 moved li-1 before li-3 (inside ul-1)
+16:36:02 added p-5 <p> after p-2: "A structural survey last autumn confirmed…"
+16:36:40 removed tr-7, which the user had emptied
 ```
 
 Only the changed part of a block is shown, with a little context. The skill tells the agent to start inplace in the background and to read this output before it handles a comment or edits the file, so it notices a changed number and fixes the totals and charts that depend on it, or a moved section and the references that point to it. You can also just tell the agent to check your edits.
@@ -117,14 +123,14 @@ Images, stylesheets and other files next to the document are served too, so rela
 
 inplace is a small Node.js server with one dependency, [parse5](https://github.com/inikulin/parse5), the HTML parser that follows the same rules as browsers.
 
-When you open the page, the server reads the file, adds any missing ids, and injects a short script before `</body>`. The script makes the text blocks editable and sends each change back as "block `p-3` used to contain X, now contains Y". The server finds `p-3` in the current file, checks it still contains X, and replaces just its contents. If it no longer contains X, because the agent changed it in the meantime, the save is refused. A move is sent as "put `li-1` before `li-3`": the server cuts `li-1` out of the file, line and indentation included, and pastes it in front of `li-3`, but only if the two still share a parent.
+When you open the page, the server reads the file, adds any missing ids, and injects a short script before `</body>`. The script makes the text blocks editable and sends each change back as "block `p-3` used to contain X, now contains Y". The server finds `p-3` in the current file, checks it still contains X, and replaces just its contents. If it no longer contains X, because the agent changed it in the meantime, the save is refused. A move is sent as "put `li-1` before `li-3`": the server cuts `li-1` out of the file, line and indentation included, and pastes it in front of `li-3`, but only if the two still share a parent. A new paragraph or row is built from the start tags of its most common sibling, with a fresh id, and written next to the element it was added from.
 
 The server also watches the file. When it changes on disk, every open page saves anything still pending and reloads, keeping your scroll position and the block you were in.
 
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so don't run it on a network you don't trust.
-- On the page you can change text, add simple formatting and reorder elements among their neighbours. New blocks, moving something into a different container, layout and styling go through the agent.
+- On the page you can change text, add simple formatting, add and remove paragraphs, list items and rows, and reorder elements among their neighbours. New sections, tables or lists, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
 - Each save re-reads the whole file, so very large documents respond a little more slowly.
 

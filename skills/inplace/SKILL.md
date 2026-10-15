@@ -5,7 +5,7 @@ description: Co-edit a hand-written HTML document with the user through inplace,
 
 # Co-editing an HTML document with inplace
 
-inplace serves one HTML file with a small editing script. On the rendered page the user can fix wording, add simple formatting (bold, italic, strikethrough, code, links, paragraph ↔ heading) and drag elements to a new place among their siblings. They ask for bigger changes by commenting on elements with the browser's comment tool. You edit the file on disk. Every open page reloads when the file changes, so neither side has to refresh anything.
+inplace serves one HTML file with a small editing script. On the rendered page the user can fix wording, add simple formatting (bold, italic, strikethrough, code, links, paragraph ↔ heading), add or remove paragraphs, list items and table rows, and drag elements to a new place among their siblings. They ask for bigger changes by commenting on elements with the browser's comment tool. You edit the file on disk. Every open page reloads when the file changes, so neither side has to refresh anything.
 
 The HTML file is the only source of truth. There is no separate content store, export step or build.
 
@@ -30,6 +30,7 @@ The first time the page is opened, inplace adds `data-id` attributes to the file
 
 - **Text blocks** (innermost `p`, `li`, `h1`–`h6`, `td`, `th`, `figcaption`, text-only `div`, …) are editable in the browser. Each save from the browser replaces only the inside of one such block. The user can also switch a `p` to `h1`–`h3` and back; the element keeps its `data-id` (so an `h2` may have the id `p-3`).
 - **Containers** (`table`, `tr`, `ul`, `ol`, `li` with blocks inside, `figure`, `svg`, `section`, `div` with blocks inside, …) have ids so comments on them can be traced and so they can be dragged. The user can't edit them as a whole; you can.
+- **Adding and removing:** the user can add a `p`, heading, `li`, `dt`/`dd` or `tr` next to an existing one (Enter or a + button). The new element copies the start tags of its most common sibling and gets a fresh id straight away; a new row has empty copies of the usual cells. Empty blocks stay editable. The user can remove a paragraph, item or row only once it's empty.
 - **Moving:** the user can drag any element with an id (except table cells, captions and table sections) to another place among its siblings. The element is moved unchanged, never into a different parent.
 - Elements with `data-locked` or `contenteditable="false"`, and anything in `<svg>`, `<nav>`, `<script>` and `<style>`, can't be edited in the browser.
 - The `contenteditable` and `spellcheck` attributes you may see in comment payloads are added by the page script. They aren't in the file; don't add them.
@@ -52,7 +53,7 @@ A comment usually arrives with the selected element's HTML (including its `data-
 - **Deleting an element deletes its id.** That's fine.
 - **Edit the smallest region that does the job.** Make small, separate edits rather than rewriting a whole section at once. If the user is typing in a block you replace wholesale, their save is refused as a conflict: their text goes to their clipboard, so nothing is lost, but it's disruptive.
 - **Keep the file valid.** inplace reads it the way a browser does, so badly nested markup can end up in a different block than it looks like in the source.
-- The user can change text, add `<strong>`, `<em>`, `<s>`, `<code>` and `<a href>` inside a block, turn paragraphs into headings and reorder siblings. Adding or removing paragraphs, rows or sections, moving things to a different parent, changing layout or styles, and anything inside SVG charts is your job when they ask in a comment.
+- The user can change text, add `<strong>`, `<em>`, `<s>`, `<code>` and `<a href>` inside a block, turn paragraphs into headings, add and remove (empty) paragraphs, items and rows, and reorder siblings. Adding sections, tables, lists or figures, removing anything with content, moving things to a different parent, changing layout or styles, and anything inside SVG charts is your job when they ask in a comment.
 
 ## Numbers and other calculated content
 
@@ -66,6 +67,8 @@ The user's edits go straight into the file, and inplace prints one line per chan
 16:34:18 edited p-1: "…into a shared vegetable…" → "…into a <strong>shared</strong> vegetable…"
 16:34:52 changed p-3 from <p> to <h2>
 16:35:21 moved li-1 before li-3 (inside ul-1)
+16:36:02 added p-5 <p> after p-2: "A structural survey last autumn…"
+16:36:40 removed tr-7, which the user had emptied
 ```
 
 Edits show only the changed part of the block. Read the new lines whenever you come back to the document: before handling a comment, before your own edits, and when the user says they've made changes. Act on what they imply without being asked:
@@ -73,6 +76,8 @@ Edits show only the changed part of the block. Read the new lines whenever you c
 - A changed number: update totals, percentages, chart bars and labels, and repeats of the same figure (see below).
 - A moved element: fix references that depend on order, such as "see the table below", "Figure 2" or manual numbering, and tell the user if the move breaks the flow.
 - A paragraph turned into a heading: check it fits the document's heading levels and any table of contents.
+- A row added or removed: update totals and charts built from the table. A new empty paragraph or row left behind usually means the user is still working; leave it unless asked.
+- A paragraph split in two shows as an edit of the first half followed by an `added` line with the second half.
 
 For the full picture, diff the document against the last commit. If the document is under version control, commit at natural points, such as after a round of comments, so the user's edits and yours stay readable.
 

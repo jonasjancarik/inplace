@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  assignIds, BlockConflict, BlockNotFound, canonical, editableBlocks, editableIds, movableIds, moveBlock, parse,
-  patchBlock, retagBlock,
+  assignIds, BlockConflict, BlockNotFound, canonical, editableBlocks, editableIds, insertBlock, movableIds, moveBlock,
+  parse, patchBlock, removeBlock, retagBlock,
 } from "../src/htmldoc.js";
 import { describeEdit } from "../src/server.js";
 
@@ -152,4 +152,45 @@ test("describeEdit shows only the changed part", () => {
     '"…agreed that the garden would have ten raised beds, shared by floor,…" → "…agreed that the garden would have twelve raised beds, shared by floor,…"',
   );
   assert.equal(describeEdit("Hi", "Hi <strong>there</strong>"), '"Hi" → "Hi <strong>there</strong>"');
+});
+
+const REPORT = `<body>
+<div class="body">
+  <h2 data-id="h2-1">Costs</h2>
+  <p data-id="p-1" class="lead">Intro</p>
+  <p data-id="p-2">Plain one</p>
+  <p data-id="p-3">Plain two</p>
+  <table data-id="table-1"><tbody>
+    <tr data-id="tr-1"><td data-id="td-1">Beds</td><td data-id="td-2" class="num">€3,600</td></tr>
+    <tr data-id="tr-2" class="total"><td data-id="td-3">Total</td><td data-id="td-4" class="num">€3,600</td></tr>
+  </tbody></table>
+</div>
+</body>`;
+
+test("insertBlock copies the usual pattern among siblings", () => {
+  // After the lead paragraph, a new paragraph looks like the ordinary ones.
+  const after = insertBlock(REPORT, "p-1", "after", "p");
+  assert.equal(after.html, '<p data-id="p-4"></p>');
+  assert.ok(after.source.includes('Intro</p>\n  <p data-id="p-4"></p>\n  <p data-id="p-2">'));
+  // After a heading, Enter gives a paragraph, not another heading.
+  assert.equal(insertBlock(REPORT, "h2-1", "after", "p").html, '<p data-id="p-4"></p>');
+  // A new row copies an ordinary row's cells (and their classes), empty.
+  const row = insertBlock(REPORT, "tr-1", "after", "tr");
+  assert.equal(row.html, '<tr data-id="tr-3"><td data-id="td-5"></td><td data-id="td-6" class="num"></td></tr>');
+  assert.ok(editableIds(row.source).includes("td-6"));
+});
+
+test("insertBlock splits a paragraph in one write", () => {
+  const out = insertBlock(REPORT, "p-2", "after", "p", "one", { old: "Plain one", new: "Plain " });
+  assert.ok(out.source.includes('<p data-id="p-2">Plain </p>\n  <p data-id="p-4">one</p>'));
+  assert.throws(() => insertBlock(REPORT, "p-2", "after", "p", "x", { old: "stale", new: "Plain" }), BlockConflict);
+  assert.throws(() => insertBlock(REPORT, "p-2", "after", "h1"), BlockNotFound);
+});
+
+test("removeBlock only removes empty elements", () => {
+  const added = insertBlock(REPORT, "tr-1", "after", "tr");
+  assert.equal(removeBlock(added.source, "tr-3"), REPORT);
+  assert.equal(removeBlock(insertBlock(REPORT, "p-3", "after", "p").source, "p-4"), REPORT);
+  assert.throws(() => removeBlock(REPORT, "p-2"), BlockConflict);
+  assert.throws(() => removeBlock(REPORT, "td-1"), BlockNotFound);
 });

@@ -7,7 +7,8 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import { fileURLToPath } from "node:url";
 
 import {
-  assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, movableIds, moveBlock, parse, patchBlock, retagBlock,
+  assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
+  removeBlock, retagBlock,
 } from "./htmldoc.js";
 
 const EDITOR_PREFIX = "/__inplace/";
@@ -50,6 +51,7 @@ export function describeEdit(before: string, after: string, context = 30): strin
 }
 
 const time = () => new Date().toTimeString().slice(0, 8);
+const sameText = (a: string, b: string) => squash(a) === squash(b);
 
 /** The edited file, plus a version that changes whenever its content does. */
 export class Document {
@@ -70,8 +72,14 @@ export class Document {
     const tmp = join(dirname(this.path), `.${basename(this.path)}.inplace-tmp`);
     writeFileSync(tmp, text, "utf8");
     renameSync(tmp, this.path);
-    this.version = digest(text);
     this.stamp = this.statStamp();
+    this.announce(digest(text));
+  }
+
+  private announce(version: string): void {
+    if (version === this.version) return;
+    this.version = version;
+    for (const listener of this.listeners) listener(version);
   }
 
   private statStamp(): string {
@@ -81,12 +89,8 @@ export class Document {
 
   private refresh(): string {
     const text = this.read();
-    const version = digest(text);
     this.stamp = this.statStamp();
-    if (version !== this.version) {
-      this.version = version;
-      for (const listener of this.listeners) listener(version);
-    }
+    this.announce(digest(text));
     return text;
   }
 
@@ -123,6 +127,24 @@ export class Document {
       this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`);
     }
     return this.version;
+  }
+
+  insertBlock(
+    id: string, position: "before" | "after", tag: string, content: string, split?: { old: string; new: string },
+  ): { id: string; html: string } {
+    const text = this.refresh();
+    const inserted = insertBlock(text, id, position, tag, content, split);
+    this.write(inserted.source);
+    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`);
+    const what = squash(content) ? `: ${JSON.stringify(clip(squash(content), 200))}` : " (empty)";
+    this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`);
+    return { id: inserted.id, html: inserted.html };
+  }
+
+  removeBlock(id: string): void {
+    const text = this.refresh();
+    this.write(removeBlock(text, id));
+    this.log(`${time()} removed ${id}, which the user had emptied`);
   }
 
   retagBlock(id: string, from: string, to: string): string {
@@ -202,7 +224,7 @@ export function createInplaceServer(doc: Document): Server {
     }
     const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : null);
     const path = new URL(req.url ?? "/", "http://localhost").pathname.slice(EDITOR_PREFIX.length);
-    let apply: (() => string) | null = null;
+    let apply: (() => string | Record<string, unknown>) | null = null;
     const id = str("id");
     if (path === "save" && id && str("old") !== null && str("new") !== null) {
       apply = () => doc.saveBlock(id, str("old")!, str("new")!);
@@ -210,10 +232,21 @@ export function createInplaceServer(doc: Document): Server {
       apply = () => doc.moveBlock(id, str("target")!, body.position as "before" | "after");
     } else if (path === "retag" && id && str("from") && str("to")) {
       apply = () => doc.retagBlock(id, str("from")!, str("to")!);
+    } else if (path === "insert" && id && str("tag") && str("content") !== null &&
+        (body.position === "before" || body.position === "after")) {
+      const split = str("old") !== null && str("new") !== null ? { old: str("old")!, new: str("new")! } : undefined;
+      apply = () => doc.insertBlock(id, body.position as "before" | "after", str("tag")!, str("content")!, split);
+    } else if (path === "remove" && id) {
+      apply = () => (doc.removeBlock(id), {});
     }
     if (!apply) return json(res, 400, { error: "missing or invalid fields" });
     try {
-      json(res, 200, { version: apply() });
+      const result = apply();
+      // Structure changed: send the page the new lists of editable and movable elements.
+      const lists = path === "insert" || path === "remove"
+        ? (() => { const { text } = doc.load(); return { editable: editableIds(text), movable: movableIds(text) }; })()
+        : {};
+      json(res, 200, { ...(typeof result === "string" ? {} : result), ...lists, version: doc.version });
     } catch (e) {
       if (e instanceof BlockConflict) return json(res, 409, { error: "conflict", current: e.current, version: doc.version });
       if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found", version: doc.version });
@@ -240,7 +273,7 @@ export function createInplaceServer(doc: Document): Server {
       .then(() => {
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
-          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag"].includes(action)
+          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove"].includes(action)
             ? change(req, res)
             : json(res, 404, { error: "not found" });
         }

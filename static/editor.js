@@ -23,6 +23,9 @@
       background:#fff;color:#7a8580;box-shadow:0 1px 4px #0002;font:14px/22px system-ui,sans-serif;letter-spacing:-3px;
       text-align:center;cursor:grab;user-select:none;touch-action:none}
     .inplace-grip:hover{color:#1f2a24;background:#eef2fb}
+    .inplace-add{letter-spacing:0;font-size:17px;cursor:pointer}
+    [data-id][contenteditable]:empty{min-height:1.2em}
+    [data-id][contenteditable]:empty:focus::before{content:"Type here";color:#9aa39e;pointer-events:none}
     #inplace-outline{position:fixed;z-index:2147483645;pointer-events:none;border:2px solid #4a7bd4aa;border-radius:3px}
     #inplace-marker{position:fixed;z-index:2147483646;pointer-events:none;background:#4a7bd4;border-radius:2px}
     .inplace-dragging{opacity:.35}
@@ -62,15 +65,16 @@
 
   // Containers (tables, rows, figures) also carry a data-id so comments on
   // them can be traced, but only text blocks are editable.
-  const editable = new Set((script.dataset.editable || "").split(" "));
-  const blocks = [...document.querySelectorAll("[data-id]")].filter(
-    (el) => editable.has(el.dataset.id) && !el.closest("svg, nav, [data-locked], [contenteditable=false]")
-  );
-  for (const el of blocks) {
-    el.contentEditable = "true";
-    el.spellcheck = true;
-    saved.set(el.dataset.id, el.innerHTML);
+  let editable = new Set((script.dataset.editable || "").split(" "));
+  function makeEditable(root) {
+    for (const el of [root, ...root.querySelectorAll("[data-id]")]) {
+      if (!editable.has(el.dataset?.id) || el.closest("svg, nav, [data-locked], [contenteditable=false]")) continue;
+      el.contentEditable = "true";
+      el.spellcheck = true;
+      saved.set(el.dataset.id, el.innerHTML);
+    }
   }
+  makeEditable(document.body);
 
   // Undo the markup browsers add while typing: <div> line wraps, <font>,
   // style attributes and empty spans. Existing inline markup is kept.
@@ -100,13 +104,13 @@
     const html = el.innerHTML;
     if (html === saved.get(id)) return true;
     status("Saving…", "info", true);
-    try {
-      const res = await fetch("/__inplace/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, old: saved.get(id), new: html }),
-      });
-      const body = await res.json();
+    {
+      const { ok, status: code, body } = await post("save", { id, old: saved.get(id), new: html });
+      if (code === 0) {
+        status("Couldn't reach the editor server. Your edits are still on the page.", "error", true);
+        return false;
+      }
+      const res = { ok, status: code };
       if (res.ok) {
         saved.set(id, html);
         version = body.version;
@@ -125,13 +129,17 @@
         return false;
       }
       status(`Couldn't save: ${body.error || res.status}`, "error", true);
-    } catch (e) {
-      status("Couldn't reach the editor server. Your edits are still on the page.", "error", true);
     }
     return false;
   }
 
+  // While a request is out, a version announced by the server may be our own
+  // change; wait for the reply before deciding whether to reload.
+  let busy = 0;
+  let announced = null; // a version the server announced while a request was out
+
   async function post(action, payload) {
+    busy++;
     try {
       const res = await fetch(`/__inplace/${action}`, {
         method: "POST",
@@ -141,6 +149,14 @@
       return { ok: res.ok, status: res.status, body: await res.json() };
     } catch {
       return { ok: false, status: 0, body: {} };
+    } finally {
+      busy--;
+      if (!busy) setTimeout(() => {
+        if (busy || announced === null) return;
+        const seen = announced;
+        announced = null;
+        if (seen !== version) reload();
+      }, 0);
     }
   }
 
@@ -163,9 +179,16 @@
     const el = e.target.closest?.("[data-id][contenteditable=true]");
     if (!el) return;
     if (e.key === "Enter" && !e.shiftKey) {
-      // New paragraphs would need new blocks in the file; ask the agent for those.
       e.preventDefault();
-      el.blur();
+      if (SPLITTABLE.has(el.tagName)) splitBlock(el);
+      else el.blur(); // a table cell or caption: Enter just leaves it
+    }
+    if (e.key === "Backspace" && isBlankEl(el)) {
+      const target = /^T[DH]$/.test(el.tagName) ? el.closest("tr") : el;
+      if (target?.dataset.id && [...target.querySelectorAll("[contenteditable=true]")].concat(target).every(isBlankEl)) {
+        e.preventDefault();
+        removeEmpty(target);
+      }
     }
     if (e.key === "Escape") el.blur();
     if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -460,7 +483,7 @@
   addEventListener("scroll", updateToolbar, { passive: true, capture: true });
 
   // --- dragging an element to another place among its siblings ---
-  const movable = new Set((script.dataset.movable || "").split(" ").filter(Boolean));
+  let movable = new Set((script.dataset.movable || "").split(" ").filter(Boolean));
   const isMovable = (el) => !!el.dataset?.id && movable.has(el.dataset.id) && !el.closest("[data-locked]");
   const siblingsOf = (el) => [...el.parentElement.children].filter((s) => s !== el && isMovable(s));
   const NAMES = {
@@ -480,10 +503,14 @@
   function chainAt(node) {
     const chain = [];
     for (let el = node; el && el !== document.body; el = el.parentElement) {
-      if (isMovable(el) && siblingsOf(el).length) chain.push(el);
+      if ((isMovable(el) && siblingsOf(el).length) || canAdd(el)) chain.push(el);
     }
     return chain.slice(0, 3);
   }
+
+  const canAdd = (el) => !!el.dataset?.id && INSERTABLE.has(el.tagName) && !el.closest("[data-locked]") &&
+    (editable.has(el.dataset.id) || el.tagName === "TR" || el.tagName === "LI");
+  const ADD_LABELS = { LI: "Add an item below", TR: "Add a row below", DT: "Add a term below", DD: "Add a description below" };
 
   function outline(el) {
     let box = document.getElementById("inplace-outline");
@@ -502,8 +529,33 @@
     hoverTimer = null;
     grips = chain;
     ui.replaceChildren();
+    let plusShown = false;
     chain.forEach((el, depth) => {
       const r = el.getBoundingClientRect();
+      const top = Math.max(2, r.top + Math.min(2, r.height / 2 - 11));
+      // List items keep their bullet or number clear of the controls.
+      const gutter = (el.tagName === "LI" ? 40 : 24) + depth * 44;
+      if (canAdd(el) && !plusShown) {
+        plusShown = true; // only for the innermost element, to keep the margin readable
+        const plus = document.createElement("button");
+        plus.type = "button";
+        plus.className = "inplace-grip inplace-add";
+        plus.title = ADD_LABELS[el.tagName] || "Add a paragraph below";
+        plus.setAttribute("aria-label", plus.title);
+        plus.textContent = "+";
+        plus.style.left = `${Math.max(2, r.left - gutter - 22)}px`;
+        plus.style.top = `${top}px`;
+        plus.addEventListener("mouseenter", () => outline(el));
+        plus.addEventListener("mouseleave", () => outline(null));
+        plus.addEventListener("click", () => {
+          // Keys typed before the new element arrives shouldn't land in the old one.
+          document.activeElement?.blur();
+          showGrips([]);
+          insertNear(el, { tag: isHeading(el) ? "p" : el.tagName.toLowerCase() });
+        });
+        ui.append(plus);
+      }
+      if (!(isMovable(el) && siblingsOf(el).length)) return;
       const grip = document.createElement("button");
       grip.type = "button";
       grip.className = "inplace-grip";
@@ -511,10 +563,8 @@
       grip.title = `Drag to move this ${nameOf(el)}`;
       grip.setAttribute("aria-label", grip.title);
       grip.textContent = "⋮⋮";
-      // List items keep their bullet or number clear of the grip.
-      const gutter = el.tagName === "LI" ? 40 : 24;
-      grip.style.left = `${Math.max(2, r.left - gutter - depth * 22)}px`;
-      grip.style.top = `${Math.max(2, r.top + Math.min(2, r.height / 2 - 11))}px`;
+      grip.style.left = `${Math.max(2, r.left - gutter)}px`;
+      grip.style.top = `${top}px`;
       grip.addEventListener("mouseenter", () => outline(el));
       grip.addEventListener("mouseleave", () => drag || outline(null));
       ui.append(grip);
@@ -580,7 +630,7 @@
   }
 
   ui.addEventListener("pointerdown", (e) => {
-    const grip = e.target.closest(".inplace-grip");
+    const grip = e.target.closest(".inplace-grip:not(.inplace-add)");
     if (!grip || e.button !== 0) return;
     e.preventDefault();
     const el = grips[Number(grip.dataset.index)];
@@ -633,6 +683,106 @@
     if (drag && e.key === "Escape") endDrag();
   });
 
+  // --- adding and removing paragraphs, list items and rows ---
+  // A new element copies the start tags of its siblings (the server picks the
+  // most common pattern), so it looks like its neighbours and never brings
+  // markup of its own.
+  const SPLITTABLE = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "DT", "DD"]);
+  const INSERTABLE = new Set([...SPLITTABLE, "TR"]);
+  const isHeading = (el) => /^H\d$/.test(el.tagName);
+  const isBlankEl = (el) => !el.textContent.trim() && !el.querySelector("img, svg, video, iframe, canvas");
+  const isBlankRange = (r) => !r.toString().trim() && !r.cloneContents().querySelector("img, svg, video, iframe, canvas");
+
+  function caretTo(el, where) {
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(where === "start");
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    el.scrollIntoView({ block: "nearest" });
+  }
+
+  function applyLists(body) {
+    if (body.editable) editable = new Set(body.editable);
+    if (body.movable) movable = new Set(body.movable);
+  }
+
+  async function insertNear(el, { position = "after", tag, content = "", split = null }) {
+    const id = el.dataset.id;
+    const payload = { id, position, tag, content };
+    if (split !== null) Object.assign(payload, { old: saved.get(id), new: split });
+    const res = await post("insert", payload);
+    if (!res.ok) {
+      status("Couldn't add this here, probably because the file changed in the meantime. The page will reload.", "error", true);
+      return setTimeout(reload, 1800);
+    }
+    version = res.body.version;
+    if (split !== null) saved.set(id, split);
+    applyLists(res.body);
+    const range = document.createRange();
+    range.selectNodeContents(el.parentElement);
+    const added = range.createContextualFragment(res.body.html).firstElementChild;
+    el[position](added);
+    makeEditable(added);
+    caretTo(editable.has(added.dataset.id) ? added : added.querySelector("[contenteditable=true]"), "start");
+    status("Added");
+  }
+
+  // Enter in a paragraph, heading or list item: the text after the caret moves
+  // to a new element of the same kind. At the end of a heading, the new
+  // element is a paragraph.
+  function splitBlock(el) {
+    const sel = getSelection();
+    if (!sel.rangeCount) return;
+    const at = sel.getRangeAt(0);
+    if (!at.collapsed) at.deleteContents();
+    clearTimeout(timers.get(el.dataset.id));
+    timers.delete(el.dataset.id);
+    const head = document.createRange();
+    head.setStart(el, 0);
+    head.setEnd(at.startContainer, at.startOffset);
+    const tail = document.createRange();
+    tail.setStart(at.startContainer, at.startOffset);
+    tail.setEnd(el, el.childNodes.length);
+    const own = el.tagName.toLowerCase();
+    if (isBlankRange(head) && !isBlankRange(tail)) {
+      // At the start of the text: open a new, empty one above.
+      return insertNear(el, { position: "before", tag: isHeading(el) ? "p" : own, split: changed(el) });
+    }
+    const blankTail = isBlankRange(tail);
+    const box = document.createElement("div");
+    box.append(tail.extractContents());
+    clean(el);
+    insertNear(el, {
+      tag: isHeading(el) && blankTail ? "p" : own,
+      content: blankTail ? "" : box.innerHTML,
+      split: el.innerHTML,
+    });
+  }
+
+  function changed(el) {
+    clean(el);
+    return el.innerHTML === saved.get(el.dataset.id) ? null : el.innerHTML;
+  }
+
+  // Backspace in a paragraph, item or row with nothing left in it removes it.
+  async function removeEmpty(el) {
+    const blocks = [...document.querySelectorAll("[contenteditable=true]")];
+    const previous = blocks.filter((b) => !el.contains(b) && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+    for (const b of [el, ...el.querySelectorAll("[data-id]")]) clearTimeout(timers.get(b.dataset.id));
+    const res = await post("remove", { id: el.dataset.id });
+    if (!res.ok) {
+      status("Couldn't remove this, probably because the file changed in the meantime. The page will reload.", "error", true);
+      return setTimeout(reload, 1800);
+    }
+    version = res.body.version;
+    applyLists(res.body);
+    el.remove();
+    caretTo(previous, "end");
+  }
+
   // --- live reload when the file changes on disk (agent edits) ---
   function rememberConflict(id, text) {
     try { sessionStorage.setItem(`${STATE_KEY}:conflict`, JSON.stringify({ id, text })); } catch {}
@@ -677,7 +827,8 @@
 
   const events = new EventSource("/__inplace/events");
   events.addEventListener("version", (e) => {
-    if (e.data !== version) reload();
+    if (busy) announced = e.data;
+    else if (e.data !== version) reload();
   });
   events.onerror = () => status("Lost connection to the editor server. Reconnecting…", "error", true);
   events.onopen = () => { if (pill.dataset.kind === "error" && pill.textContent.startsWith("Lost")) status("Reconnected"); };
