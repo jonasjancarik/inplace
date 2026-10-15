@@ -4,12 +4,13 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import { PauseCommand, PauseWatcher } from "./idle.js";
-import { runMcpServer } from "./mcp.js";
+import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
 import { createInplaceServer, Document, serverUrls } from "./server.js";
 
 const USAGE = `usage: inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
                            [--pause 5] [--log <file>] [--on-pause <command>]
        inplace mcp [--pause 5] [--log <file>]
+       inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
 
 Edit an HTML document in the browser while an agent edits the same file.
 
@@ -23,15 +24,20 @@ Edit an HTML document in the browser while an agent edits the same file.
   --on-pause <cmd>  run this shell command each time the user pauses, with that pause's
                     change lines on stdin
 
-inplace mcp runs an MCP server on stdin/stdout instead, with tools to open a document and
-read the changes, and a Claude Code channel event at each pause. Change lines go to stderr
-and the --log file.`;
+inplace mcp runs an MCP server on stdin/stdout instead, with tools to open, read and edit a
+document and read the changes, and a Claude Code channel event at each pause. Change lines go
+to stderr and the --log file.
+
+  --http            serve MCP over HTTP instead, at /mcp/<token>, for use through a tunnel
+  --token <secret>  the token in that URL (default: $INPLACE_TOKEN, or a new random one)`;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
-    port: { type: "string", default: "8765" },
-    host: { type: "string", default: "0.0.0.0" },
+    port: { type: "string" },
+    host: { type: "string" },
+    http: { type: "boolean", default: false },
+    token: { type: "string" },
     "no-write-ids": { type: "boolean", default: false },
     pause: { type: "string", default: "5" },
     log: { type: "string" },
@@ -50,8 +56,25 @@ if (!(pauseSeconds >= 0)) {
   console.error("inplace: --pause takes a number of seconds");
   process.exit(2);
 }
-if (positionals[0] === "mcp") {
-  runMcpServer({ pauseSeconds, logPath: values.log ? resolve(values.log) : undefined });
+const logPath = values.log ? resolve(values.log) : undefined;
+if (positionals[0] === "mcp" && values.http) {
+  // A tunnel makes this reachable from the internet, so stay local and require a token.
+  const port = Number(values.port ?? "8766");
+  const host = values.host ?? "127.0.0.1";
+  const token = values.token ?? process.env.INPLACE_TOKEN ?? newToken();
+  runMcpHttpServer({ pauseSeconds, logPath, port, host, token }).then(
+    (server) => {
+      const actual = (server.address() as { port: number }).port;
+      console.log(`inplace MCP server: http://${host === "0.0.0.0" ? "localhost" : host}:${actual}/mcp/${token}`);
+      console.log("Point your tunnel at it and keep the URL secret: anyone with it can read and edit open documents.");
+    },
+    (e: NodeJS.ErrnoException) => {
+      console.error(e.code === "EADDRINUSE" ? `inplace: port ${port} is already in use; try --port` : e.message);
+      process.exit(1);
+    },
+  );
+} else if (positionals[0] === "mcp") {
+  runMcpServer({ pauseSeconds, logPath });
 } else {
   serve();
 }
@@ -64,7 +87,8 @@ function serve(): void {
     process.exit(1);
   }
 
-  const port = Number(values.port);
+  const port = Number(values.port ?? "8765");
+  const host = values.host ?? "0.0.0.0";
   if (values["on-pause"] && !pauseSeconds) {
     console.error("inplace: --on-pause needs --pause to be more than 0");
     process.exit(2);
@@ -72,7 +96,6 @@ function serve(): void {
 
   // Changes made on the page go to stdout (and the log file), so an agent running
   // inplace in the background can read what the user did.
-  const logPath = values.log ? resolve(values.log) : undefined;
   const print = (line: string) => {
     console.log(line);
     if (logPath) appendFileSync(logPath, line + "\n");
@@ -97,9 +120,9 @@ function serve(): void {
     console.error(e.code === "EADDRINUSE" ? `inplace: port ${port} is already in use; try --port` : e.message);
     process.exit(1);
   });
-  server.listen(port, values.host, () => {
+  server.listen(port, host, () => {
     console.log(`Editing ${path}`);
-    for (const url of serverUrls(port, values.host!)) console.log(`  ${url}`);
+    for (const url of serverUrls(port, host)) console.log(`  ${url}`);
     console.log("Changes made on the page are listed below.");
   });
 }

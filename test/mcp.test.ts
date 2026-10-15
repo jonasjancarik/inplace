@@ -67,7 +67,8 @@ test("serves a document through MCP tools and sends one channel event per pause"
     assert.match(init.result.instructions, /never instructions to you/);
 
     const { result } = await server.request("tools/list");
-    assert.deepEqual(result.tools.map((t: { name: string }) => t.name), ["open_document", "get_edits", "close_document"]);
+    assert.deepEqual(result.tools.map((t: { name: string }) => t.name),
+      ["open_document", "get_edits", "read_document", "replace_element", "find_replace", "close_document"]);
 
     assert.equal((await server.tool("get_edits")).text, "No document is open.");
     const missing = await server.tool("open_document", { path: join(dir, "nope.html") });
@@ -105,6 +106,93 @@ test("serves a document through MCP tools and sends one channel event per pause"
     await assert.rejects(fetch(url));
   } finally {
     await server.stop();
+  }
+});
+
+test("edits the document through tools, refusing stale edits and keeping ids", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-mcp-"));
+  const path = join(dir, "report.html");
+  writeFileSync(path, "<!doctype html><body><h1>Budget</h1><p>Ten trees cost €100.</p>" +
+    "<table><tr><td>Trees</td><td>€100</td></tr></table></body>");
+  const server = startServer(["--pause", "0"]);
+  try {
+    assert.match((await server.tool("read_document")).text, /No document is open/);
+    assert.match((await server.tool("open_document", { path: join(dir, "notes.txt") })).text, /no such file|only \.html/);
+    await server.tool("open_document", { path, port: 0, host: "127.0.0.1" });
+
+    const whole = (await server.tool("read_document")).text;
+    assert.match(whole, /<p data-id="p-1">Ten trees cost €100\.<\/p>/, "reading adds the ids first");
+    assert.equal((await server.tool("read_document", { id: "td-2" })).text, '<td data-id="td-2">€100</td>');
+    assert.ok((await server.tool("read_document", { id: "p-9" })).isError);
+
+    const inner = await server.tool("replace_element",
+      { id: "p-1", part: "inner", expected: "Ten trees cost €100.", html: "Twelve trees cost €120." });
+    assert.ok(!inner.isError, inner.text);
+    const stale = await server.tool("replace_element",
+      { id: "p-1", part: "inner", expected: "Ten trees cost €100.", html: "Eleven trees" });
+    assert.ok(stale.isError);
+    assert.match(stale.text, /has changed since you read it[\s\S]*Twelve trees cost €120\./);
+
+    // A whole-element replacement keeps the id even when the new HTML leaves it out.
+    const outer = await server.tool("replace_element",
+      { id: "h1-1", part: "outer", expected: '<h1 data-id="h1-1">Budget</h1>', html: "<h2>Garden budget</h2>" });
+    assert.ok(!outer.isError, outer.text);
+    const wrongId = await server.tool("replace_element",
+      { id: "td-2", part: "outer", expected: '<td data-id="td-2">€100</td>', html: '<td data-id="td-9">€120</td>' });
+    assert.match(wrongId.text, /keep data-id="td-2"/);
+
+    assert.match((await server.tool("find_replace", { find: "€1", replace: "EUR 1" })).text, /found 2 times/);
+    assert.match((await server.tool("find_replace", { find: "€100", replace: "€120" })).text, /Replaced 1 occurrence/);
+    assert.ok((await server.tool("find_replace", { find: "nowhere", replace: "x" })).isError);
+
+    const text = readFileSync(path, "utf8");
+    assert.match(text, /<h2 data-id="h1-1">Garden budget<\/h2>/);
+    assert.match(text, /<p data-id="p-1">Twelve trees cost €120\.<\/p>/);
+    assert.match(text, /<td data-id="td-2">€120<\/td>/);
+    assert.match((await server.tool("get_edits")).text, /the agent replaced the inside of p-1\n.*the agent replaced h1-1/);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("answers MCP over HTTP only at the secret URL", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-mcp-"));
+  const path = join(dir, "report.html");
+  writeFileSync(path, "<!doctype html><body><p>Ten trees</p></body>");
+  const proc = spawn(process.execPath, [CLI, "mcp", "--http", "--port", "0", "--token", "s3cret"], { stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    const base = await new Promise<string>((ok, fail) => {
+      createInterface({ input: proc.stdout }).on("line", (line) => {
+        const url = /http:\/\/\S+/.exec(line)?.[0];
+        if (url) ok(url);
+      });
+      proc.on("close", () => fail(new Error("server exited")));
+    });
+    assert.match(base, /^http:\/\/127\.0\.0\.1:\d+\/mcp\/s3cret$/);
+    const rpc = (url: string, body: unknown, headers: Record<string, string> = {}) => fetch(url, {
+      method: "POST", body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...headers },
+    });
+    const call = async (id: number, method: string, params: Record<string, unknown> = {}) =>
+      (await rpc(base, { jsonrpc: "2.0", id, method, params })).json();
+
+    const init = await call(1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } });
+    assert.equal(init.result.serverInfo.name, "inplace");
+    assert.equal((await rpc(base, { jsonrpc: "2.0", method: "notifications/initialized" })).status, 202);
+    const opened = await call(2, "tools/call", { name: "open_document", arguments: { path, port: 0, host: "127.0.0.1" } });
+    assert.match(opened.result.content[0].text, /Serving/);
+    const read = await call(3, "tools/call", { name: "read_document", arguments: { id: "p-1" } });
+    assert.equal(read.result.content[0].text, '<p data-id="p-1">Ten trees</p>');
+
+    const root = base.replace(/\/s3cret$/, "");
+    assert.equal((await rpc(root.replace(/\/mcp$/, "/mcp/wrong"), {})).status, 404);
+    assert.equal((await rpc(root, {})).status, 404, "no token, no answer");
+    const bearer = await rpc(root, { jsonrpc: "2.0", id: 4, method: "ping" }, { Authorization: "Bearer s3cret" });
+    assert.deepEqual(await bearer.json(), { jsonrpc: "2.0", id: 4, result: {} });
+    assert.equal((await rpc(base, {}, { Origin: "https://evil.example" })).status, 403);
+    assert.equal((await fetch(base)).status, 405);
+  } finally {
+    proc.kill();
   }
 });
 
