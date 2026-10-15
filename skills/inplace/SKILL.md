@@ -11,13 +11,13 @@ The HTML file is the only source of truth. There is no separate content store, e
 
 ## Starting it
 
-inplace needs [uv](https://docs.astral.sh/uv/). Run it straight from the repository, with no install step:
+inplace needs Node.js 22 or newer. Run it with npx, with no install step:
 
 ```bash
-uvx --from git+https://github.com/jonasjancarik/inplace inplace path/to/document.html --port 8765
+npx -y inplace-html path/to/document.html --port 8765
 ```
 
-If the user has installed it (`uv tool install git+https://github.com/jonasjancarik/inplace`), `inplace path/to/document.html` is enough.
+If the user has installed it (`npm install -g inplace-html`), `inplace path/to/document.html` is enough.
 
 - Run it in the background; it keeps running until stopped. Check the port is free first and pick another if not.
 - It listens on all interfaces by default (`--host 0.0.0.0`) and prints the URLs it can be reached at. Use `--host 127.0.0.1` if the document shouldn't be reachable from other machines on the network.
@@ -49,7 +49,7 @@ A comment usually arrives with the selected element's HTML (including its `data-
 - **Don't invent ids for new elements.** Leave them out; inplace assigns one on the next page load. Never reuse an id for a different element.
 - **Deleting an element deletes its id.** That's fine.
 - **Edit the smallest region that does the job.** Make small, separate edits rather than rewriting a whole section at once. If the user is typing in a block you replace wholesale, their save is refused as a conflict: their text goes to their clipboard, so nothing is lost, but it's disruptive.
-- **Keep the file valid and the tags closed.** inplace only offers blocks with an explicit closing tag for editing; an unclosed `<p>` or `<li>` silently becomes read-only.
+- **Keep the file valid.** inplace reads it the way a browser does, so badly nested markup can end up in a different block than it looks like in the source.
 - The user can only change text. Adding or removing paragraphs, rows or sections, changing layout or styles, and anything inside SVG charts is your job when they ask in a comment.
 
 ## Numbers and other calculated content
@@ -63,5 +63,5 @@ The user's edits go straight into the file. To see them, diff the document again
 ## Troubleshooting
 
 - **Page doesn't reload after your edit:** check the server is still running and serving the same file path you edited.
-- **A block isn't editable in the browser:** it contains another block (so its children are the editable units), it's inside a locked element, or its end tag is missing.
+- **A block isn't editable in the browser:** it contains another block (so its children are the editable units), or it's inside a locked element.
 - **User says their edit disappeared:** it hit a conflict with your edit to the same block. Their text is on their clipboard; offer to merge it in.
