@@ -1,6 +1,6 @@
 # inplace
 
-**Change one word, and only that word changes.**
+**Write with your coding agent without breaking your flow.**
 
 ![Formatting a word, typing a sentence and adding a table row on the page; then the agent updates the total in the file and the page reloads](docs/demo.gif)
 
