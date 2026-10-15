@@ -194,3 +194,9 @@ test("removeBlock only removes empty elements", () => {
   assert.throws(() => removeBlock(REPORT, "p-2"), BlockConflict);
   assert.throws(() => removeBlock(REPORT, "td-1"), BlockNotFound);
 });
+
+test("blocks with buttons or form fields inside aren't editable", () => {
+  const src = assignIds('<body><div class="cmd"><span>npm i</span><button>Copy</button></div><p>Text</p><label>Name <input></label></body>').source;
+  assert.deepEqual(editableIds(src), ["p-1"]);
+  assert.ok(src.includes('<div data-id="div-1" class="cmd">'), "still gets an id for comments");
+});

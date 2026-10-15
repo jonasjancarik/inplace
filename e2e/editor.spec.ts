@@ -126,8 +126,8 @@ test.describe("adding and removing", () => {
     await expect(next).toHaveText(/^\s*A structural survey/);
     const newId = await idOf(next);
     expect(newId).not.toBe(id);
-    await expect.poll(() => sourceOf(doc, id)).toMatch(/stands empty\.\s*<\/p>$/);
-    expect(sourceOf(doc, newId)).toContain("A structural survey");
+    await expect.poll(() => sourceOf(doc, id)).toMatch(/stands empty\.<\/p>$/);
+    expect(sourceOf(doc, newId)).toMatch(/^<p data-id="p-\d+">A structural survey/);
     expect(doc.output).toMatch(new RegExp(`added ${newId}`));
   });
 

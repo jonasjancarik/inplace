@@ -770,6 +770,10 @@
     const blankTail = isBlankRange(tail);
     const box = document.createElement("div");
     box.append(tail.extractContents());
+    // The space after a full stop belongs to neither half.
+    const lead = box.firstChild, end = el.lastChild;
+    if (lead?.nodeType === 3) lead.data = lead.data.replace(/^[ \t\n]+/, "");
+    if (end?.nodeType === 3) end.data = end.data.replace(/[ \t\n]+$/, "");
     clean(el);
     insertNear(el, {
       tag: isHeading(el) && blankTail ? "p" : own,

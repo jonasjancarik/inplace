@@ -25,6 +25,9 @@ const BLOCK_TAGS = new Set([
   "table", "thead", "tbody", "tfoot", "tr", "ul", "ol", "dl", "figure",
   "section", "article", "header", "footer", "nav", "aside", "main", "form",
   "svg", "canvas", "video", "audio", "iframe", "pre", "hr", "fieldset",
+  // Buttons and form fields can't sit inside editable text: they'd be typed
+  // over or deleted like characters.
+  "button", "input", "select", "textarea",
 ]);
 
 // Never editable, nor anything inside them.
