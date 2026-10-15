@@ -1,0 +1,279 @@
+import { block, caretAfter, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
+
+const MOD = "ControlOrMeta";
+
+test.describe("opening a document", () => {
+  test("text blocks are editable, containers and charts are not", async ({ editor }) => {
+    await expect(block(editor, "p", "The roof is already used")).toHaveAttribute("contenteditable", "true");
+    await expect(block(editor, "td", "Raised beds")).toHaveAttribute("contenteditable", "true");
+    await expect(editor.locator("table")).toHaveAttribute("data-id", /^table-/);
+    await expect(editor.locator("table")).not.toHaveAttribute("contenteditable", "true");
+    await expect(editor.locator("svg")).not.toHaveAttribute("contenteditable", "true");
+    expect(await editor.locator("svg text[contenteditable]").count()).toBe(0);
+  });
+
+  test("ids are written to the file and nothing else changes", async ({ editor, doc }) => {
+    const original = (await import("node:fs")).readFileSync((await import("./fixtures.ts")).EXAMPLE, "utf8");
+    await expect(editor.locator("h1")).toHaveAttribute("data-id", "h1-1");
+    expect(doc.read().replace(/ data-id="[^"]+"/g, "")).toBe(original);
+  });
+});
+
+test.describe("typing", () => {
+  test("saves only the block that was edited", async ({ editor, doc }) => {
+    const before = doc.read();
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "drying laundry");
+    await editor.keyboard.type(" and bikes");
+    await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry and bikes");
+    expect(doc.read()).toBe(before.replace("drying laundry", "drying laundry and bikes"));
+    await expect(editor.locator("#inplace-status")).toHaveText("Saved");
+  });
+
+  test("Enter in a table cell leaves it instead of adding a line", async ({ editor, doc }) => {
+    const cell = block(editor, "td", "Raised beds");
+    await caretAfter(cell);
+    await editor.keyboard.press("Enter");
+    await expect(cell).not.toBeFocused();
+    expect(doc.read()).not.toContain("Raised beds<br>");
+  });
+
+  test("pasted text arrives without formatting", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "drying laundry");
+    await p.evaluate((el) => {
+      const data = new DataTransfer();
+      data.setData("text/html", "<b style='color:red'>loud</b>");
+      data.setData("text/plain", " (quiet\ntext)");
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await p.blur();
+    await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry (quiet text)");
+    expect(sourceOf(doc, id)).not.toMatch(/<b|style=/);
+  });
+});
+
+test.describe("formatting", () => {
+  test("the toolbar bolds the selected word", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await selectText(p, "laundry");
+    const toolbar = editor.locator("#inplace-toolbar");
+    await expect(toolbar).toBeVisible();
+    await toolbar.getByTitle(/^Bold/).click();
+    await expect.poll(() => sourceOf(doc, id)).toContain("drying <strong>laundry</strong>");
+  });
+
+  test("keyboard shortcuts toggle formatting on and off", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await selectText(p, "laundry");
+    await editor.keyboard.press(`${MOD}+i`);
+    await expect.poll(() => sourceOf(doc, id)).toContain("<em>laundry</em>");
+    await selectText(p, "laundry");
+    await editor.keyboard.press(`${MOD}+i`);
+    await expect.poll(() => sourceOf(doc, id)).not.toContain("<em>");
+  });
+
+  test("Markdown typed inline becomes formatting", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "drying laundry");
+    await editor.keyboard.type(" **really** and `code` x");
+    await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry <strong>really</strong> and <code>code</code> x");
+    expect(sourceOf(doc, id)).not.toContain("&nbsp;");
+  });
+
+  test("a link gets an address and https:// is added", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await selectText(p, "structural survey");
+    await editor.keyboard.press(`${MOD}+k`);
+    const input = editor.getByLabel("Link address");
+    await expect(input).toBeFocused();
+    await input.fill("example.com/survey");
+    await input.press("Enter");
+    await expect.poll(() => sourceOf(doc, id)).toContain('<a href="https://example.com/survey">structural survey</a>');
+  });
+
+  test("typing ## and a space turns a paragraph into a heading, keeping its id", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "");
+    await p.evaluate((el) => {
+      const range = document.createRange();
+      range.setStart(el.firstChild!, 0);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+    });
+    await editor.keyboard.type("## ");
+    await expect.poll(() => doc.read()).toMatch(new RegExp(`<h2 data-id="${id}">The roof is already used`));
+    await expect(editor.locator(`h2[data-id="${id}"]`)).toBeVisible();
+  });
+});
+
+test.describe("adding and removing", () => {
+  test("Enter in the middle of a paragraph splits it in two", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "stands empty.");
+    await editor.keyboard.press("Enter");
+    await expect(editor.locator("#inplace-status")).toHaveText("Added");
+    const next = editor.locator(`[data-id="${id}"] + p`);
+    await expect(next).toBeFocused();
+    await expect(next).toHaveText(/^\s*A structural survey/);
+    const newId = await idOf(next);
+    expect(newId).not.toBe(id);
+    await expect.poll(() => sourceOf(doc, id)).toMatch(/stands empty\.\s*<\/p>$/);
+    expect(sourceOf(doc, newId)).toContain("A structural survey");
+    expect(doc.output).toMatch(new RegExp(`added ${newId}`));
+  });
+
+  test("the + button adds an empty row with the usual cells, and Backspace removes it", async ({ editor, doc }) => {
+    const row = editor.locator("tr").filter({ hasText: "Soil and compost" });
+    const rowId = await idOf(row);
+    const rows = await editor.locator("tbody tr").count();
+    await hoverBlock(editor, row);
+    await editor.getByRole("button", { name: "Add a row below" }).click();
+    await expect(editor.locator("tbody tr")).toHaveCount(rows + 1);
+    const added = editor.locator(`tr[data-id="${rowId}"] + tr`);
+    await expect(added).toHaveText(/^\s*$/);
+    await expect(added.locator("td")).toHaveCount(3);
+    const addedId = await idOf(added);
+    await expect.poll(() => sourceOf(doc, addedId)).toMatch(/<tr data-id="tr-\d+"><td data-id="td-\d+"><\/td>/);
+    // The new first cell has the caret; Backspace in an empty row removes it.
+    await expect(added.locator("td").first()).toBeFocused();
+    await editor.keyboard.press("Backspace");
+    await expect(editor.locator(`[data-id="${addedId}"]`)).toHaveCount(0);
+    await expect.poll(() => doc.read()).not.toContain(`data-id="${addedId}"`);
+    expect(doc.output).toContain(`removed ${addedId}`);
+  });
+
+  test("Backspace doesn't remove a paragraph that still has text", async ({ editor, doc }) => {
+    const id = await idOf(block(editor, "li", "Two beds stay open"));
+    const li = editor.locator(`[data-id="${id}"]`);
+    await caretAfter(li, "");
+    await li.evaluate((el) => {
+      const range = document.createRange();
+      range.setStart(el.firstChild!, 0);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+    });
+    await editor.keyboard.press("Backspace");
+    await editor.waitForTimeout(800);
+    expect(doc.read()).toContain(`data-id="${id}"`);
+  });
+
+  test("an emptied list item is removed with one more Backspace, even straight away", async ({ editor, doc }) => {
+    const id = await idOf(block(editor, "li", "Two beds stay open"));
+    const li = editor.locator(`[data-id="${id}"]`);
+    await li.evaluate((el) => {
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+    });
+    await editor.keyboard.press("Delete");
+    await editor.keyboard.press("Backspace");
+    await expect(editor.locator(`[data-id="${id}"]`)).toHaveCount(0);
+    await expect.poll(() => doc.read()).not.toContain(`data-id="${id}"`);
+  });
+});
+
+test.describe("moving", () => {
+  test("dragging a list item's handle reorders the list in the file", async ({ editor, doc }) => {
+    const items = editor.locator("ul > li");
+    const first = items.nth(0);
+    const third = items.nth(2);
+    const firstId = await idOf(first);
+    const thirdId = await idOf(third);
+    await hoverBlock(editor, first);
+    const grip = editor.getByRole("button", { name: "Drag to move this list item" });
+    await expect(grip).toBeVisible();
+    const g = (await grip.boundingBox())!;
+    const t = (await third.boundingBox())!;
+    await editor.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+    await editor.mouse.down();
+    await editor.mouse.move(t.x + 40, t.y + t.height - 3, { steps: 8 });
+    await editor.mouse.up();
+    await expect(editor.locator("#inplace-status")).toHaveText("Moved");
+    const html = doc.read();
+    expect(html.indexOf(`data-id="${thirdId}"`)).toBeLessThan(html.indexOf(`data-id="${firstId}"`));
+    expect(doc.output).toContain(`moved ${firstId} after ${thirdId}`);
+  });
+});
+
+test.describe("working alongside an agent", () => {
+  test("an edit to the file on disk reloads the page", async ({ editor, doc }) => {
+    doc.edit("Two beds stay open", "Three beds stay open");
+    await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+  });
+
+  test("your caret block survives the reload", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p);
+    doc.edit("A garden on the roof", "A garden on the roof of building B");
+    await expect(editor.locator("h1")).toHaveText("A garden on the roof of building B");
+    await expect(editor.locator(`[data-id="${id}"]`)).toBeFocused();
+  });
+
+  test("a save to a block the agent changed meanwhile is refused", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    // Simulate the race: the page still shows the old text while the file has the agent's.
+    await editor.evaluate(() => {
+      // Hold back the reload so the stale page can try to save.
+      (window as unknown as { EventSource: unknown }).EventSource = class { addEventListener() {} };
+    });
+    doc.edit("The roof is already used for drying laundry", "AGENT: The roof is used for laundry");
+    const res = await editor.evaluate(async (id) => {
+      const r = await fetch("/__inplace/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, old: document.querySelector(`[data-id="${id}"]`)!.innerHTML, new: "mine" }),
+      });
+      return r.status;
+    }, id);
+    expect(res).toBe(409);
+    expect(sourceOf(doc, id)).toContain("AGENT: The roof is used for laundry");
+  });
+
+  test("every change is listed in the server output", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "drying laundry");
+    await editor.keyboard.type("!");
+    await expect.poll(() => doc.output).toMatch(new RegExp(`edited ${id}: .*laundry!`));
+  });
+});
+
+test("unclosed paragraphs and list items can be edited", async ({ page }) => {
+  const doc = await startDoc(undefined, "<!doctype html><title>t</title><body><p>One<p>Two\n<ul><li>A<li>B</ul></body>");
+  try {
+    await page.goto(doc.url);
+    const li = block(page, "li", "A");
+    await caretAfter(li);
+    await page.keyboard.type("lpha");
+    await expect.poll(() => doc.read()).toContain(">Alpha<li");
+  } finally {
+    doc.stop();
+  }
+});
+
+test("deliberate non-breaking spaces stay when you edit nearby", async ({ page }) => {
+  const doc = await startDoc(undefined, "<!doctype html><title>t</title><body><p>Cena <strong>5</strong>&nbsp;Kč, v&nbsp;Praze. Konec</p></body>");
+  try {
+    await page.goto(doc.url);
+    const p = page.locator("p");
+    await caretAfter(p, "Konec");
+    await page.keyboard.type(" **dne**s");
+    await expect.poll(() => doc.read()).toContain("Konec <strong>dne</strong>s</p>");
+    expect(doc.read()).toContain("<strong>5</strong>&nbsp;Kč, v&nbsp;Praze.");
+  } finally {
+    doc.stop();
+  }
+});

@@ -96,12 +96,28 @@
 
   const pending = () => [...timers.keys()];
 
+  // Chrome types a space next to a formatting tag as &nbsp; and never turns it
+  // back. Make those ordinary spaces again, but only inside the part of the
+  // block that just changed, so deliberate non-breaking spaces stay.
+  function tidySpaces(before, after) {
+    if (before === undefined || !after.includes("&nbsp;")) return after;
+    let p = 0;
+    while (p < before.length && p < after.length && before[p] === after[p]) p++;
+    let s = 0;
+    while (s < before.length - p && s < after.length - p && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
+    const a = Math.max(0, p - 6), b = Math.min(after.length, after.length - s + 6);
+    const mid = after.slice(a, b)
+      .replace(/(?<!<br>)>&nbsp;(?=[^\s<&])/g, "> ")
+      .replace(/([^\s>;])&nbsp;(?=<)/g, "$1 ");
+    return after.slice(0, a) + mid + after.slice(b);
+  }
+
   async function save(el) {
     const id = el.dataset.id;
     clearTimeout(timers.get(id));
     timers.delete(id);
     clean(el);
-    const html = el.innerHTML;
+    const html = tidySpaces(saved.get(id), el.innerHTML);
     if (html === saved.get(id)) return true;
     status("Saving…", "info", true);
     {
@@ -771,7 +787,11 @@
   async function removeEmpty(el) {
     const blocks = [...document.querySelectorAll("[contenteditable=true]")];
     const previous = blocks.filter((b) => !el.contains(b) && b.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-    for (const b of [el, ...el.querySelectorAll("[data-id]")]) clearTimeout(timers.get(b.dataset.id));
+    // The server only removes what's empty in the file, so text deleted a
+    // moment ago has to be saved first.
+    for (const b of [el, ...el.querySelectorAll("[data-id]")]) {
+      if (timers.has(b.dataset.id) && !(await save(b))) return;
+    }
     const res = await post("remove", { id: el.dataset.id });
     if (!res.ok) {
       status("Couldn't remove this, probably because the file changed in the meantime. The page will reload.", "error", true);
