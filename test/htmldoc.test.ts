@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  assignIds, BlockConflict, BlockNotFound, canonical, editableBlocks, editableIds, parse, patchBlock,
+  assignIds, BlockConflict, BlockNotFound, canonical, editableBlocks, editableIds, movableIds, moveBlock, parse,
+  patchBlock, retagBlock,
 } from "../src/htmldoc.js";
+import { describeEdit } from "../src/server.js";
 
 const DOC = `<!doctype html>
 <html><head><style>p{color:red}</style></head>
@@ -32,8 +34,8 @@ test("picks innermost text blocks only", () => {
 
 test("assignIds only touches start tags", () => {
   const { source: out, added } = assignIds(DOC);
-  // 8 text blocks + section, div.body, table, tr, figure, svg, ul
-  assert.equal(added, 15);
+  // 8 text blocks + section, div.body, table, tr, figure, svg, ul, li with a paragraph inside
+  assert.equal(added, 16);
   assert.ok(out.includes('<p data-id="p-1" class="lead">'));
   assert.ok(out.includes('<div data-id="div-2" class="pending">'));
   assert.ok(out.includes('<table data-id="table-1">') && out.includes('<tr data-id="tr-1" class="ft">'));
@@ -98,4 +100,56 @@ test("implicitly closed paragraphs and list items are editable", () => {
   assert.deepEqual(editableIds(src), ["p-1", "p-2", "li-1", "li-2"]);
   const out = patchBlock(src, "li-1", "A", "Alpha");
   assert.equal(out, '<body><p data-id="p-1">One<p data-id="p-2">Two\n<ul data-id="ul-1"><li data-id="li-1">Alpha<li data-id="li-2">B</ul></body>');
+});
+
+const LIST = `<body>
+<ul>
+  <li data-id="li-1">One</li>
+  <li data-id="li-2">Two</li>
+  <li data-id="li-3">Three</li>
+</ul>
+<p data-id="p-1">Para</p><p data-id="p-2">Inline</p>
+</body>`;
+
+test("moveBlock keeps each element on its own line", () => {
+  assert.equal(
+    moveBlock(LIST, "li-3", "li-1", "before"),
+    LIST.replace("  <li data-id=\"li-1\">One</li>\n  <li data-id=\"li-2\">Two</li>\n  <li data-id=\"li-3\">Three</li>",
+      "  <li data-id=\"li-3\">Three</li>\n  <li data-id=\"li-1\">One</li>\n  <li data-id=\"li-2\">Two</li>"),
+  );
+  const down = moveBlock(LIST, "li-1", "li-3", "after");
+  assert.ok(down.includes("<ul>\n  <li data-id=\"li-2\">Two</li>\n  <li data-id=\"li-3\">Three</li>\n  <li data-id=\"li-1\">One</li>\n</ul>"));
+  assert.ok(moveBlock(LIST, "p-2", "p-1", "before").includes('</ul>\n<p data-id="p-2">Inline</p>\n<p data-id="p-1">Para</p>\n</body>'));
+  assert.ok(moveBlock(LIST, "p-1", "p-2", "after").includes('</ul>\n<p data-id="p-2">Inline</p><p data-id="p-1">Para</p>\n</body>'));
+});
+
+test("moveBlock only moves among siblings", () => {
+  assert.throws(() => moveBlock(LIST, "li-1", "p-1", "before"), BlockConflict);
+  assert.throws(() => moveBlock(LIST, "li-1", "nope", "before"), BlockNotFound);
+});
+
+test("movable elements exclude cells, captions and locked parts", () => {
+  const src = assignIds(DOC).source;
+  const ids = movableIds(src);
+  assert.ok(ids.includes("li-1") && ids.includes("li-2") && ids.includes("p-1") && ids.includes("table-1"));
+  for (const id of ["td-1", "td-2", "figcaption-1", "tr-1", "svg-1", "section-1"]) assert.ok(!ids.includes(id), id);
+});
+
+test("retagBlock turns a paragraph into a heading and back", () => {
+  const src = '<body><p data-id="p-1" class="x">Hi <b>there</b></p></body>';
+  const h2 = retagBlock(src, "p-1", "p", "h2");
+  assert.equal(h2, '<body><h2 data-id="p-1" class="x">Hi <b>there</b></h2></body>');
+  assert.equal(retagBlock(h2, "p-1", "h2", "p"), src);
+  assert.throws(() => retagBlock(h2, "p-1", "p", "h3"), BlockConflict);
+  assert.equal(retagBlock('<body><p data-id="p-1">A<p data-id="p-2">B</body>', "p-1", "p", "h1"),
+    '<body><h1 data-id="p-1">A</h1><p data-id="p-2">B</body>');
+});
+
+test("describeEdit shows only the changed part", () => {
+  const long = "The committee met on Tuesday and agreed that the garden would have ten raised beds, shared by floor, with a rota.";
+  assert.equal(
+    describeEdit(long, long.replace("ten", "twelve")),
+    '"…agreed that the garden would have ten raised beds, shared by floor,…" → "…agreed that the garden would have twelve raised beds, shared by floor,…"',
+  );
+  assert.equal(describeEdit("Hi", "Hi <strong>there</strong>"), '"Hi" → "Hi <strong>there</strong>"');
 });

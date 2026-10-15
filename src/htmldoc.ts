@@ -34,7 +34,7 @@ const LOCKED_TAGS = new Set(["head", "script", "style", "svg", "nav", "template"
 // file, but aren't edited as a whole (their text blocks are).
 const ANCHOR_TAGS = new Set([
   "table", "tr", "ul", "ol", "dl", "figure", "svg", "section", "article",
-  "aside", "blockquote", "div", "header", "footer",
+  "aside", "blockquote", "div", "header", "footer", "li",
 ]);
 
 // Nothing inside these gets an id at all.
@@ -46,6 +46,7 @@ export interface Node {
   start: number; // offset of "<"
   openEnd: number; // offset just after ">" of the start tag
   innerEnd: number; // offset where the content ends ("</" or the implicit close)
+  end: number; // offset just after the end tag (or innerEnd if there is none)
   parent: Node | null;
   children: Node[];
   hasText: boolean; // non-whitespace text directly inside
@@ -59,7 +60,7 @@ function isElement(n: ChildNode | ParentNode): n is Element {
 export function parse(source: string): Node {
   const doc = parseDocument(source, { sourceCodeLocationInfo: true });
   const root: Node = {
-    tag: "#root", attrs: new Map(), start: 0, openEnd: 0, innerEnd: source.length,
+    tag: "#root", attrs: new Map(), start: 0, openEnd: 0, innerEnd: source.length, end: source.length,
     parent: null, children: [], hasText: false,
   };
 
@@ -84,6 +85,7 @@ export function parse(source: string): Node {
         start: loc.startTag.startOffset,
         openEnd: loc.startTag.endOffset,
         innerEnd: loc.endTag ? loc.endTag.startOffset : loc.endOffset,
+        end: loc.endOffset,
         parent: into,
         children: [],
         hasText: false,
@@ -245,4 +247,83 @@ export function patchBlock(source: string, blockId: string, oldInner: string, ne
   if (sameContent(current, newInner)) return source;
   if (!sameContent(current, oldInner)) throw new BlockConflict(current);
   return source.slice(0, node.openEnd) + newInner + source.slice(node.innerEnd);
+}
+
+// Elements whose position is part of the structure around them (a cell's
+// column, a table's sections, a figure's caption) and so can't be dragged.
+const UNMOVABLE_TAGS = new Set([
+  "html", "head", "body", "td", "th", "thead", "tbody", "tfoot", "caption", "figcaption", "colgroup", "col",
+]);
+
+function canMove(node: Node): boolean {
+  return node.attrs.has(ID_ATTR) && !UNMOVABLE_TAGS.has(node.tag) && !!node.parent && !isLocked(node);
+}
+
+/** Ids of the elements that can be dragged to another place among their siblings. */
+export function movableIds(source: string): string[] {
+  const ids: string[] = [];
+  for (const node of walk(parse(source))) {
+    if (canMove(node) && node.parent!.children.some((s) => s !== node && canMove(s))) {
+      ids.push(node.attrs.get(ID_ATTR)!);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Where an element's text starts once the indentation in front of it is
+ * included, so a moved element keeps its own line and indentation.
+ */
+function chunkStart(source: string, node: Node): number {
+  const siblings = node.parent!.children;
+  const prev = siblings[siblings.indexOf(node) - 1];
+  const from = prev ? prev.end : node.parent!.openEnd;
+  const gap = source.slice(from, node.start);
+  const newline = gap.lastIndexOf("\n");
+  if (newline === -1 || gap.slice(newline + 1).trim()) return node.start;
+  return from + newline;
+}
+
+/**
+ * Move one element before or after a sibling, keeping its markup unchanged.
+ *
+ * Both elements must still share a parent in the file; if the agent has
+ * restructured that part in the meantime, throw BlockConflict.
+ */
+export function moveBlock(source: string, blockId: string, targetId: string, position: "before" | "after"): string {
+  const root = parse(source);
+  const node = findBlock(root, blockId);
+  const target = findBlock(root, targetId);
+  if (!node || !canMove(node)) throw new BlockNotFound(blockId);
+  if (!target || !canMove(target)) throw new BlockNotFound(targetId);
+  if (node === target || node.parent !== target.parent) throw new BlockConflict("");
+  // The moved element takes on the line break and indentation of the target,
+  // so it fits in whether its old neighbours were on separate lines or not.
+  // Take the line break in front of the moved element with it, unless the
+  // next element sits on the same line and needs that break.
+  const start = /^[ \t]*(\n|<\/|$)/.test(source.slice(node.end)) ? chunkStart(source, node) : node.start;
+  const targetStart = chunkStart(source, target);
+  const at = position === "before" ? targetStart : target.end;
+  const chunk = source.slice(targetStart, target.start) + source.slice(node.start, node.end);
+  if (at >= node.end) return source.slice(0, start) + source.slice(node.end, at) + chunk + source.slice(at);
+  return source.slice(0, at) + chunk + source.slice(at, start) + source.slice(node.end);
+}
+
+// Text blocks the page can switch between paragraph and heading.
+export const RETAG_TAGS = new Set(["p", "h1", "h2", "h3", "h4"]);
+
+/** Turn a paragraph into a heading or back, keeping its attributes and content. */
+export function retagBlock(source: string, blockId: string, from: string, to: string): string {
+  const node = findBlock(parse(source), blockId);
+  if (!node || !isEditableBlock(node) || !RETAG_TAGS.has(to)) throw new BlockNotFound(blockId);
+  if (node.tag !== from) throw new BlockConflict(source.slice(node.openEnd, node.innerEnd));
+  if (from === to) return source;
+  const hasEndTag = node.end !== node.innerEnd;
+  const close = hasEndTag
+    ? `</${to}` + source.slice(node.innerEnd + 2 + from.length, node.end)
+    : `</${to}>`;
+  return (
+    source.slice(0, node.start + 1) + to + source.slice(node.start + 1 + from.length, node.innerEnd) +
+    close + source.slice(node.end)
+  );
 }

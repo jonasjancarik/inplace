@@ -6,7 +6,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assignIds, BlockConflict, BlockNotFound, editableIds, patchBlock } from "./htmldoc.js";
+import {
+  assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, movableIds, moveBlock, parse, patchBlock, retagBlock,
+} from "./htmldoc.js";
 
 const EDITOR_PREFIX = "/__inplace/";
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "static");
@@ -22,13 +24,41 @@ const MIME: Record<string, string> = {
 
 const digest = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 12);
 
+const squash = (html: string) => html.replace(/\s+/g, " ").trim();
+const clip = (text: string, max: number) =>
+  text.length <= max ? text : text.slice(0, max >> 1) + "…" + text.slice(text.length - (max >> 1));
+
+/**
+ * `"…was ten trees…" → "…was twelve trees…"`: only the changed part of a block,
+ * with a little context, so a one-word edit in a long paragraph stays readable.
+ */
+export function describeEdit(before: string, after: string, context = 30): string {
+  const a = squash(before);
+  const b = squash(after);
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  // Widen to whole words so the excerpt doesn't start or end mid-word.
+  let from = Math.max(0, head - context);
+  while (from > 0 && a[from - 1] !== " ") from--;
+  let back = Math.max(0, tail - context);
+  while (back > 0 && a[a.length - back] !== " ") back--;
+  const excerpt = (s: string) =>
+    JSON.stringify((from > 0 ? "…" : "") + clip(s.slice(from, s.length - back), 400) + (back > 0 ? "…" : ""));
+  return `${excerpt(a)} → ${excerpt(b)}`;
+}
+
+const time = () => new Date().toTimeString().slice(0, 8);
+
 /** The edited file, plus a version that changes whenever its content does. */
 export class Document {
   version = "";
   private stamp = "";
   private listeners = new Set<(version: string) => void>();
 
-  constructor(readonly path: string, readonly writeIds = true) {
+  /** `log` receives one line per change made from the page, for the agent to read. */
+  constructor(readonly path: string, readonly writeIds = true, readonly log: (line: string) => void = () => {}) {
     this.refresh();
   }
 
@@ -68,6 +98,7 @@ export class Document {
       if (result.added) {
         text = result.source;
         this.write(text);
+        this.log(`${time()} added data-id to ${result.added} element${result.added === 1 ? "" : "s"}`);
       }
     }
     return { text, version: this.version };
@@ -76,7 +107,31 @@ export class Document {
   saveBlock(id: string, oldInner: string, newInner: string): string {
     const text = this.refresh();
     const patched = patchBlock(text, id, oldInner, newInner);
-    if (patched !== text) this.write(patched);
+    if (patched !== text) {
+      this.write(patched);
+      this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`);
+    }
+    return this.version;
+  }
+
+  moveBlock(id: string, target: string, position: "before" | "after"): string {
+    const text = this.refresh();
+    const moved = moveBlock(text, id, target, position);
+    if (moved !== text) {
+      this.write(moved);
+      const parent = findBlock(parse(moved), id)?.parent?.attrs.get("data-id");
+      this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`);
+    }
+    return this.version;
+  }
+
+  retagBlock(id: string, from: string, to: string): string {
+    const text = this.refresh();
+    const retagged = retagBlock(text, id, from, to);
+    if (retagged !== text) {
+      this.write(retagged);
+      this.log(`${time()} changed ${id} from <${from}> to <${to}>`);
+    }
     return this.version;
   }
 
@@ -118,7 +173,8 @@ export function createInplaceServer(doc: Document): Server {
     const { text, version } = doc.load();
     const tag =
       `<script src="${EDITOR_PREFIX}editor.js" data-inplace data-version="${version}" ` +
-      `data-file="${escapeAttr(basename(doc.path))}" data-editable="${escapeAttr(editableIds(text).join(" "))}"></script>`;
+      `data-file="${escapeAttr(basename(doc.path))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
+      `data-movable="${escapeAttr(movableIds(text).join(" "))}"></script>`;
     const at = text.toLowerCase().lastIndexOf("</body>");
     send(res, 200, at === -1 ? text + tag : text.slice(0, at) + tag + text.slice(at), "text/html; charset=utf-8");
   };
@@ -135,19 +191,29 @@ export function createInplaceServer(doc: Document): Server {
     });
   };
 
-  const save = async (req: IncomingMessage, res: ServerResponse) => {
-    let body: { id?: unknown; old?: unknown; new?: unknown };
+  // Each change from the page is one small JSON request; the handler returns
+  // the new version, or undefined (after replying 400) if the body is malformed.
+  const change = async (req: IncomingMessage, res: ServerResponse) => {
+    let body: Record<string, unknown>;
     try {
       body = JSON.parse(await readBody(req));
     } catch {
       return json(res, 400, { error: "invalid JSON" });
     }
-    const { id, old: oldInner, new: newInner } = body;
-    if (typeof id !== "string" || typeof oldInner !== "string" || typeof newInner !== "string") {
-      return json(res, 400, { error: "expected id, old and new" });
+    const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : null);
+    const path = new URL(req.url ?? "/", "http://localhost").pathname.slice(EDITOR_PREFIX.length);
+    let apply: (() => string) | null = null;
+    const id = str("id");
+    if (path === "save" && id && str("old") !== null && str("new") !== null) {
+      apply = () => doc.saveBlock(id, str("old")!, str("new")!);
+    } else if (path === "move" && id && str("target") && (body.position === "before" || body.position === "after")) {
+      apply = () => doc.moveBlock(id, str("target")!, body.position as "before" | "after");
+    } else if (path === "retag" && id && str("from") && str("to")) {
+      apply = () => doc.retagBlock(id, str("from")!, str("to")!);
     }
+    if (!apply) return json(res, 400, { error: "missing or invalid fields" });
     try {
-      json(res, 200, { version: doc.saveBlock(id, oldInner, newInner) });
+      json(res, 200, { version: apply() });
     } catch (e) {
       if (e instanceof BlockConflict) return json(res, 409, { error: "conflict", current: e.current, version: doc.version });
       if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found", version: doc.version });
@@ -173,7 +239,10 @@ export function createInplaceServer(doc: Document): Server {
     Promise.resolve()
       .then(() => {
         if (req.method === "POST") {
-          return path === EDITOR_PREFIX + "save" ? save(req, res) : json(res, 404, { error: "not found" });
+          const action = path.slice(EDITOR_PREFIX.length);
+          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag"].includes(action)
+            ? change(req, res)
+            : json(res, 404, { error: "not found" });
         }
         if (path === "/" || path === "/" + basename(doc.path)) return page(res);
         if (path === EDITOR_PREFIX + "editor.js") {

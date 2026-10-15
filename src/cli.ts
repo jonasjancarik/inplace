@@ -37,7 +37,9 @@ if (!existsSync(path) || !statSync(path).isFile()) {
 }
 
 const port = Number(values.port);
-const doc = new Document(path, !values["no-write-ids"]);
+// Changes made on the page go to stdout, so an agent running inplace in the
+// background can read what the user did.
+const doc = new Document(path, !values["no-write-ids"], (line) => console.log(line));
 setInterval(() => doc.poll(), 250);
 
 const server = createInplaceServer(doc);
@@ -50,4 +52,5 @@ server.listen(port, values.host, () => {
   console.log(`Editing ${path}`);
   console.log(`  http://localhost:${port}/`);
   if (values.host === "0.0.0.0") console.log(`  http://${host}.local:${port}/`);
+  console.log("Changes made on the page are listed below.");
 });

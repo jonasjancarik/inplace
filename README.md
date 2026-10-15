@@ -15,6 +15,7 @@ npx github:jonasjancarik/inplace report.html
 - **The HTML file is the document.** There's no separate editor format, database or export step. What you see in the browser is the file on disk, and what you print or send is that same file.
 - **Your edits are surgical.** Typing changes the text inside one paragraph, heading, list item or table cell, and nothing else. CSS, SVG charts, print styles and the rest of the markup stay byte-for-byte as they were, so `git diff` shows exactly what you changed.
 - **Comments point at the right place.** inplace gives every block a stable `data-id`. When you comment on an element, the agent receives that id and finds the exact spot in the file, even if the wording has changed since.
+- **The agent sees what you changed.** inplace prints a line for every edit you make on the page, so an agent running it in the background can catch, say, a changed amount and fix the total that depends on it.
 - **You and the agent can work at the same time.** Edits to different blocks never get in each other's way. If the agent rewrites the paragraph you're typing in, your save is refused instead of overwriting the agent's text, and what you typed goes to your clipboard.
 
 ## Getting started
@@ -31,7 +32,7 @@ You need Node.js 22 or newer.
 
 2. Open `http://localhost:8765/` in the built-in browser of Claude or Codex.
 
-3. Click into any paragraph, heading, list item or table cell and type. Changes are saved after a short pause, when you click elsewhere, or with ⌘S / Ctrl+S.
+3. Click into any paragraph, heading, list item or table cell and type. Select text to make it bold, italic, code or a link, or type Markdown such as `**bold**`. To move a paragraph, list item, table row or section, drag the handle that appears to its left. Changes are saved after a short pause, when you click elsewhere, or with ⌘S / Ctrl+S.
 
 4. To ask for something bigger, comment on an element with the browser's comment tool. Install the agent skill (below) so the agent knows how to handle it.
 
@@ -53,11 +54,25 @@ After that, you can just ask the agent to open a document in inplace, and commen
 
 ## What you can and can't edit on the page
 
-You can change the text of any paragraph, heading, list item, table cell, caption or text box, including bold, italics and links already in it. Enter leaves the block (Shift+Enter adds a line break), and pasted text arrives as plain text so it doesn't bring stray formatting along.
+You can change the text of any paragraph, heading, list item, table cell, caption or text box. Enter leaves the block (Shift+Enter adds a line break), and pasted text arrives as plain text so it doesn't bring stray formatting along.
 
-Everything structural is the agent's job: adding or removing paragraphs, rows and sections, changing styles or layout, and anything inside SVG charts. Tables, rows, lists, figures and charts can't be typed into as a whole, but they have ids too, so you can comment on them.
+**Formatting.** Select some text and a small toolbar appears with bold, italic, strikethrough, code and link. The same works from the keyboard:
 
-To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can still be commented on.
+| | Shortcut | Or type |
+| --- | --- | --- |
+| Bold | ⌘B / Ctrl+B | `**bold**` |
+| Italic | ⌘I / Ctrl+I | `*italic*` or `_italic_` |
+| Strikethrough | ⌘⇧X / Ctrl+Shift+X | `~~struck~~` |
+| Code | ⌘E / Ctrl+E | `` `code` `` |
+| Link | ⌘K / Ctrl+K | |
+
+The toolbar also turns a paragraph into a heading (H1–H3) or back. Typing `#`, `##` or `###` and a space at the start of a paragraph does the same. The formatting is written as plain HTML (`<strong>`, `<em>`, `<s>`, `<code>`, `<a>`), so the document's own styles decide how it looks.
+
+**Moving things.** Hover over a paragraph, heading, list item, table row, figure or section and a handle (⋮⋮) appears to its left; drag it to put the element somewhere else among its neighbours. A list item stays in its list and a row in its table. When elements are nested, such as a row inside a table, each gets its own handle. In the file, the element's markup is moved as it is, with nothing else changed.
+
+Everything else structural is the agent's job: adding or removing paragraphs, rows and sections, moving something into a different list or section, changing styles or layout, and anything inside SVG charts. Tables, rows, lists, figures and charts can't be typed into as a whole, but they have ids too, so you can comment on them.
+
+To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can't be typed into or moved, but it can still be commented on.
 
 ## What inplace changes in your file
 
@@ -70,7 +85,19 @@ The first time the page is opened, inplace adds a `data-id` attribute to each bl
 
 The ids don't affect how the page looks or prints. Existing ids are never changed, and new elements get one the next time the page is opened. If the document is under version control, commit this change on its own so later diffs stay readable. Use `--no-write-ids` if the file mustn't be changed this way; blocks without an id then can't be edited.
 
-Apart from the ids, the file only changes when you type into a block, and then only inside that block.
+Apart from the ids, the file only changes when you make a change on the page, and then only in the block you typed in or the element you moved.
+
+## How the agent finds out about your edits
+
+While it runs, inplace prints one line for every change made on the page:
+
+```text
+16:34:18 edited p-1: "…the flat roof of building B into a shared vegetable…" → "…the flat roof of building B into a <strong>shared</strong> vegetable…"
+16:34:52 changed p-3 from <p> to <h2>
+16:35:21 moved li-1 before li-3 (inside ul-1)
+```
+
+Only the changed part of a block is shown, with a little context. The skill tells the agent to start inplace in the background and to read this output before it handles a comment or edits the file, so it notices a changed number and fixes the totals and charts that depend on it, or a moved section and the references that point to it. You can also just tell the agent to check your edits.
 
 ## Options
 
@@ -90,14 +117,14 @@ Images, stylesheets and other files next to the document are served too, so rela
 
 inplace is a small Node.js server with one dependency, [parse5](https://github.com/inikulin/parse5), the HTML parser that follows the same rules as browsers.
 
-When you open the page, the server reads the file, adds any missing ids, and injects a short script before `</body>`. The script makes the text blocks editable and sends each change back as "block `p-3` used to contain X, now contains Y". The server finds `p-3` in the current file, checks it still contains X, and replaces just its contents. If it no longer contains X, because the agent changed it in the meantime, the save is refused.
+When you open the page, the server reads the file, adds any missing ids, and injects a short script before `</body>`. The script makes the text blocks editable and sends each change back as "block `p-3` used to contain X, now contains Y". The server finds `p-3` in the current file, checks it still contains X, and replaces just its contents. If it no longer contains X, because the agent changed it in the meantime, the save is refused. A move is sent as "put `li-1` before `li-3`": the server cuts `li-1` out of the file, line and indentation included, and pastes it in front of `li-3`, but only if the two still share a parent.
 
 The server also watches the file. When it changes on disk, every open page saves anything still pending and reloads, keeping your scroll position and the block you were in.
 
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so don't run it on a network you don't trust.
-- You can only change text on the page. New blocks, layout and styling go through the agent.
+- On the page you can change text, add simple formatting and reorder elements among their neighbours. New blocks, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
 - Each save re-reads the whole file, so very large documents respond a little more slowly.
 
