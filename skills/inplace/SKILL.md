@@ -13,6 +13,8 @@ The HTML file is the only source of truth. There is no separate content store, e
 
 **If you have inplace's MCP tools** (`open_document`, `get_edits`, `close_document`, from `inplace mcp`), use them instead of running the command below: `open_document` with the file's path starts serving it and returns the URLs, `get_edits` returns the change lines described under "Seeing what the user changed", and `close_document` stops it. The server handles one document at a time. Pass `host: "127.0.0.1"` unless the user wants the page on other devices, and `port: 0` if 8765 is taken. Everything else in this skill applies unchanged.
 
+**If you have these tools but can't read or write files** (for example in ChatGPT, through a tunnel), do your part with the editing tools instead of the file: `read_document` reads the whole document, or one element with `id`, which is better for large documents; `replace_element` replaces an element's inside (`part: "inner"`) or the whole element (`"outer"`) by its `data-id`, with `expected` set to its current HTML as you just read it; `find_replace` changes exact source text when a change spans many elements. If `replace_element` says the element has changed, the user edited it: read it again and redo your change on top of theirs. Wherever this skill says to grep, read or edit the file, use these tools. You can't be woken by pauses, so call `get_edits` at the start of each turn.
+
 Otherwise, inplace needs Node.js 22 or newer. Run it with npx, with no install step:
 
 ```bash
