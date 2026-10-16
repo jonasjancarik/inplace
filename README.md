@@ -6,7 +6,7 @@
 
 Coding agents have become good at writing documents as hand-crafted HTML: reports, proposals, handouts, meeting packets, with real typography, tables, charts and print layouts. Working on them together is still awkward. To change a word, you either edit raw markup or describe the change to the agent and wait. And as soon as you open the page in a rich-text editor, it rewrites the HTML into its own format and the layout falls apart.
 
-inplace takes a different approach. It serves your HTML file exactly as it is and lets you click into the rendered page and type. Your change goes into that one paragraph, cell or heading, and the rest of the file stays exactly as it was. Your agent sees each edit as you make it, so when you change an amount it can fix the total. For anything bigger, such as rewording a section, adding a row or fixing a chart, you leave a comment on the page with the browser's comment tool in Claude or Codex, and the agent edits the file. Every open page reloads as soon as the file changes and briefly highlights what the agent changed, so you always see the current version and where it differs.
+inplace takes a different approach. It serves your HTML file exactly as it is and lets you click into the rendered page and type. Your change goes into that one paragraph, cell or heading, and the rest of the file stays exactly as it was. Your agent sees each edit as you make it, so when you change an amount it can fix the total. For anything bigger, such as rewording a section, adding a row or fixing a chart, you select the text or point at the element, leave a comment on the page, and the agent edits the file. Every open page reloads as soon as the file changes and briefly highlights what the agent changed, so you always see the current version and where it differs.
 
 ```bash
 npx github:jonasjancarik/inplace report.html
@@ -28,7 +28,7 @@ You need Node.js 22 or newer. Install the agent skill with the [skills CLI](http
 npx skills add jonasjancarik/inplace
 ```
 
-Then tell your agent, such as Claude Code or Codex, that you want to work on a document together in inplace, for example: "Let's work on report.html together in inplace." The agent starts inplace and opens the page in its built-in browser. Click into any paragraph, heading, list item or table cell to type, and comment on an element with the browser's comment tool when you want the agent to change something.
+Then tell your agent, such as Claude Code or Codex, that you want to work on a document together in inplace, for example: "Let's work on report.html together in inplace." The agent starts inplace and opens the page in its built-in browser. Click into any paragraph, heading, list item or table cell to type, and leave a comment on the page when you want the agent to change something.
 
 To try it without a document of your own, give your agent this prompt:
 
@@ -78,6 +78,16 @@ Everything else structural is the agent's job: adding sections, figures, tables 
 
 To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can't be typed into or moved, but it can still be commented on. Text that the page's own scripts fill in, such as a total added up from a table, is kept out of reach automatically: hovering over it explains that your agent has to change it.
 
+## Comments
+
+For a change you'd rather leave to the agent, select the text it's about and click **Comment** in the toolbar that appears, or press ⌘⌥M / Ctrl+Alt+M. Write what should change and press Enter (Shift+Enter starts a new line). For a chart, figure, table, row or list as a whole, hover over it and click the **Comment** button next to it.
+
+The commented text gets a yellow highlight and the element a small numbered marker; click either to read, edit or delete the comment. The list of changes behind the corner button shows all comments at the top, with whether the agent has dealt with them yet. When it has, the comment is marked done, its highlight goes away, and any note the agent left is shown under it. Done comments stay in the list until you clear them. If the agent or you change the text a comment was about, the comment stays and says so.
+
+Comments are kept outside your document, in a file in the system's temporary folder, so they survive a restart of inplace and never end up in the HTML. They reach the agent the same way your edits do (see below), and it marks them done with `inplace resolve` or the `resolve_comment` tool.
+
+This works in any browser, also on a tablet or for other people on your network. If your agent's own browser has a comment tool, as Claude's and Codex's do, you can keep using that too.
+
 ## What inplace changes in your file
 
 The first time the page is opened, inplace adds a `data-id` attribute to each block and container that doesn't have one yet:
@@ -98,10 +108,11 @@ While it runs, inplace prints one line for every change made on the page:
 ```text
 16:34:18 edited p-1: "…the flat roof of building B into a shared vegetable…" → "…the flat roof of building B into a <strong>shared</strong> vegetable…"
 16:34:52 changed p-3 from <p> to <h2>
+16:35:05 comment #3 on p-7 at "raised beds are shared": "Say how many beds each floor gets."
 16:35:21 moved li-1 before li-3 (inside ul-1)
 16:36:02 added p-5 <p> after p-2: "A structural survey last autumn confirmed…"
 16:36:40 removed tr-7, which the user had emptied
-16:36:45 paused after 5 changes: edited p-1, changed p-3, moved li-1, added p-5, removed tr-7
+16:36:45 paused after 6 changes: edited p-1, changed p-3, comment #3, moved li-1, added p-5, removed tr-7
 ```
 
 Only the changed part of a block is shown, with a little context. Once you've stopped making changes for a few seconds, a `paused after` line sums up what you did since the last one. The skill tells the agent to start inplace in the background and to read this output before it handles a comment or edits the file, so it notices a changed number and fixes the totals and charts that depend on it, or a moved section and the references that point to it. You can also just tell the agent to check your edits.
@@ -125,7 +136,7 @@ An agent normally reads these lines only when it next does something: when you l
 
 ### Running inplace as an MCP server for Claude Code
 
-`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
+`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, `get_comments` and `resolve_comment` list your comments and mark them done, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
 
 The server is also a Claude Code [channel](https://code.claude.com/docs/en/channels): each time you pause, it sends the session one message with that burst of changes, and Claude reacts even if it's sitting idle. Unlike a Monitor watch, this doesn't expire after 30 minutes.
 
@@ -144,7 +155,7 @@ Some things to know before you rely on it:
 - Channels are a research preview and need Claude Code 2.1.80 or newer. Team and Enterprise organizations have to enable them first.
 - inplace isn't on Claude Code's list of approved channels, so it only works with `--dangerously-load-development-channels`. Claude Code shows a warning each time you start it this way; choose **I am using this for local development**. The flag is ignored in non-interactive runs (`claude -p`).
 - Started without the flag, the tools still work, but no messages arrive while Claude is idle. It sees your edits through `get_edits` when it next does something.
-- Anyone who can open the page can type into it, and what they type reaches Claude. inplace marks it as document content, not instructions, and the skill tells Claude not to follow it, so only share the page on your network (see `--host` below) with people you trust.
+- Anyone who can open the page can type into it and comment on it, and what they write reaches Claude. inplace marks typed text as document content, not instructions, and tells Claude to treat comments as requests to change the document and nothing else, never to run commands, read other files or send anything anywhere. Still, only share the page on your network (see `--host` below) with people you trust.
 
 `--pause` and `--log` work as below; add them after `mcp` in the `claude mcp add` command. In this mode the change lines go to standard error and the log file, because standard output carries the MCP messages.
 
@@ -152,7 +163,7 @@ MCP is working on a standard way for servers to send events like this. Once Clau
 
 ### Using inplace with ChatGPT in the browser
 
-ChatGPT on the web can't open files on your computer, but it can use inplace's MCP tools through a tunnel. The document stays on your disk and you edit it on the inplace page as usual. ChatGPT reads it with `read_document`, changes it with `replace_element` (one element by its `data-id`) or `find_replace`, and sees your edits with `get_edits`.
+ChatGPT on the web can't open files on your computer, but it can use inplace's MCP tools through a tunnel. The document stays on your disk and you edit it on the inplace page as usual. ChatGPT reads it with `read_document`, changes it with `replace_element` (one element by its `data-id`) or `find_replace`, sees your edits with `get_edits`, and reads the comments you leave on the page with `get_comments`.
 
 There are two ways to connect:
 
@@ -199,6 +210,8 @@ All of the above keeps the document on your computer. Another option would be to
 inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
+inplace comments [--port 8765] [--all]
+inplace resolve <n> [--reply <text>] [--port 8765]
 inplace guide
 inplace mcp [--pause 5] [--log <file>]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
@@ -214,10 +227,14 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 
 | `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
 | `--timeout` | none | With `wait`: give up after this many seconds, print `{"status":"timeout"}` and exit with code 3. |
 | `--after` | where the last wait stopped | With `wait`: return the changes after this line number, the `next` that the previous `inplace wait` printed. |
+| `--all` | off | With `comments`: also list comments already marked done. |
+| `--reply` | none | With `resolve`: a short note shown under the comment on the page. |
 | `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
 | `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
 
 `inplace guide` prints the instructions an agent needs to work on a document with you.
+
+`inplace comments` prints the open comments left on the page as JSON, and `inplace resolve <n>` marks comment `n` as done, both through the inplace already running on `--port`.
 
 `inplace wait` waits until you pause editing in the inplace already running on `--port`, then prints that pause's change lines as JSON and exits.
 
