@@ -42,7 +42,33 @@
       background:#fff;color:#1f2a24;font:inherit}
     #inplace-toolbar.linking > :not(form){display:none}
     #inplace-toolbar.linking form{display:flex}
-    @media print{#inplace-status,#inplace-ui,#inplace-toolbar{display:none!important}[data-id][contenteditable]{box-shadow:none!important}}`;
+    #inplace-stash-badge{all:unset;position:fixed;left:14px;bottom:14px;z-index:2147483647;display:none;padding:7px 12px;
+      border-radius:7px;background:#9c3b1c;color:#fff;font:12px/1.3 -apple-system,system-ui,sans-serif;cursor:pointer;
+      box-shadow:0 3px 12px #0003}
+    #inplace-stash-badge:hover{background:#b4461f}
+    #inplace-stash{position:fixed;inset:0;z-index:2147483647;display:none;align-items:flex-start;justify-content:center;
+      padding:48px 16px;background:#1f2a2466;overflow:auto;font:14px/1.45 -apple-system,system-ui,sans-serif;color:#1f2a24}
+    #inplace-stash.open{display:flex}
+    #inplace-stash .panel{box-sizing:border-box;width:min(760px,100%);background:#fff;border-radius:10px;padding:20px 22px;
+      box-shadow:0 12px 40px #0004}
+    #inplace-stash h2{all:unset;display:block;font-size:17px;font-weight:600;margin:0 0 4px}
+    #inplace-stash .intro{margin:0 0 14px;color:#5b6660}
+    #inplace-stash .entry{border-top:1px solid #e4e8e5;padding:14px 0}
+    #inplace-stash .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:560px){#inplace-stash .cols{grid-template-columns:1fr}}
+    #inplace-stash .col h3{all:unset;display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+      color:#7a8580;margin-bottom:4px}
+    #inplace-stash .col div{white-space:pre-wrap;background:#f4f6f5;border-radius:6px;padding:8px 10px;max-height:220px;overflow:auto}
+    #inplace-stash .mine div{background:#fbefe9}
+    #inplace-stash .note{margin:10px 0 0;color:#9c3b1c}
+    #inplace-stash .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+    #inplace-stash button{all:unset;box-sizing:border-box;padding:6px 11px;border-radius:6px;background:#eef1ef;cursor:pointer;
+      font:13px/1.2 -apple-system,system-ui,sans-serif;color:#1f2a24}
+    #inplace-stash button:hover{background:#e0e5e2}
+    #inplace-stash button.primary{background:#1f2a24;color:#fff}
+    #inplace-stash button.primary:hover{background:#34433a}
+    #inplace-stash .close{float:right}
+    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-stash-badge{display:none!important}[data-id][contenteditable]{box-shadow:none!important}}`;
   document.head.append(style);
 
   const pill = document.createElement("div");
@@ -131,17 +157,22 @@
         saved.set(id, html);
         version = body.version;
         el.classList.remove("inplace-conflict");
-        status("Saved");
+        if (body.merged) {
+          // The file had a newer version of this block; the server combined
+          // both. Show the combined text.
+          status("Saved. Your agent changed this paragraph too, so both changes were combined.");
+          setTimeout(reload, 600);
+        } else status("Saved");
         return true;
       }
       if (res.status === 409) {
-        // The agent changed this same block. Keep both: show the file's
-        // version, and park the user's text so it can be pasted back.
+        // The file's version of this block changed in the same words. The
+        // server kept the user's version in its stash; show the file's.
         el.classList.add("inplace-conflict");
-        rememberConflict(id, el.innerText);
-        status("This paragraph was changed in the file while you were typing. Your text is copied to the clipboard; the page will now show the file's version.", "error", true);
-        try { await navigator.clipboard.writeText(el.innerText); } catch {}
-        setTimeout(reload, 1800);
+        rememberConflict(id);
+        showStashCount(body.stash);
+        status("Your agent changed the same words while you were typing. Your version is kept under \u201cSet aside\u201d at the bottom left.", "error", true);
+        setTimeout(reload, 2200);
         return false;
       }
       status(`Couldn't save: ${body.error || res.status}`, "error", true);
@@ -808,8 +839,8 @@
   }
 
   // --- live reload when the file changes on disk (agent edits) ---
-  function rememberConflict(id, text) {
-    try { sessionStorage.setItem(`${STATE_KEY}:conflict`, JSON.stringify({ id, text })); } catch {}
+  function rememberConflict(id) {
+    try { sessionStorage.setItem(`${STATE_KEY}:conflict`, JSON.stringify({ id })); } catch {}
   }
 
   async function reload() {
@@ -844,12 +875,117 @@
     if (conflict) {
       const el = document.querySelector(`[data-id="${CSS.escape(conflict.id)}"]`);
       el?.classList.add("inplace-conflict");
-      status("Showing the file's version of the highlighted paragraph. Your own text is on the clipboard.", "error", true);
+      status("The highlighted paragraph shows your agent\u2019s version. Yours is under \u201cSet aside\u201d at the bottom left.", "error", true);
     }
   }
   restore();
 
+  // --- edits set aside: the user's versions the server couldn't save or merge ---
+  const badge = document.createElement("button");
+  badge.id = "inplace-stash-badge";
+  badge.dataset.inplaceUi = "";
+  badge.type = "button";
+  const overlay = document.createElement("div");
+  overlay.id = "inplace-stash";
+  overlay.dataset.inplaceUi = "";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Set-aside edits");
+  document.body.append(badge, overlay);
+
+  function showStashCount(count) {
+    if (typeof count !== "number") return;
+    badge.textContent = count === 1 ? "1 edit set aside" : `${count} edits set aside`;
+    badge.style.display = count ? "block" : "none";
+    if (!count) overlay.classList.remove("open");
+    else if (overlay.classList.contains("open")) renderStash();
+  }
+
+  // Stashed HTML is shown as text only, never inserted into the page.
+  const textOf = (html) =>
+    new DOMParser().parseFromString(`<body>${html.replace(/<br\s*\/?>/gi, "\n")}`, "text/html").body.textContent.trim();
+
+  function make(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    Object.assign(node, props);
+    node.append(...children);
+    return node;
+  }
+
+  async function renderStash() {
+    let entries;
+    try {
+      entries = (await (await fetch("/__inplace/stash")).json()).entries;
+    } catch {
+      return status("Couldn't reach the editor server.", "error", true);
+    }
+    const panel = make("div", { className: "panel" },
+      make("button", { className: "close", type: "button", textContent: "Close", onclick: closeStash }),
+      make("h2", { textContent: "Edits set aside" }),
+      make("p", { className: "intro", textContent: "You and your agent changed the same words at the same time. The document kept your agent\u2019s version, and yours is saved here so you can choose what to keep." }));
+    if (!entries.length) panel.append(make("p", { textContent: "Nothing is set aside." }));
+    for (const entry of entries) {
+      const actions = make("div", { className: "actions" });
+      const act = (label, action, primary) => make("button", {
+        type: "button", textContent: label, className: primary ? "primary" : "",
+        onclick: () => resolveStash(entry.n, action),
+      });
+      if (entry.current !== null) {
+        actions.append(act("Use my version", "mine", true), act("Add mine below it", "below"));
+        actions.append(make("button", { type: "button", textContent: "Show in document", onclick: () => {
+          closeStash();
+          const target = document.querySelector(`[data-id="${CSS.escape(entry.id)}"]`);
+          target?.scrollIntoView({ block: "center" });
+          target?.classList.add("inplace-conflict");
+        } }));
+      }
+      actions.append(
+        make("button", { type: "button", textContent: "Copy my version", onclick: async (e) => {
+          try { await navigator.clipboard.writeText(textOf(entry.mine)); e.target.textContent = "Copied"; }
+          catch { e.target.textContent = "Couldn\u2019t copy"; }
+        } }),
+        act("Dismiss", "discard"),
+      );
+      const note = entry.current === null
+        ? "This paragraph is no longer in the document."
+        : entry.changed ? "This paragraph has changed again since. Your agent may already have combined both versions." : "";
+      panel.append(make("div", { className: "entry" },
+        make("div", { className: "cols" },
+          make("div", { className: "col mine" }, make("h3", { textContent: "Your version" }), make("div", { textContent: textOf(entry.mine) })),
+          make("div", { className: "col" }, make("h3", { textContent: "In the document now" }),
+            make("div", { textContent: entry.current === null ? "\u2014" : textOf(entry.current) }))),
+        ...(note ? [make("p", { className: "note", textContent: note })] : []),
+        actions));
+    }
+    overlay.replaceChildren(panel);
+  }
+
+  async function resolveStash(n, action) {
+    const res = await post("stash/resolve", { n, action });
+    if (!res.ok) {
+      status("Couldn't do that, probably because the paragraph changed again. The list is updated.", "error", true);
+      return renderStash();
+    }
+    version = res.body.version;
+    if (action !== "discard") {
+      closeStash();
+      reload();
+    } else renderStash();
+  }
+
+  async function openStash() {
+    await renderStash();
+    overlay.classList.add("open");
+  }
+  function closeStash() {
+    overlay.classList.remove("open");
+  }
+  badge.addEventListener("click", openStash);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeStash(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && overlay.classList.contains("open")) closeStash(); });
+
   const events = new EventSource("/__inplace/events");
+  events.addEventListener("stash", (e) => showStashCount(Number(e.data)));
   events.addEventListener("version", (e) => {
     if (busy) announced = e.data;
     else if (e.data !== version) reload();
