@@ -112,7 +112,7 @@
   <p class="intro">Your changes are saved as you go. For anything bigger, like a new section, a chart or a different layout, leave a comment for your agent.</p>
   <div class="features">
     <div class="feature">
-      <div class="vis" aria-hidden="true"><div class="doc">Open to all residents from May<span class="caret"></span></div></div>
+      <div class="vis" aria-hidden="true"><div class="doc" id="type-demo">Open to all residents<span id="type-text"> from May</span><span class="caret"></span></div></div>
       <div class="body"><h3>Type</h3><p>Click into any paragraph, heading, list item or table cell and change the text.</p></div>
     </div>
     <div class="feature">
@@ -302,6 +302,30 @@ tabs.forEach((t) => t.addEventListener("click", () => tabs.forEach((o) => {
     if (e.isIntersecting && !visible) { visible = true; play(); }
     else if (!e.isIntersecting && visible) { visible = false; run++; finalState(); }
   }, { threshold: 0.35 }).observe(sheet);
+})();
+
+// "Type" feature: type the end of the sentence, pause, erase, repeat
+(() => {
+  const el = document.getElementById("type-text"), caret = el.nextElementSibling, text = el.textContent;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let running = false;
+  const loop = async () => {
+    running = true;
+    caret.classList.add("busy");
+    for (let i = 0; i <= text.length; i++) { el.textContent = text.slice(0, i); await wait(i ? 85 + Math.random() * 70 : 600); }
+    caret.classList.remove("busy");
+    await wait(2200);
+    caret.classList.add("busy");
+    for (let i = text.length; i >= 0; i--) { el.textContent = text.slice(0, i); await wait(40); }
+    await wait(500);
+    running = false;
+  };
+  let visible = false;
+  new IntersectionObserver(async ([e]) => {
+    visible = e.isIntersecting;
+    while (visible && !running) await loop();
+  }).observe(document.getElementById("type-demo"));
 })();
 </script>
 <script src="theme.js"></script>

@@ -213,3 +213,4 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 .fine{margin:30px 0 0;color:var(--ink-3);font-size:15px;max-width:62ch}
 
 .top nav a[aria-current]{color:var(--ink)}
+.caret.busy{animation:none}
