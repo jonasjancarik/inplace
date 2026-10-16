@@ -16,17 +16,32 @@
     [data-id][contenteditable]:hover{box-shadow:0 0 0 2px #4a7bd433}
     [data-id][contenteditable]:focus{box-shadow:0 0 0 2px #4a7bd4aa}
     [data-id].inplace-conflict{box-shadow:0 0 0 2px #d4734a!important}
-    [data-id].inplace-changed{background-color:#b9a3ff3d!important}
-    [data-id].inplace-changed-fade{animation:inplace-shimmer 1.3s ease-out,inplace-glow 2.6s ease-out,inplace-fade 2.4s ease-in 1.4s both}
-    @keyframes inplace-fade{from{background-color:#b9a3ff3d}}
-    @keyframes inplace-shimmer{from,to{background-image:linear-gradient(105deg,transparent 38%,#fff3c8d0 50%,transparent 62%);
-      background-size:300% 100%;background-repeat:no-repeat}from{background-position:100% 0}to{background-position:0 0}}
-    @keyframes inplace-glow{from,to{box-shadow:0 0 0 1px #9b7bff00,0 0 0 #9b7bff00}25%{box-shadow:0 0 0 1px #9b7bff8c,0 0 22px #9b7bff59}}
-    .inplace-sparkle{position:fixed;z-index:2147483646;pointer-events:none;line-height:1;font-family:system-ui,sans-serif;
-      animation:inplace-sparkle .9s ease-out both}
-    @keyframes inplace-sparkle{from{opacity:0;transform:translateY(4px) scale(.2) rotate(0)}30%{opacity:1;transform:translateY(-4px) scale(1.15) rotate(40deg)}
-      to{opacity:0;transform:translateY(-16px) scale(.4) rotate(110deg)}}
-    @media (prefers-reduced-motion:reduce){[data-id].inplace-changed-fade{animation:inplace-fade 3.8s steps(1,end) both}.inplace-sparkle{display:none}}
+    [data-id].inplace-changed{background-color:#c4b2ff38!important}
+    [data-id].inplace-changed-fade{animation:inplace-ink .9s cubic-bezier(.2,.7,.2,1),inplace-shimmer 1.6s cubic-bezier(.4,0,.2,1) .1s,
+      inplace-glow 3s ease-out,inplace-fade 2.6s ease-in 1.8s both}
+    @keyframes inplace-ink{from{opacity:.25;filter:blur(3px)}to{opacity:1;filter:blur(0)}}
+    @keyframes inplace-fade{from{background-color:#c4b2ff38}}
+    @keyframes inplace-shimmer{from,to{background-image:linear-gradient(105deg,transparent 28%,#f6c3e033 40%,#fff6dcd9 50%,#cdbdff66 60%,transparent 72%);
+      background-size:320% 100%;background-repeat:no-repeat}from{background-position:100% 0}to{background-position:0 0}}
+    @keyframes inplace-glow{from,to{box-shadow:0 0 0 1px #a58bff00,0 0 0 #f29fc500,0 0 0 #9b7bff00}
+      22%{box-shadow:0 0 0 1px #b39cffa6,-10px 2px 26px #f29fc54d,10px -2px 26px #9b7bff59}}
+    .inplace-sparkle{position:fixed;z-index:2147483646;pointer-events:none;display:block;
+      filter:drop-shadow(0 0 3px currentColor) drop-shadow(0 0 7px currentColor);animation:inplace-sparkle var(--t) cubic-bezier(.2,.6,.3,1) both}
+    .inplace-sparkle svg{display:block;width:100%;height:100%}
+    .inplace-sparkle.dot{border-radius:50%;background:currentColor}
+    @keyframes inplace-sparkle{from{opacity:0;transform:translate(0,0) scale(0) rotate(0)}
+      30%{opacity:1;transform:translate(calc(var(--dx)*.35),calc(var(--dy)*.35)) scale(1) rotate(calc(var(--rot)*.4))}
+      to{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.2) rotate(var(--rot))}}
+    #inplace-status[data-owner=changes]{opacity:.96;border:1px solid transparent;padding:6px 11px 6px 9px;
+      background:linear-gradient(#1f2a24,#1f2a24) padding-box,linear-gradient(100deg,#9b7bff,#f29fc5,#e9c46a,#9b7bff) 0 0/300% 100% border-box;
+      animation:inplace-border 5s linear infinite}
+    @keyframes inplace-border{to{background-position:0 0,300% 0}}
+    #inplace-status .star{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1.5px;color:#f1d27a;
+      filter:drop-shadow(0 0 3px #f1d27a99);animation:inplace-twinkle 1.4s ease-in-out 2}
+    #inplace-status .star svg{display:block;width:100%;height:100%}
+    @keyframes inplace-twinkle{50%{transform:scale(.6) rotate(45deg);opacity:.6}}
+    @media (prefers-reduced-motion:reduce){[data-id].inplace-changed-fade{animation:inplace-fade 4.4s steps(1,end) both}.inplace-sparkle{display:none}
+      #inplace-status[data-owner=changes],#inplace-status .star{animation:none}}
     #inplace-status{position:fixed;right:14px;bottom:14px;z-index:2147483647;font:12px/1.3 -apple-system,system-ui,sans-serif;
       background:#1f2a24;color:#fff;padding:7px 11px;border-radius:7px;box-shadow:0 3px 12px #0003;max-width:340px;opacity:.88}
     #inplace-status[data-kind=error]{background:#9c3b1c}
@@ -858,6 +873,10 @@
     try { sessionStorage.setItem(`${STATE_KEY}:conflict`, JSON.stringify({ id })); } catch {}
   }
 
+  // Sparkles shown with the agent's changes.
+  const STAR = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 0C12.8 7.4 16.6 11.2 24 12 16.6 12.8 12.8 16.6 12 24 11.2 16.6 7.4 12.8 0 12 7.4 11.2 11.2 7.4 12 0Z"/></svg>';
+  const SPARKLE_COLORS = ["#f1d27a", "#b39cff", "#f4a9cf", "#fff3d1"];
+
   // A short hash of what a block holds, as the file has it. Blocks nested
   // inside count only by their id, so a container changes only when its own
   // content does, such as a row being added or removed.
@@ -941,17 +960,22 @@
     };
     const total = marks.length + removed;
     const summary = marks.length
-      ? total === 1 ? "\u2726 Your agent made a change." : `\u2726 Your agent made ${total} changes.`
-      : removed === 1 ? "\u2726 Your agent removed a paragraph." : `\u2726 Your agent removed ${removed} paragraphs.`;
+      ? total === 1 ? "Your agent made a change." : `Your agent made ${total} changes.`
+      : removed === 1 ? "Your agent removed a paragraph." : `Your agent removed ${removed} paragraphs.`;
     function render() {
       if (quiet) return;
+      const star = () => {
+        const icon = make("span", { className: "star" });
+        icon.innerHTML = STAR;
+        pill.prepend(icon);
+        pill.dataset.owner = "changes";
+      };
       if (!unseen.size) {
         status(summary, "info", 4000);
-        pill.dataset.owner = "changes";
-        return;
+        return star();
       }
       status(`${summary} ${unseen.size === 1 ? "One is" : `${unseen.size} are`} out of view.`, "info", true);
-      pill.dataset.owner = "changes";
+      star();
       pill.append(make("button", { type: "button", textContent: "Show", onclick: () => {
         const next = [...unseen][0];
         next?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -963,20 +987,33 @@
       reveal(el);
       if (pill.dataset.owner === "changes") render();
     }
-    // A shimmer sweeps across the block and a few sparkles rise from its edges.
+    // The text settles in from a soft blur while a shimmer sweeps across the
+    // block, and sparkles rise from its edges, following the shimmer.
     function reveal(el) {
       el.classList.replace("inplace-changed", "inplace-changed-fade");
       if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       const r = el.getBoundingClientRect();
-      for (let i = 0; i < 6; i++) {
-        const top = Math.random() < 0.5;
-        const spark = make("span", { className: "inplace-sparkle", textContent: i % 3 ? "\u2726" : "\u2727" });
+      const count = Math.round(Math.min(16, 7 + r.width / 90));
+      for (let i = 0; i < count; i++) {
+        const along = Math.random();
+        const dot = i % 3 === 2;
+        const size = dot ? 2 + Math.random() * 2.5 : 7 + Math.random() * 9;
+        const spark = make("span", { className: dot ? "inplace-sparkle dot" : "inplace-sparkle" });
+        if (!dot) spark.innerHTML = STAR;
         spark.dataset.inplaceUi = "";
-        spark.style.left = `${r.left + Math.random() * r.width - 6}px`;
-        spark.style.top = `${(top ? r.top - 10 : r.bottom - 4) + Math.random() * 8}px`;
-        spark.style.fontSize = `${9 + Math.random() * 7}px`;
-        spark.style.color = i % 2 ? "#e2b23c" : "#9b7bff";
-        spark.style.animationDelay = `${150 + i * 90}ms`;
+        const edge = Math.random();
+        const y = edge < 0.45 ? r.top : edge < 0.9 ? r.bottom : r.top + Math.random() * r.height;
+        Object.assign(spark.style, {
+          left: `${r.left + along * r.width - size / 2}px`,
+          top: `${y - size / 2 + (Math.random() - 0.5) * 10}px`,
+          width: `${size}px`, height: `${size}px`,
+          color: SPARKLE_COLORS[i % SPARKLE_COLORS.length],
+          animationDelay: `${120 + along * 900 + Math.random() * 180}ms`,
+        });
+        spark.style.setProperty("--t", `${900 + Math.random() * 700}ms`);
+        spark.style.setProperty("--dx", `${(Math.random() - 0.5) * 30}px`);
+        spark.style.setProperty("--dy", `${-12 - Math.random() * 26}px`);
+        spark.style.setProperty("--rot", `${(Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 120)}deg`);
         spark.addEventListener("animationend", () => spark.remove());
         document.body.append(spark);
       }

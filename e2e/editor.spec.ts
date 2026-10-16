@@ -241,7 +241,7 @@ test.describe("working alongside an agent", () => {
     await expect(block(editor, "tr", "Tools")).toBeInViewport();
     await expect(pill).toContainText("One is out of view.");
     await pill.getByRole("button", { name: "Show" }).click();
-    await expect(pill).toHaveText("\u2726 Your agent made 3 changes.");
+    await expect(pill).toHaveText("Your agent made 3 changes.");
     // Once seen, the tint fades away.
     await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(0, { timeout: 8_000 });
   });
