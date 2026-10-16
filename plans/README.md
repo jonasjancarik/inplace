@@ -4,7 +4,6 @@ Work we may do next. Each plan is meant to be picked up on its own, by a person 
 
 Most of these came from a review of [petergyang/human-review](https://github.com/petergyang/human-review) (MIT), a tool with a similar aim but a different model: the reviewer collects edits and comments in a side panel and sends them to the agent in one batch, and the page is written back to disk as the browser holds it. inplace keeps its own approach (one block changed at a time, stable `data-id`s, merging with the agent's edits). The plans only take the parts that fit it. Where a plan says to copy code from human-review, keep its MIT notice in a comment above the copied part.
 
-
 | Plan | Size | What it fixes or adds |
 | --- | --- | --- |
 | [Comments on the page](page-comments.md) | large | Comments only work in the Claude and Codex browsers. |
