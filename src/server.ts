@@ -370,6 +370,49 @@ export function serverUrls(port: number, host: string): string[] {
   return urls;
 }
 
+/**
+ * Whether a Host header names this computer: localhost, its own name, or an IP address.
+ * Any other name could be a domain an attacker has pointed at 127.0.0.1 (DNS rebinding).
+ */
+export function isLocalHost(host: string | undefined): boolean {
+  if (!host) return false;
+  let name: string;
+  try {
+    name = new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (name.endsWith(".")) name = name.slice(0, -1);
+  const own = hostname().toLowerCase().replace(/\.local$/, "");
+  return name === "localhost" || name.endsWith(".localhost") || name === own || name === `${own}.local` ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.startsWith("[");
+}
+
+/**
+ * Why a request is refused, or null if it may go ahead. Every request needs a Host naming
+ * this computer. Changes also need a JSON body, which browsers only send cross-origin after
+ * asking first, and, when the browser says where they come from, the page's own origin.
+ */
+function refusal(req: IncomingMessage): string | null {
+  const host = req.headers.host;
+  if (!isLocalHost(host)) return "unknown host";
+  if (req.method !== "POST") return null;
+  const origin = req.headers.origin;
+  if (origin !== undefined) {
+    let same = false;
+    try {
+      const url = new URL(origin);
+      same = url.protocol === "http:" && url.host === new URL(`http://${host}`).host;
+    } catch {
+      // "null" or garbage: not this page
+    }
+    if (!same) return "cross-origin request";
+  }
+  const type = (req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
+  if (type !== "application/json") return "expected application/json";
+  return null;
+}
+
 export function createInplaceServer(doc: Document): Server {
   const rootDir = dirname(resolve(doc.path));
   // Read once, so a running server always serves the editor that matches its
@@ -469,6 +512,8 @@ export function createInplaceServer(doc: Document): Server {
     const path = decodeURIComponent(url.pathname);
     Promise.resolve()
       .then(() => {
+        const refused = refusal(req);
+        if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
           return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove", "stash/resolve"].includes(action)
