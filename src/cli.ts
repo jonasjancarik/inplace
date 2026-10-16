@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
-import { get } from "node:http";
+import { get, request } from "node:http";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -14,6 +14,8 @@ import { ChangeFeed } from "./wait.js";
 const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                            [--pause 5] [--log <file>] [--on-pause <command>]
        inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
+       inplace comments [--port 8765] [--all]
+       inplace resolve <n> [--reply <text>] [--port 8765]
        inplace guide
        inplace mcp [--pause 5] [--log <file>]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
@@ -38,6 +40,10 @@ that pause's change lines and the number to pass as --after next time, as JSON, 
   --timeout <s>     give up after this many seconds: print {"status":"timeout"} and exit with code 3
   --after <n>       return the lines after line n (the "next" a previous wait printed)
 
+inplace comments prints the open comments the user left on the page, as JSON (--all: also
+those marked done). inplace resolve marks comment n as done once you've dealt with it; --reply
+adds a short note the user sees under the comment.
+
 inplace guide prints the instructions an agent needs to work on a document with you.
 
 inplace mcp runs an MCP server on stdin/stdout instead, with tools to open, read and edit a
@@ -60,11 +66,13 @@ const { values, positionals } = parseArgs({
     "on-pause": { type: "string" },
     timeout: { type: "string" },
     after: { type: "string" },
+    reply: { type: "string" },
+    all: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 });
 
-if (values.help || positionals.length !== 1) {
+if (values.help || positionals.length !== (positionals[0] === "resolve" ? 2 : 1)) {
   console.log(USAGE);
   process.exit(values.help ? 0 : 2);
 }
@@ -77,6 +85,8 @@ if (!(pauseSeconds >= 0)) {
 const logPath = values.log ? resolve(values.log) : undefined;
 if (positionals[0] === "wait") {
   waitForPause();
+} else if (positionals[0] === "comments" || positionals[0] === "resolve") {
+  comments();
 } else if (positionals[0] === "guide") {
   process.stdout.write(readFileSync(AGENT_GUIDE_PATH, "utf8"));
 } else if (positionals[0] === "mcp" && values.http) {
@@ -217,4 +227,45 @@ function waitForPause(): void {
   }
 
   attempt();
+}
+
+/** `inplace comments` and `inplace resolve`: one request to the running server. */
+function comments(): void {
+  const port = Number(values.port ?? "8765");
+  const host = values.host ?? "127.0.0.1";
+  const resolving = positionals[0] === "resolve";
+  const n = Number(positionals[1]);
+  if (resolving && !(Number.isInteger(n) && n > 0)) {
+    console.error("inplace: resolve takes the comment's number, e.g. inplace resolve 3");
+    process.exit(2);
+  }
+  const body = resolving ? JSON.stringify({ action: "resolve", n, ...(values.reply ? { reply: values.reply } : {}) }) : undefined;
+  const req = request({
+    host, port, method: resolving ? "POST" : "GET",
+    path: resolving ? "/__inplace/comment" : `/__inplace/comments${values.all ? "" : "?open=1"}`,
+    headers: { host: `localhost:${port}`, ...(body ? { "content-type": "application/json" } : {}) },
+  }, (res) => {
+    let text = "";
+    res.setEncoding("utf8");
+    res.on("data", (d: string) => (text += d));
+    res.on("end", () => {
+      let reply: { error?: string; comments?: unknown };
+      try {
+        reply = JSON.parse(text);
+      } catch {
+        reply = {};
+      }
+      if (res.statusCode !== 200) {
+        console.error(`inplace: ${reply.error ?? `the server answered ${res.statusCode}`}`);
+        process.exit(1);
+      }
+      const output = resolving ? `Marked comment #${n} as done.` : JSON.stringify(reply.comments, null, 2);
+      process.stdout.write(output + "\n", () => process.exit(0));
+    });
+  });
+  req.on("error", (e) => {
+    console.error(`inplace: can't reach inplace on port ${port} (${e.message}). Is it running?`);
+    process.exit(1);
+  });
+  req.end(body);
 }

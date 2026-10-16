@@ -68,7 +68,7 @@ test("serves a document through MCP tools and sends one channel event per pause"
 
     const { result } = await server.request("tools/list");
     assert.deepEqual(result.tools.map((t: { name: string }) => t.name),
-      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "close_document"]);
+      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "close_document"]);
 
     assert.equal((await server.tool("get_edits")).text, "No document is open.");
     const missing = await server.tool("open_document", { path: join(dir, "nope.html") });
@@ -135,6 +135,38 @@ test("wait_for_edits returns at the next pause and doesn't repeat what get_edits
     await post(url, "save", { id: "p-1", old: "Twelve trees", new: "Twelve oaks" });
     await new Promise((r) => setTimeout(r, 600));
     assert.match((await server.tool("wait_for_edits", { timeout_seconds: 0 })).text, /oaks[^]*paused after 1 change/);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("get_comments lists the page's comments and resolve_comment marks them done", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-mcp-"));
+  const path = join(dir, "report.html");
+  writeFileSync(path, "<!doctype html><body><p>Ten trees</p></body>");
+  const server = startServer(["--pause", "0.3"]);
+  try {
+    await server.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } });
+    const opened = await server.tool("open_document", { path, port: 0, host: "127.0.0.1" });
+    const url = opened.text.match(/http:\/\/localhost:\d+\//)![0];
+    await fetch(url).then((r) => r.text());
+    assert.equal((await server.tool("get_comments")).text, "No open comments.");
+
+    await post(url, "comment", { action: "add", id: "p-1", text: "Name the trees.", quote: "trees", prefix: "Ten ", suffix: "" });
+    const listed = JSON.parse((await server.tool("get_comments")).text);
+    assert.deepEqual(listed.map((c: Record<string, unknown>) => [c.n, c.id, c.quote, c.text, c.status]),
+      [[1, "p-1", "trees", "Name the trees.", "open"]]);
+    // The comment counts as a change: it ends up in a pause, and in get_edits.
+    assert.match((await server.tool("wait_for_edits", { timeout_seconds: 5 })).text,
+      /comment #1 on p-1 at "trees": "Name the trees\."\n.*paused after 1 change: comment #1$/);
+
+    assert.equal((await server.tool("resolve_comment", { n: 1, reply: "Oaks and limes." })).text, "Marked comment #1 as done.");
+    assert.ok((await server.tool("resolve_comment", { n: 7 })).isError);
+    assert.equal((await server.tool("get_comments")).text, "No open comments.");
+    const all = JSON.parse((await server.tool("get_comments", { include_done: true })).text);
+    assert.equal(all[0].status, "done");
+    assert.equal(all[0].reply, "Oaks and limes.");
+    assert.match((await server.tool("get_edits")).text, /comment #1 marked done by the agent: "Oaks and limes\."/);
   } finally {
     await server.stop();
   }
