@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  assignIds, BlockConflict, BlockNotFound, canonical, editableBlocks, editableIds, insertBlock, movableIds, moveBlock,
+  assignIds, blockHashes, BlockConflict, BlockNotFound, canonical, contentHash, editableBlocks, editableIds, insertBlock, movableIds, moveBlock,
   parse, patchBlock, removeBlock, retagBlock,
 } from "../src/htmldoc.js";
 import { describeEdit } from "../src/server.js";
@@ -199,4 +199,19 @@ test("blocks with buttons or form fields inside aren't editable", () => {
   const src = assignIds('<body><div class="cmd"><span>npm i</span><button>Copy</button></div><p>Text</p><label>Name <input></label></body>').source;
   assert.deepEqual(editableIds(src), ["p-1"]);
   assert.ok(src.includes('<div data-id="div-1" class="cmd">'), "still gets an id for comments");
+});
+
+test("block hashes match what a browser's innerHTML hashes to", () => {
+  const source = `<!doctype html><body><p data-id="p-1">Tom &amp; Jerry&nbsp;&#169;
+    <a href='x.html' title=a&quot;b>link</a><br/>next &lt;3 &gt; "quoted"</p><script>1</script></body>`;
+  // How Chrome writes out the same paragraph's innerHTML.
+  const browser = `Tom &amp; Jerry&nbsp;\u00a9\n    <a href="x.html" title="a&quot;b">link</a><br>next &lt;3 &gt; "quoted"`;
+  assert.equal(blockHashes(source)!["p-1"], contentHash(browser));
+  assert.notEqual(contentHash(browser), contentHash(browser.replace("Jerry", "Spike")));
+});
+
+test("block hashes are only sent for documents with scripts", () => {
+  assert.equal(blockHashes('<body><p data-id="p-1">Hi</p></body>'), null);
+  assert.ok(blockHashes('<body><p data-id="p-1">Hi</p><script src="x.js"></script></body>'));
+  assert.ok(blockHashes('<body onload="go()"><p data-id="p-1">Hi</p></body>'));
 });
