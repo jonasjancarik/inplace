@@ -13,6 +13,7 @@ import {
 } from "./htmldoc.js";
 import { type Author, diffBlocks, History } from "./history.js";
 import { mergeInner } from "./merge.js";
+import { type ChangeFeed } from "./wait.js";
 
 const EDITOR_PREFIX = "/__inplace/";
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "static");
@@ -413,7 +414,12 @@ function refusal(req: IncomingMessage): string | null {
   return null;
 }
 
-export function createInplaceServer(doc: Document): Server {
+export interface ServerOptions {
+  /** The change lines and pauses, for `/__inplace/wait`. Leave it out when pauses are turned off. */
+  feed?: ChangeFeed;
+}
+
+export function createInplaceServer(doc: Document, { feed }: ServerOptions = {}): Server {
   const rootDir = dirname(resolve(doc.path));
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
@@ -495,6 +501,28 @@ export function createInplaceServer(doc: Document): Server {
     }
   };
 
+  // `inplace wait`: hold the request open until the user pauses, then answer with the change lines
+  // since `after`. A space every 30 seconds shows the connection is alive (JSON allows it before the value).
+  const wait = (req: IncomingMessage, res: ServerResponse, query: URLSearchParams) => {
+    // Only for agents: a web page could otherwise hold waits open and use up pauses.
+    if (req.headers.origin || req.headers["sec-fetch-site"]) return json(res, 403, { error: "not for browsers" });
+    if (!feed) return json(res, 409, { error: "pauses are turned off (--pause 0), so there are none to wait for" });
+    const after = query.has("after") ? Number(query.get("after")) : feed.delivered;
+    const timeout = query.has("timeout") ? Number(query.get("timeout")) * 1000 : undefined;
+    if (!Number.isInteger(after) || after < 0 || (timeout !== undefined && !(timeout >= 0))) {
+      return json(res, 400, { error: "after must be a whole number and timeout a number of seconds" });
+    }
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    const beat = setInterval(() => res.write(" "), 30_000);
+    const gone = new AbortController();
+    res.on("close", () => gone.abort());
+    feed.wait(after, timeout, gone.signal).then((batch) => {
+      clearInterval(beat);
+      if (gone.signal.aborted) return;
+      res.end(JSON.stringify(batch ? { status: "pause", ...batch } : { status: "timeout", next: after }));
+    });
+  };
+
   const staticFile = (path: string, res: ServerResponse) => {
     const target = resolve(rootDir, "." + path);
     const rel = relative(rootDir, target);
@@ -525,6 +553,7 @@ export function createInplaceServer(doc: Document): Server {
           return send(res, 200, editorScript, "text/javascript; charset=utf-8");
         }
         if (path === EDITOR_PREFIX + "events") return events(req, res);
+        if (path === EDITOR_PREFIX + "wait") return wait(req, res, url.searchParams);
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
         if (path === EDITOR_PREFIX + "history") {
           doc.poll();

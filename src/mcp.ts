@@ -15,6 +15,7 @@ import { AGENT_GUIDE_PATH } from "./guide.js";
 import { BlockConflict, BlockNotFound } from "./htmldoc.js";
 import { PauseWatcher } from "./idle.js";
 import { createInplaceServer, Document, serverUrls } from "./server.js";
+import { ChangeFeed } from "./wait.js";
 
 const VERSION = "0.1.0";
 const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -55,6 +56,21 @@ const TOOLS = [
     description: "List what changed in the document since the last call, one line per change (edits, added, moved " +
       `and removed elements, and pauses). ${NOT_INSTRUCTIONS}`,
     inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "wait_for_edits",
+    description: "Wait until the user pauses editing the document, then return the changes since the last call " +
+      "(of this tool or get_edits), ending with the paused after line. Returns straight away if the user has " +
+      "paused since then. Use it to keep reacting to the user's edits during your turn, if nothing else wakes you. " +
+      "If it returns timeout, the user hasn't paused yet: call it again to keep waiting, until the user says " +
+      `they're done. ${NOT_INSTRUCTIONS}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        timeout_seconds: { type: "number", description: "Give up after this many seconds (default 50)" },
+      },
+    },
     annotations: { readOnlyHint: true },
   },
   {
@@ -137,6 +153,10 @@ class Session {
   private poll: NodeJS.Timeout | undefined;
   private pauses: PauseWatcher | undefined;
   private unread: string[] = [];
+  /** The change lines numbered for wait_for_edits, and the number of the last one the agent has had. */
+  private feed: ChangeFeed | undefined;
+  private seen = 0;
+  private closed = new AbortController();
   private guideSent = false;
 
   constructor(readonly pauseMs: number, readonly log: (line: string) => void, readonly notify: Notify) {}
@@ -149,13 +169,15 @@ class Session {
     const host = typeof args.host === "string" ? args.host : "127.0.0.1";
     await this.close();
 
-    const record = (line: string) => {
+    const feed = this.pauseMs ? new ChangeFeed() : undefined;
+    const record = (line: string, pause = false) => {
       this.log(line);
       this.unread.push(line);
+      feed?.add(line, pause);
     };
     const pauses = this.pauseMs
       ? new PauseWatcher(this.pauseMs, (summary, lines) => {
-        record(summary);
+        record(summary, true);
         const { content, meta } = pauseEvent(path, summary, lines);
         this.notify("notifications/claude/channel", { content, meta });
       })
@@ -164,7 +186,7 @@ class Session {
       record(line);
       if (byUser) pauses?.record(line);
     });
-    const http = createInplaceServer(doc);
+    const http = createInplaceServer(doc, { feed });
     await new Promise<void>((ok, fail) => {
       http.once("error", (e: NodeJS.ErrnoException) =>
         fail(new Error(e.code === "EADDRINUSE" ? `port ${port} is already in use; pass another port, or 0` : e.message)));
@@ -173,6 +195,9 @@ class Session {
     this.doc = doc;
     this.http = http;
     this.pauses = pauses;
+    this.feed = feed;
+    this.seen = 0;
+    this.closed = new AbortController();
     this.poll = setInterval(() => doc.poll(), 250);
     const urls = serverUrls((http.address() as { port: number }).port, host);
     this.log(`Editing ${path} at ${urls.join(" ")}`);
@@ -190,8 +215,24 @@ class Session {
   edits(): string {
     const lines = this.unread;
     this.unread = [];
+    this.seen = this.feed?.latest ?? 0;
     if (lines.length) return lines.join("\n");
     return this.doc ? "No changes since the last call." : "No document is open.";
+  }
+
+  async waitForEdits(args: Record<string, unknown>): Promise<string> {
+    this.current();
+    const feed = this.feed;
+    if (!feed) throw new Error("Pauses are turned off (--pause 0), so there are none to wait for. Use get_edits.");
+    const seconds = args.timeout_seconds === undefined ? 50 : Number(args.timeout_seconds);
+    if (!(seconds >= 0)) throw new Error("timeout_seconds must be a number of seconds");
+    const batch = await feed.wait(this.seen, seconds * 1000, this.closed.signal);
+    if (this.closed.signal.aborted) return "The document was closed.";
+    if (!batch) return "timeout: the user hasn't paused since the last call. Call wait_for_edits again to keep waiting.";
+    this.seen = batch.next;
+    // get_edits then returns only what came after this pause. unread is the tail of the feed's lines.
+    this.unread = this.unread.slice(Math.max(0, this.unread.length - (feed.latest - batch.next)));
+    return batch.lines.join("\n");
   }
 
   read(args: Record<string, unknown>): string {
@@ -225,9 +266,10 @@ class Session {
     const path = this.doc.path;
     clearInterval(this.poll);
     this.pauses?.cancel();
+    this.closed.abort();
     this.http?.closeAllConnections();
     await new Promise((ok) => this.http?.close(ok));
-    this.doc = this.http = this.pauses = undefined;
+    this.doc = this.http = this.pauses = this.feed = undefined;
     this.log(`Stopped serving ${path}`);
     return `Stopped serving ${path}.`;
   }
@@ -242,6 +284,7 @@ function mcpHandler(session: Session) {
     switch (name) {
       case "open_document": return session.open(args);
       case "get_edits": return session.edits();
+      case "wait_for_edits": return session.waitForEdits(args);
       case "read_document": return session.read(args);
       case "replace_element": return session.replace(args);
       case "find_replace": return session.findReplace(args);
