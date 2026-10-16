@@ -312,10 +312,70 @@ test.describe("moving", () => {
     await editor.mouse.down();
     await editor.mouse.move(t.x + 40, t.y + t.height - 3, { steps: 8 });
     await editor.mouse.up();
-    await expect(editor.locator("#inplace-status")).toHaveText("Moved");
+    await expect(editor.locator("#inplace-status")).toContainText("Moved.");
     const html = doc.read();
     expect(html.indexOf(`data-id="${thirdId}"`)).toBeLessThan(html.indexOf(`data-id="${firstId}"`));
     expect(doc.output).toContain(`moved ${firstId} after ${thirdId}`);
+  });
+});
+
+/** Drag the first item of the first list below the third, as the user would. */
+async function dragFirstItemDown(page: Page): Promise<void> {
+  const items = page.locator("ul > li");
+  await hoverBlock(page, items.nth(0));
+  const grip = page.getByRole("button", { name: "Drag to move this list item" });
+  const g = (await grip.boundingBox())!;
+  const t = (await items.nth(2).boundingBox())!;
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(t.x + 40, t.y + t.height - 3, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#inplace-status")).toContainText("Moved.");
+}
+
+test.describe("undoing", () => {
+  test("Undo in the message after a move puts the file back as it was", async ({ editor, doc }) => {
+    const original = doc.read();
+    const first = await idOf(editor.locator("ul > li").first());
+    await dragFirstItemDown(editor);
+    await expect.poll(() => doc.read()).not.toBe(original);
+    await editor.locator("#inplace-status").getByRole("button", { name: "Undo" }).click();
+    await expect.poll(() => doc.read()).toBe(original);
+    await expect(editor.locator("ul > li").first()).toHaveAttribute("data-id", first);
+    expect(doc.output).toMatch(new RegExp(`moved ${first} before \\S+ .*\\(undone\\)`));
+  });
+
+  test("Cmd/Ctrl+Z right after a move undoes it", async ({ editor, doc }) => {
+    const original = doc.read();
+    await dragFirstItemDown(editor);
+    await expect.poll(() => doc.read()).not.toBe(original);
+    await editor.keyboard.press("ControlOrMeta+z");
+    await expect.poll(() => doc.read()).toBe(original);
+  });
+
+  test("Cmd/Ctrl+Z after typing undoes only the typing", async ({ editor, doc }) => {
+    await dragFirstItemDown(editor);
+    const moved = doc.read();
+    const item = block(editor, "li", "Two beds stay open");
+    await caretAfter(item, "Two beds stay open");
+    await editor.keyboard.type("!");
+    await expect.poll(() => doc.read()).toContain("Two beds stay open!");
+    await editor.keyboard.press("ControlOrMeta+z");
+    await expect(item).not.toContainText("open!");
+    await editor.locator("h1").click();
+    await expect.poll(() => doc.read()).toBe(moved);
+  });
+
+  test("your own moves can be undone from the list of changes", async ({ editor, doc }) => {
+    const original = doc.read();
+    await dragFirstItemDown(editor);
+    await expect.poll(() => doc.read()).not.toBe(original);
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const panel = editor.getByRole("dialog", { name: "Changes" });
+    await panel.getByRole("button", { name: "Undo: Moved list item" }).click();
+    await expect.poll(() => doc.read()).toBe(original);
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("button", { name: /^Undo/ })).toHaveCount(0);
   });
 });
 

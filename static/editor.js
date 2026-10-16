@@ -120,6 +120,11 @@
     #inplace-changes .entry[data-by=you] .who,#inplace-changes .entry[data-by=you] .text{color:#5b6660}
     #inplace-changes .entry[data-by=you] ins{background:#e9eeeb;color:#1f2a24}
     #inplace-changes .empty{margin:0;padding:4px 8px 10px;color:#7a8580}
+    #inplace-changes li.undoable{display:flex;align-items:flex-start}
+    #inplace-changes .undo{all:unset;flex:none;margin:5px 4px 0;padding:0 6px;border-radius:5px;cursor:pointer;font-size:12px;
+      font-weight:600;color:#3d2a85;text-decoration:underline}
+    #inplace-changes .undo:hover{background:#f4f1ff}
+    #inplace-changes .undo:focus-visible{outline:2px solid #4a7bd4}
     #inplace-stash{position:fixed;inset:0;z-index:2147483647;display:none;align-items:flex-start;justify-content:center;
       padding:48px 16px;background:#1f2a2466;overflow:auto;font:14px/1.45 -apple-system,system-ui,sans-serif;color:#1f2a24}
     #inplace-stash.open{display:flex}
@@ -607,7 +612,10 @@
     const from = el.tagName.toLowerCase();
     if (from === to || !(await save(el))) return;
     const res = await post("retag", { id: el.dataset.id, from, to });
-    if (res.ok) return reload();
+    if (res.ok) {
+      rememberUndo("retag", el.dataset.id);
+      return reload();
+    }
     status("Couldn't change this paragraph. The page will reload with the file's version.", "error", true);
     setTimeout(reload, 1800);
   }
@@ -931,7 +939,8 @@
     const res = await post("move", { id: el.dataset.id, target: drop.target.dataset.id, position: drop.position });
     if (res.ok) {
       version = res.body.version;
-      return status("Moved");
+      rememberUndo("move", el.dataset.id);
+      return offerUndo("Moved.", "move", el.dataset.id);
     }
     status("Couldn't move this here, probably because the file changed in the meantime. The page will reload.", "error", true);
     setTimeout(reload, 1800);
@@ -976,6 +985,7 @@
       return setTimeout(reload, 1800);
     }
     version = res.body.version;
+    if (!content) rememberUndo("add", res.body.id);
     if (split !== null) saved.set(id, split);
     applyLists(res.body);
     const range = document.createRange();
@@ -1044,9 +1054,57 @@
     }
     version = res.body.version;
     applyLists(res.body);
+    rememberUndo("remove", el.dataset.id);
     el.remove();
     caretTo(previous, "end");
   }
+
+  // --- undoing the user's own moves, additions, removals and heading changes ---
+  // The server reverses them, so an undo also works after a reload. The steps
+  // this page made are kept for Cmd/Ctrl+Z, newest last.
+  const UNDO_KEY = `${STATE_KEY}:undo`;
+  let undoSteps = [];
+  try { undoSteps = JSON.parse(sessionStorage.getItem(UNDO_KEY) || "[]"); } catch {}
+  // Typing after a step leaves Cmd/Ctrl+Z to the browser, which undoes the typing.
+  let lastInputAt = 0;
+  document.addEventListener("input", () => { lastInputAt = Date.now(); });
+
+  function rememberUndo(kind, id) {
+    undoSteps = [...undoSteps.filter((s) => !(s.kind === kind && s.id === id)), { kind, id, at: Date.now() }].slice(-50);
+    try { sessionStorage.setItem(UNDO_KEY, JSON.stringify(undoSteps)); } catch {}
+  }
+
+  function offerUndo(text, kind, id) {
+    status(text, "info", 6000);
+    pill.append(make("button", { type: "button", textContent: "Undo", onclick: () => undoChange(kind, id) }));
+  }
+
+  async function undoChange(kind, id) {
+    undoSteps = undoSteps.filter((s) => !(s.kind === kind && s.id === id));
+    try { sessionStorage.setItem(UNDO_KEY, JSON.stringify(undoSteps)); } catch {}
+    for (const pendingId of pending()) {
+      const el = document.querySelector(`[data-id="${CSS.escape(pendingId)}"]`);
+      if (el && !(await save(el))) return;
+    }
+    const res = await post("undo", { kind, id });
+    if (!res.ok) {
+      status(res.body.error || "Couldn't undo this.", "error", 6000);
+      return loadHistory();
+    }
+    version = res.body.version;
+    // Reload to show the file as it is now, without marking the undone change
+    // as one of the agent's.
+    reload([...document.querySelectorAll("[data-id]")].map((el) => el.dataset.id).concat(id));
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "z" || composing(e)) return;
+    if (e.target.closest?.("input, textarea, [data-inplace-ui]")) return;
+    const step = undoSteps.at(-1);
+    if (!step || lastInputAt > step.at) return;
+    e.preventDefault();
+    undoChange(step.kind, step.id);
+  });
 
   // --- live reload when the file changes on disk (agent edits) ---
   function rememberConflict(id) {
@@ -1650,6 +1708,8 @@
   const HISTORY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7.5V12l3 2"/></svg>';
   const SEEN_KEY = `${STATE_KEY}:seen-changes`;
   let history = [];
+  let undoable = new Set(); // "kind id" of the user's changes that can still be undone
+  const UNDO_KINDS = { moved: "move", added: "add", removed: "remove", retagged: "retag" };
   let seenChanges = null;
   try { seenChanges = JSON.parse(sessionStorage.getItem(SEEN_KEY) || "null"); } catch {}
   const latestByAgent = () => history.reduce((n, e) => (e.by === "agent" ? Math.max(n, e.n) : n), 0);
@@ -1671,7 +1731,9 @@
 
   async function loadHistory() {
     try {
-      history = (await (await fetch("/__inplace/history")).json()).entries;
+      const data = await (await fetch("/__inplace/history")).json();
+      history = data.entries;
+      undoable = new Set((data.undoable || []).map((u) => `${u.kind} ${u.id}`));
     } catch {
       return;
     }
@@ -1792,6 +1854,7 @@
         make("button", { type: "button", textContent: "Review", onclick: () => { closeChanges(); openStash(); } })));
     }
     if (!history.length) list.append(make("p", { className: "empty", textContent: "Nothing has changed yet." }));
+    const offered = new Set(); // each change gets Undo once, on its newest entry
     for (const entry of [...history].reverse()) {
       const who = make("div", { className: "who" });
       if (entry.by === "agent") {
@@ -1805,9 +1868,17 @@
         const el = change.kind !== "removed" && document.querySelector(`[data-id="${CSS.escape(change.id)}"]`);
         const body = [make("span", { className: "kind", textContent: describe(change) }),
           make("span", { className: "text" }, ...snippet(change))];
-        items.append(make("li", {}, el
+        const item = make("li", {}, el
           ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change, entry.by) }, ...body)
-          : make("div", { className: "change" }, ...body)));
+          : make("div", { className: "change" }, ...body));
+        const kind = entry.by === "you" && UNDO_KINDS[change.fromTag ? "retagged" : change.kind];
+        if (kind && undoable.has(`${kind} ${change.id}`) && !offered.has(`${kind} ${change.id}`)) {
+          offered.add(`${kind} ${change.id}`);
+          item.classList.add("undoable");
+          item.append(make("button", { type: "button", className: "undo", textContent: "Undo",
+            ariaLabel: `Undo: ${describe(change)}`, onclick: () => undoChange(kind, change.id) }));
+        }
+        items.append(item);
       }
       const node = make("div", { className: "entry" }, who, items);
       node.dataset.by = entry.by;
