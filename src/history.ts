@@ -7,6 +7,16 @@ import { ID_ATTR, parse, type Node } from "./htmldoc.js";
 
 export type Author = "you" | "agent";
 
+/**
+ * Where a block sits: the id of the nearest block around it ("" at the top),
+ * and the elements with an id right before and after it in the same parent element.
+ */
+export interface Place {
+  parent: string;
+  prev?: string;
+  next?: string;
+}
+
 export interface BlockChange {
   id: string;
   kind: "added" | "removed" | "changed" | "moved";
@@ -14,6 +24,7 @@ export interface BlockChange {
   fromTag?: string; // set when the element's tag changed, e.g. p → h2
   before?: string; // plain text
   after?: string;
+  place?: Place; // where a removed or moved block was before the change
 }
 
 export interface HistoryEntry {
@@ -44,6 +55,7 @@ interface Block {
   parent: string; // id of the nearest block around it, "" at the top
   own: string; // its content without the blocks nested in it, for comparing
   text: string;
+  place: Place;
 }
 
 /** The nearest elements with an id inside `node`, not looking further into them. */
@@ -71,11 +83,17 @@ function blocksOf(source: string): { blocks: Map<string, Block>; order: Map<stri
         at = inner.end;
       }
       own += source.slice(at, child.innerEnd);
+      const siblings = child.parent!.children.filter((s) => s.attrs.has(ID_ATTR));
+      const k = siblings.indexOf(child);
+      const place: Place = { parent };
+      if (k > 0) place.prev = siblings[k - 1].attrs.get(ID_ATTR)!;
+      if (k < siblings.length - 1) place.next = siblings[k + 1].attrs.get(ID_ATTR)!;
       blocks.set(id, {
         tag: child.tag,
         parent,
         own: own.replace(/\s+/g, " ").replace(/>\s+</g, "><").trim(),
         text: plainText(source.slice(child.openEnd, child.innerEnd)),
+        place,
       });
       order.set(parent, [...(order.get(parent) ?? []), id]);
       visit(child, id);
@@ -83,6 +101,11 @@ function blocksOf(source: string): { blocks: Map<string, Block>; order: Map<stri
   };
   visit(parse(source), "");
   return { blocks, order };
+}
+
+/** Where the block with this id sits in the file, or undefined if it isn't there. */
+export function placeOf(source: string, id: string): Place | undefined {
+  return blocksOf(source).blocks.get(id)?.place;
 }
 
 /** Items of `a` that stay in place when `a` is reordered into `b` (a longest common subsequence). */
@@ -120,18 +143,20 @@ export function diffBlocks(beforeSource: string, afterSource: string): BlockChan
     } else if (a.own !== b.own || a.tag !== b.tag) {
       changes.push({ id, kind: "changed", tag: b.tag, ...(a.tag !== b.tag ? { fromTag: a.tag } : {}), before: a.text, after: b.text });
     } else if (moved.has(id) || a.parent !== b.parent) {
-      changes.push({ id, kind: "moved", tag: b.tag, after: b.text });
+      changes.push({ id, kind: "moved", tag: b.tag, after: b.text, place: a.place });
     }
   }
   for (const [id, a] of before.blocks) {
     if (!after.blocks.has(id) && (!before.blocks.has(a.parent) || after.blocks.has(a.parent)))
-      changes.push({ id, kind: "removed", tag: a.tag, before: a.text });
+      changes.push({ id, kind: "removed", tag: a.tag, before: a.text, place: a.place });
   }
   return changes;
 }
 
 /** Fold a later change to the same block into an earlier one. Returns false if they cancel out. */
 function fold(prev: BlockChange, next: BlockChange): boolean {
+  // Where the block was before the first of them.
+  if (!prev.place && next.place && prev.kind !== "added") prev.place = next.place;
   if (prev.kind === "added") {
     if (next.kind === "removed") return false;
     prev.tag = next.tag;
@@ -140,6 +165,7 @@ function fold(prev: BlockChange, next: BlockChange): boolean {
   }
   if (next.kind === "removed") {
     prev.kind = "removed";
+    prev.before ??= next.before;
     delete prev.after;
     delete prev.fromTag;
     return true;
