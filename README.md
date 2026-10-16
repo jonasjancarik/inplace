@@ -112,6 +112,7 @@ An agent normally reads these lines only when it next does something: when you l
 
 - **Claude Code** can run inplace as an MCP server and get a message each time you pause, through a channel (see below). Without that, it can watch the output with its Monitor tool and wake up at each `paused after` line. Either way, after you change an amount, the total is usually fixed a few seconds after you stop typing.
 - **Codex** can check in on a schedule with a heartbeat, which keeps the conversation's context. Ask it to check your inplace edits every few minutes. It reads the log file (`--log`) and stops straight away when nothing has changed.
+- **Any agent that can run commands**, such as Codex or Cursor, can run `inplace wait` during its turn. The command waits for your next pause, prints the changes, and exits, and the agent acts on them and runs it again. This works only while the agent is still working on your request: once it ends its turn, it stops following your edits until you write to it again. Through MCP, the same is the `wait_for_edits` tool.
 - **Any agent with a headless mode**, such as `claude -p` or `codex exec`, can be started by inplace itself with `--on-pause`. The command gets the changes on standard input and the document's path in `INPLACE_FILE`:
 
   ```bash
@@ -122,7 +123,7 @@ An agent normally reads these lines only when it next does something: when you l
 
 ### Running inplace as an MCP server for Claude Code
 
-`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
+`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
 
 The server is also a Claude Code [channel](https://code.claude.com/docs/en/channels): each time you pause, it sends the session one message with that burst of changes, and Claude reacts even if it's sitting idle. Unlike a Monitor watch, this doesn't expire after 30 minutes.
 
@@ -195,6 +196,7 @@ All of the above keeps the document on your computer. Another option would be to
 ```text
 inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
+inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace guide
 inplace mcp [--pause 5] [--log <file>]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
@@ -208,10 +210,14 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 
 | `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
 | `--log` | none | Also append every change line to this file. |
 | `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
+| `--timeout` | none | With `wait`: give up after this many seconds, print `{"status":"timeout"}` and exit with code 3. |
+| `--after` | where the last wait stopped | With `wait`: return the changes after this line number, the `next` that the previous `inplace wait` printed. |
 | `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
 | `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
 
 `inplace guide` prints the instructions an agent needs to work on a document with you.
+
+`inplace wait` waits until you pause editing in the inplace already running on `--port`, then prints that pause's change lines as JSON and exits.
 
 Images, stylesheets and other files next to the document are served too, so relative links keep working.
 

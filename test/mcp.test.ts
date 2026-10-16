@@ -68,7 +68,7 @@ test("serves a document through MCP tools and sends one channel event per pause"
 
     const { result } = await server.request("tools/list");
     assert.deepEqual(result.tools.map((t: { name: string }) => t.name),
-      ["open_document", "get_edits", "read_document", "replace_element", "find_replace", "close_document"]);
+      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "close_document"]);
 
     assert.equal((await server.tool("get_edits")).text, "No document is open.");
     const missing = await server.tool("open_document", { path: join(dir, "nope.html") });
@@ -105,6 +105,36 @@ test("serves a document through MCP tools and sends one channel event per pause"
 
     assert.match((await server.tool("close_document")).text, /Stopped serving/);
     await assert.rejects(fetch(url));
+  } finally {
+    await server.stop();
+  }
+});
+
+test("wait_for_edits returns at the next pause and doesn't repeat what get_edits returned", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-mcp-"));
+  const path = join(dir, "report.html");
+  writeFileSync(path, "<!doctype html><body><p>Ten trees</p></body>");
+  const server = startServer(["--pause", "0.3"]);
+  try {
+    await server.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } });
+    const opened = await server.tool("open_document", { path, port: 0, host: "127.0.0.1" });
+    const url = opened.text.match(/http:\/\/localhost:\d+\//)![0];
+    await fetch(url).then((r) => r.text());
+    await server.tool("get_edits"); // the ids being added
+    assert.match((await server.tool("wait_for_edits", { timeout_seconds: 0.2 })).text, /^timeout:/);
+
+    const waiting = server.tool("wait_for_edits", { timeout_seconds: 5 });
+    await post(url, "save", { id: "p-1", old: "Ten trees", new: "Twelve trees" });
+    const lines = (await waiting).text.split("\n");
+    assert.equal(lines.length, 2);
+    assert.match(lines[0], /edited p-1: "Ten trees" → "Twelve trees"/);
+    assert.match(lines[1], /paused after 1 change: edited p-1$/);
+    assert.equal((await server.tool("get_edits")).text, "No changes since the last call.");
+
+    // A pause that comes while nobody is waiting is returned by the next call straight away.
+    await post(url, "save", { id: "p-1", old: "Twelve trees", new: "Twelve oaks" });
+    await new Promise((r) => setTimeout(r, 600));
+    assert.match((await server.tool("wait_for_edits", { timeout_seconds: 0 })).text, /oaks[^]*paused after 1 change/);
   } finally {
     await server.stop();
   }
