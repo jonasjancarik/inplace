@@ -179,6 +179,22 @@ test.describe("formatting", () => {
     await expect.poll(() => sourceOf(doc, id)).toContain('<a href="https://example.com/survey">structural survey</a>');
   });
 
+  test("a javascript: address doesn't become a link", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    const before = sourceOf(doc, id);
+    await selectText(p, "structural survey");
+    await editor.keyboard.press(`${MOD}+k`);
+    const input = editor.getByLabel("Link address");
+    await input.fill("javascript:alert(1)");
+    await input.press("Enter");
+    await expect(editor.locator("#inplace-status")).toHaveText("Links can start with http, https, mailto or tel");
+    await expect(p.locator("a")).toHaveCount(0);
+    await p.blur();
+    await editor.waitForTimeout(800);
+    expect(sourceOf(doc, id)).toBe(before);
+  });
+
   test("typing ## and a space turns a paragraph into a heading, keeping its id", async ({ editor, doc }) => {
     const p = block(editor, "p", "The roof is already used");
     const id = await idOf(p);

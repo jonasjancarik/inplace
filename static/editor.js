@@ -542,6 +542,23 @@
     linkInput.select();
   }
 
+  // What to write as the link's address: relative addresses as typed, a bare
+  // domain with https:// and an email address with mailto: added. Null for
+  // any other scheme, such as javascript: or data:, which the file shouldn't get.
+  const LINK_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:"]);
+  function normalizeHref(value) {
+    let href = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+    if (!href || /^(#|\/|\.\.?\/|\?)/.test(href)) return href;
+    // "localhost:3000/x" starts with a host and port, not a scheme.
+    const hostPort = /^[^:/?#]+:\d+([/?#]|$)/.test(href) && !/^tel:/i.test(href);
+    if (!/^[a-z][\w+.-]*:/i.test(href) || hostPort) href = (href.includes("@") && !href.includes("/") ? "mailto:" : "https://") + href;
+    try {
+      return LINK_SCHEMES.has(new URL(href, "https://relative.invalid").protocol) ? href : null;
+    } catch {
+      return null;
+    }
+  }
+
   function endLink(apply) {
     const state = linking;
     linking = null;
@@ -553,8 +570,8 @@
     if (state.existing && state.range.collapsed) state.range.selectNodeContents(state.existing);
     sel.addRange(state.range);
     if (!apply) return updateToolbar();
-    let href = linkInput.value.trim();
-    if (href && !/^([a-z][\w+.-]*:|[#/?.])/i.test(href)) href = (href.includes("@") ? "mailto:" : "https://") + href;
+    const href = normalizeHref(linkInput.value);
+    if (href === null) return status("Links can start with http, https, mailto or tel", "error", 4000);
     const ctx = { range: state.range, block: state.block };
     if (href) applyFormat(ctx, "link", { href });
     else if (state.existing) applyFormat(ctx, "link");
