@@ -53,7 +53,7 @@ A comment usually arrives with the selected element's HTML (including its `data-
 2. Take the `data-id` from the element's HTML and find it in the file, e.g. `grep -n 'data-id="p-3"' document.html`. Don't search by text: the excerpt may be cut off and the user may have changed the wording since.
 3. If the element has no `data-id` (an inline `strong`, `span` or `a` inside a block, or something inplace skips), use the surrounding text and the screenshot to find it, then work on the nearest element with an id.
 4. Re-read that part of the file right before editing. The user may be typing in the same document, and their saves change the file under you.
-5. Make the change. The page reloads by itself; don't tell the user to refresh.
+5. Make the change. The page reloads by itself and highlights what you changed; don't tell the user to refresh.
 6. Reply briefly with what you changed. For wording changes, quote the new text.
 
 ## Editing rules

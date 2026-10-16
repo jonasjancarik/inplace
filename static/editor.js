@@ -16,9 +16,14 @@
     [data-id][contenteditable]:hover{box-shadow:0 0 0 2px #4a7bd433}
     [data-id][contenteditable]:focus{box-shadow:0 0 0 2px #4a7bd4aa}
     [data-id].inplace-conflict{box-shadow:0 0 0 2px #d4734a!important}
+    [data-id].inplace-changed{background-color:#f7dc6f73!important}
+    [data-id].inplace-changed-fade{animation:inplace-fade 3s ease-in 1.2s both}
+    @keyframes inplace-fade{from{background-color:#f7dc6f73}}
+    @media (prefers-reduced-motion:reduce){[data-id].inplace-changed-fade{animation-timing-function:steps(1,end)}}
     #inplace-status{position:fixed;right:14px;bottom:14px;z-index:2147483647;font:12px/1.3 -apple-system,system-ui,sans-serif;
       background:#1f2a24;color:#fff;padding:7px 11px;border-radius:7px;box-shadow:0 3px 12px #0003;max-width:340px;opacity:.88}
     #inplace-status[data-kind=error]{background:#9c3b1c}
+    #inplace-status button{all:unset;margin-left:10px;font-weight:600;text-decoration:underline;cursor:pointer}
     .inplace-grip{position:fixed;z-index:2147483646;width:18px;height:22px;padding:0;margin:0;border:0;border-radius:4px;
       background:#fff;color:#7a8580;box-shadow:0 1px 4px #0002;font:14px/22px system-ui,sans-serif;letter-spacing:-3px;
       text-align:center;cursor:grab;user-select:none;touch-action:none}
@@ -68,7 +73,8 @@
     #inplace-stash button.primary{background:#1f2a24;color:#fff}
     #inplace-stash button.primary:hover{background:#34433a}
     #inplace-stash .close{float:right}
-    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-stash-badge{display:none!important}[data-id][contenteditable]{box-shadow:none!important}}`;
+    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-stash-badge{display:none!important}[data-id][contenteditable]{box-shadow:none!important}
+      [data-id].inplace-changed,[data-id].inplace-changed-fade{background-color:transparent!important;animation:none!important}}`;
   document.head.append(style);
 
   const pill = document.createElement("div");
@@ -76,12 +82,14 @@
   pill.dataset.inplaceUi = "";
   document.body.append(pill);
   let pillTimer;
+  // `sticky` keeps the message up; a number keeps it up for that many ms.
   function status(text, kind = "info", sticky = false) {
     pill.textContent = text;
     pill.dataset.kind = kind;
+    delete pill.dataset.owner;
     pill.style.display = "";
     clearTimeout(pillTimer);
-    if (!sticky) pillTimer = setTimeout(() => (pill.style.display = "none"), 2500);
+    if (sticky !== true) pillTimer = setTimeout(() => (pill.style.display = "none"), sticky || 2500);
   }
   pill.style.display = "none";
 
@@ -843,14 +851,31 @@
     try { sessionStorage.setItem(`${STATE_KEY}:conflict`, JSON.stringify({ id })); } catch {}
   }
 
-  async function reload() {
+  // A short hash of what a block holds, as the file has it. Blocks nested
+  // inside count only by their id, so a container changes only when its own
+  // content does, such as a row being added or removed.
+  const tpl = document.createElement("template");
+  function fingerprint(el) {
+    tpl.innerHTML = saved.get(el.dataset.id) ?? el.innerHTML;
+    for (const inner of tpl.content.querySelectorAll("[data-id]")) inner.replaceWith(`\u0001${inner.dataset.id}\u0001`);
+    const text = tpl.innerHTML;
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+    return (h >>> 0).toString(36);
+  }
+
+  // `skip` lists blocks the user changed themselves, so they aren't shown as
+  // the agent's changes after the reload.
+  async function reload(skip = []) {
     for (const id of pending()) {
       const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
       if (el && !(await save(el))) return; // a conflict reloads on its own
     }
     const active = document.activeElement?.closest?.("[data-id]");
+    const blocks = [...document.querySelectorAll("[data-id]")].map((el) =>
+      [el.dataset.id, fingerprint(el), el.parentElement?.closest("[data-id]")?.dataset.id]);
     try {
-      sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: scrollY, focus: active?.dataset.id }));
+      sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: scrollY, focus: active?.dataset.id, blocks, skip }));
     } catch {}
     location.reload();
   }
@@ -877,8 +902,73 @@
       el?.classList.add("inplace-conflict");
       status("The highlighted paragraph shows your agent\u2019s version. Yours is under \u201cSet aside\u201d at the bottom left.", "error", true);
     }
+    if (state?.blocks) showChanges(state.blocks, new Set([...(state.skip || []), ...(conflict ? [conflict.id] : [])]), !!conflict);
   }
   restore();
+
+  // --- what the agent changed since the page last loaded ---
+  // Changed and new blocks are tinted, and the tint fades once the block has
+  // been on screen for a moment. `quiet` leaves the status message to a conflict.
+  function showChanges(before, skip, quiet) {
+    const old = new Map(before.map(([id, hash, parent]) => [id, { hash, parent }]));
+    const now = new Map([...document.querySelectorAll("[data-id]")].map((el) => [el.dataset.id, el]));
+    const added = [], changed = [];
+    for (const [id, el] of now) {
+      if (skip.has(id)) continue;
+      if (!old.has(id)) added.push(el);
+      else if (old.get(id).hash !== fingerprint(el)) changed.push(el);
+    }
+    // A new table counts as one change, not one per cell; a changed container
+    // is shown only when no change inside it explains it.
+    const newTops = added.filter((el) => !added.some((o) => o !== el && o.contains(el)));
+    const marks = [...newTops, ...changed.filter((el) =>
+      !changed.some((o) => o !== el && el.contains(o)) && !newTops.some((o) => el.contains(o)))];
+    const removed = [...old].filter(([id, { parent }]) => !now.has(id) && !skip.has(id) && (!parent || now.has(parent))).length;
+    if (!marks.length && !removed) return;
+    marks.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+
+    const unseen = new Set(marks);
+    const inView = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > innerHeight * 0.1 && r.top < innerHeight * 0.9;
+    };
+    const total = marks.length + removed;
+    const summary = marks.length
+      ? total === 1 ? "Your agent made a change." : `Your agent made ${total} changes.`
+      : removed === 1 ? "Your agent removed a paragraph." : `Your agent removed ${removed} paragraphs.`;
+    function render() {
+      if (quiet) return;
+      if (!unseen.size) {
+        status(summary, "info", 4000);
+        pill.dataset.owner = "changes";
+        return;
+      }
+      status(`${summary} ${unseen.size === 1 ? "One is" : `${unseen.size} are`} out of view.`, "info", true);
+      pill.dataset.owner = "changes";
+      pill.append(make("button", { type: "button", textContent: "Show", onclick: () => {
+        const next = [...unseen][0];
+        next?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      } }));
+    }
+    function seen(el) {
+      if (!unseen.delete(el)) return;
+      observer.unobserve(el);
+      el.classList.replace("inplace-changed", "inplace-changed-fade");
+      if (pill.dataset.owner === "changes") render();
+    }
+    const observer = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) seen(e.target);
+    }, { rootMargin: "-10% 0px -10% 0px" });
+    for (const el of marks) {
+      el.classList.add("inplace-changed");
+      el.addEventListener("animationend", () => el.classList.remove("inplace-changed-fade"), { once: true });
+      if (inView(el)) {
+        unseen.delete(el);
+        el.classList.replace("inplace-changed", "inplace-changed-fade");
+      } else observer.observe(el);
+    }
+    render();
+  }
 
   // --- edits set aside: the user's versions the server couldn't save or merge ---
   const badge = document.createElement("button");
@@ -928,7 +1018,7 @@
       const actions = make("div", { className: "actions" });
       const act = (label, action, primary) => make("button", {
         type: "button", textContent: label, className: primary ? "primary" : "",
-        onclick: () => resolveStash(entry.n, action),
+        onclick: () => resolveStash(entry, action),
       });
       if (entry.current !== null) {
         actions.append(act("Use my version", "mine", true), act("Add mine below it", "below"));
@@ -960,8 +1050,8 @@
     overlay.replaceChildren(panel);
   }
 
-  async function resolveStash(n, action) {
-    const res = await post("stash/resolve", { n, action });
+  async function resolveStash(entry, action) {
+    const res = await post("stash/resolve", { n: entry.n, action });
     if (!res.ok) {
       status("Couldn't do that, probably because the paragraph changed again. The list is updated.", "error", true);
       return renderStash();
@@ -969,7 +1059,7 @@
     version = res.body.version;
     if (action !== "discard") {
       closeStash();
-      reload();
+      reload([entry.id]);
     } else renderStash();
   }
 

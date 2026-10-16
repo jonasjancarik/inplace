@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+
 import { block, caretAfter, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
 
 const MOD = "ControlOrMeta";
@@ -210,6 +212,38 @@ test.describe("working alongside an agent", () => {
   test("an edit to the file on disk reloads the page", async ({ editor, doc }) => {
     doc.edit("Two beds stay open", "Three beds stay open");
     await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+  });
+
+  test("the agent's changes are highlighted, and Show scrolls to the ones out of view", async ({ editor, doc }) => {
+    await editor.setViewportSize({ width: 900, height: 360 });
+    const h1 = editor.locator("h1");
+    const mine = block(editor, "p", "The roof is already used");
+    await caretAfter(mine, "drying laundry");
+    await editor.keyboard.type(" daily");
+    await expect.poll(() => doc.read()).toContain("drying laundry daily");
+    // One write that changes three places, as an agent's edit might.
+    writeFileSync(doc.path, doc.read()
+      .replace(/A garden on the roof(?=<)/, "A garden on the roof of building B")
+      .replace("Two beds stay open", "Three beds stay open")
+      .replace(/(<tr[^>]*><td[^>]*>Water<)/, "<tr><td>Tools</td><td>Spades and gloves</td><td>€150</td></tr>\n$1"));
+
+    await expect(h1).toHaveText("A garden on the roof of building B");
+    const pill = editor.locator("#inplace-status");
+    await expect(pill).toContainText("Your agent made 3 changes. 2 are out of view.");
+    await expect(h1).toHaveClass(/inplace-changed-fade/);
+    await expect(block(editor, "li", "Three beds stay open")).toHaveClass(/inplace-changed\b/);
+    await expect(block(editor, "tr", "Tools")).toHaveClass(/inplace-changed\b/);
+    await expect(editor.locator("table")).not.toHaveClass(/inplace-changed/);
+    await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(3);
+    await expect(mine).not.toHaveClass(/inplace-changed/);
+
+    await pill.getByRole("button", { name: "Show" }).click();
+    await expect(block(editor, "tr", "Tools")).toBeInViewport();
+    await expect(pill).toContainText("One is out of view.");
+    await pill.getByRole("button", { name: "Show" }).click();
+    await expect(pill).toHaveText("Your agent made 3 changes.");
+    // Once seen, the tint fades away.
+    await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(0, { timeout: 8_000 });
   });
 
   test("your caret block survives the reload", async ({ editor, doc }) => {
