@@ -6,11 +6,12 @@
 // it covers what a tools-and-notifications server needs and nothing more.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { appendFileSync, existsSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createInterface } from "node:readline";
 import { extname, resolve } from "node:path";
 
+import { AGENT_GUIDE_PATH } from "./guide.js";
 import { BlockConflict, BlockNotFound } from "./htmldoc.js";
 import { PauseWatcher } from "./idle.js";
 import { createInplaceServer, Document, serverUrls } from "./server.js";
@@ -37,7 +38,8 @@ const TOOLS = [
   {
     name: "open_document",
     description: "Serve an HTML file so the user can edit it in the browser, and return the URLs to give them. One " +
-      "document at a time: opening another closes the current one. Adds data-id attributes to the file's elements.",
+      "document at a time: opening another closes the current one. Adds data-id attributes to the file's elements. " +
+      "The first call also returns the guide to working on the document with the user; follow it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -135,6 +137,7 @@ class Session {
   private poll: NodeJS.Timeout | undefined;
   private pauses: PauseWatcher | undefined;
   private unread: string[] = [];
+  private guideSent = false;
 
   constructor(readonly pauseMs: number, readonly log: (line: string) => void, readonly notify: Notify) {}
 
@@ -173,7 +176,10 @@ class Session {
     this.poll = setInterval(() => doc.poll(), 250);
     const urls = serverUrls((http.address() as { port: number }).port, host);
     this.log(`Editing ${path} at ${urls.join(" ")}`);
-    return [`Serving ${path}. Open it at:`, ...urls.map((u) => "  " + u)].join("\n");
+    // The guide comes with the first open, so agents get the instructions that match this version.
+    const guide = this.guideSent ? [] : ["", "How to work on the document with the user:", "", readFileSync(AGENT_GUIDE_PATH, "utf8")];
+    this.guideSent = true;
+    return [`Serving ${path}. Open it at:`, ...urls.map((u) => "  " + u), ...guide].join("\n");
   }
 
   private current(): Document {
