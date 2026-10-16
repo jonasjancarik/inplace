@@ -56,7 +56,7 @@ h1{font:400 clamp(40px,6.4vw,76px)/1.02 var(--serif);letter-spacing:-.02em;margi
 h1 em{font-style:italic;background:linear-gradient(transparent 62%,var(--mark-soft) 62%);padding:0 .06em}
 .lede{font-size:clamp(18px,2vw,21px);line-height:1.55;color:var(--ink-2);max-width:60ch;margin:0}
 .cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
-.install{display:grid;gap:10px;max-width:100%}
+.install{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;max-width:100%;min-width:0}
 .tabs{display:flex;gap:4px}
 .tabs button{border:0;background:transparent;color:var(--ink-3);font:500 13px var(--sans);padding:5px 10px;border-radius:6px;cursor:pointer}
 .tabs button:hover{color:var(--ink-2)}
