@@ -214,3 +214,19 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 
 .top nav a[aria-current]{color:var(--ink)}
 .caret.busy{animation:none}
+.vis .stack #add-row{max-height:40px;transition:max-height .3s,opacity .3s,margin .3s}
+.vis .stack #add-row.collapsed{max-height:0;opacity:0;margin-top:-8px;overflow:hidden}
+.vis .stack .empty .caret{display:inline-block}
+.vis .stack #add-row:not(.empty) .caret{display:none}
+.grip{transition:background .15s,box-shadow .15s}
+#fmt-word.bold{font-weight:700}
+#fmt-word.sel{background:var(--sel);border-radius:2px}
+#fmt-tb{transition:opacity .2s,transform .2s}
+#fmt-tb.away{opacity:0;transform:translateY(4px)}
+#move-stack.animated{position:relative;transition:opacity .3s}
+#move-stack.fade{opacity:0}
+#move-stack.animated .ghost{position:absolute;left:0;right:0;opacity:0;transition:opacity .15s}
+#move-stack.animated .ghost.show{opacity:1}
+#move-stack .lift{position:relative;z-index:1}
+.fine+.fine{margin-top:10px}
+#start h2{margin-bottom:34px}
