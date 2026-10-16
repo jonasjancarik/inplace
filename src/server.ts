@@ -12,6 +12,7 @@ import {
   removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
+import { CommentNotFound, CommentStore, EmptyComment } from "./comments.js";
 import { type Author, diffBlocks, History } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
@@ -83,6 +84,8 @@ export class Document {
   private last: string | null = null;
   /** Where set-aside edits are kept, so they survive a restart. Outside the document's folder on purpose. */
   readonly stashPath: string;
+  /** Comments made on the page, kept next to the stash. */
+  readonly comments: CommentStore;
 
   /**
    * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
@@ -95,6 +98,7 @@ export class Document {
     stashDir = join(tmpdir(), "inplace"),
   ) {
     this.stashPath = join(stashDir, `stash-${digest(resolve(path))}.json`);
+    this.comments = new CommentStore(join(stashDir, `comments-${digest(resolve(path))}.json`), (line, byUser) => this.log(line, byUser));
     try {
       this.stashed = JSON.parse(readFileSync(this.stashPath, "utf8"));
     } catch {
@@ -432,6 +436,9 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
   const editorScript = readFileSync(join(STATIC_DIR, "editor.js"));
+  // The page imports the comment anchoring helpers from the same compiled code the server runs.
+  const anchorScript = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "anchor.js"), "utf8")
+    .replace(/\n\/\/# sourceMappingURL=.*\n?$/, "\n");
   doc.onHistoryChange(() => {
     if (doc.history.entries.at(-1)?.by === "agent") agent.agentWrote();
   });
@@ -453,14 +460,17 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     const pushStash = () => res.write(`event: stash\ndata: ${doc.stashCount}\n\n`);
     const pushHistory = () => res.write(`event: history\ndata: ${doc.history.revision}\n\n`);
     const pushAgent = () => res.write(`event: agent\ndata: ${JSON.stringify(agent.summary())}\n\n`);
+    const pushComments = () => res.write(`event: comments\ndata: ${doc.comments.revision}\n\n`);
     push(doc.version);
     pushStash();
     pushHistory();
     pushAgent();
+    pushComments();
     const off = doc.onChange(push);
     const offStash = doc.onStashChange(pushStash);
     const offHistory = doc.onHistoryChange(pushHistory);
     const offAgent = agent.onChange(pushAgent);
+    const offComments = doc.comments.onChange(pushComments);
     const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
     // Keeps "checked 3 minutes ago" current, and lets "working" run out.
     const refreshAgent = setInterval(pushAgent, 60_000);
@@ -469,6 +479,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
       offStash();
       offHistory();
       offAgent();
+      offComments();
       clearInterval(ping);
       clearInterval(refreshAgent);
     });
@@ -521,6 +532,44 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     }
   };
 
+  // Comments: the page adds, edits, deletes and clears them; the agent resolves them.
+  const comment = async (req: IncomingMessage, res: ServerResponse) => {
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      return json(res, 400, { error: "invalid JSON" });
+    }
+    const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : undefined);
+    const n = typeof body.n === "number" ? body.n : undefined;
+    const comments = doc.comments;
+    try {
+      if (body.action === "add" && str("id") && str("text") !== undefined) {
+        doc.source(str("id")); // throws if there's no such element
+        const added = comments.add({
+          id: str("id")!, text: str("text")!, quote: str("quote"), prefix: str("prefix"), suffix: str("suffix"),
+        });
+        return json(res, 200, { comment: added });
+      }
+      if (body.action === "edit" && n !== undefined && str("text") !== undefined) {
+        return json(res, 200, { comment: comments.edit(n, str("text")!) });
+      }
+      if (body.action === "delete" && n !== undefined) return (comments.delete(n), json(res, 200, {}));
+      if (body.action === "resolve" && n !== undefined) {
+        const resolved = comments.resolve(n, str("reply"));
+        agent.agentWrote();
+        return json(res, 200, { comment: resolved });
+      }
+      if (body.action === "clear") return json(res, 200, { cleared: comments.clearDone() });
+      return json(res, 400, { error: "missing or invalid fields" });
+    } catch (e) {
+      if (e instanceof CommentNotFound) return json(res, 404, { error: e.message });
+      if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found" });
+      if (e instanceof EmptyComment) return json(res, 400, { error: e.message });
+      throw e;
+    }
+  };
+
   // `inplace wait`: hold the request open until the user pauses, then answer with the change lines
   // since `after`. A space every 30 seconds shows the connection is alive (JSON allows it before the value).
   const wait = (req: IncomingMessage, res: ServerResponse, query: URLSearchParams) => {
@@ -566,6 +615,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
         if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
+          if (action === "comment") return comment(req, res);
           return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove", "stash/resolve"].includes(action)
             ? change(req, res)
             : json(res, 404, { error: "not found" });
@@ -574,7 +624,13 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
         if (path === EDITOR_PREFIX + "editor.js") {
           return send(res, 200, editorScript, "text/javascript; charset=utf-8");
         }
+        if (path === EDITOR_PREFIX + "anchor.js") return send(res, 200, anchorScript, "text/javascript; charset=utf-8");
         if (path === EDITOR_PREFIX + "events") return events(req, res);
+        if (path === EDITOR_PREFIX + "comments") {
+          // The page asks too; a request that doesn't come from a browser is the agent checking.
+          if (!req.headers["sec-fetch-site"]) agent.checked();
+          return json(res, 200, { comments: doc.comments.list(url.searchParams.get("open") !== "1"), revision: doc.comments.revision });
+        }
         if (path === EDITOR_PREFIX + "wait") return wait(req, res, url.searchParams);
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
         if (path === EDITOR_PREFIX + "history") {
