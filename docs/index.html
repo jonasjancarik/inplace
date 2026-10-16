@@ -12,214 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-:root{
-  --paper:#f4efe4; --paper-2:#ebe4d4; --sheet:#fffdf8; --ink:#1f2a23; --ink-2:#4d5a52; --ink-3:#7b867f;
-  --line:#d9d1bf; --accent:#2f6b4f; --accent-ink:#fff; --mark:#f3d27a; --mark-soft:#fbefc8;
-  --focus:#3d6fd1; --sel:#c9d9f8; --code-bg:#1f2a23; --code-ink:#e9e4d6; --code-dim:#93a199; --add:#9fd3a8; --del:#e9a596;
-  --shadow:0 1px 2px #1f2a2314, 0 8px 28px #1f2a231f;
-  --serif:"Newsreader",Georgia,serif; --sans:"Instrument Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --paper:#161b18; --paper-2:#1d2420; --sheet:#232b26; --ink:#ece6d8; --ink-2:#b5bdb6; --ink-3:#86908a;
-    --line:#35403a; --accent:#7cc39c; --accent-ink:#10160f; --mark:#b8902f; --mark-soft:#4a3e1d;
-    --focus:#7ea5ef; --sel:#34507f; --code-bg:#0f1311; --code-ink:#e3ddcf; --code-dim:#7e8a83;
-    --shadow:0 1px 2px #0006, 0 10px 30px #0008;
-  }
-}
-:root[data-theme="dark"]{
-  --paper:#161b18; --paper-2:#1d2420; --sheet:#232b26; --ink:#ece6d8; --ink-2:#b5bdb6; --ink-3:#86908a;
-  --line:#35403a; --accent:#7cc39c; --accent-ink:#10160f; --mark:#b8902f; --mark-soft:#4a3e1d;
-  --focus:#7ea5ef; --sel:#34507f; --code-bg:#0f1311; --code-ink:#e3ddcf; --code-dim:#7e8a83;
-  --shadow:0 1px 2px #0006, 0 10px 30px #0008;
-}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 var(--sans);overflow-x:hidden}
-a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
-.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
-code,pre{font-family:var(--mono)}
-:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-
-/* top bar */
-.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
-.brand{display:flex;align-items:center;gap:10px;font:600 18px var(--sans);text-decoration:none}
-.brand svg{width:26px;height:26px}
-.top nav{display:flex;gap:22px;font-size:15px;color:var(--ink-2)}
-.top nav a{text-decoration:none}.top nav a:hover{color:var(--ink)}
-
-/* hero */
-.hero{padding:56px 0 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:28px}
-.eyebrow{font:500 13px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-h1{font:400 clamp(40px,6.4vw,76px)/1.02 var(--serif);letter-spacing:-.02em;margin:0;max-width:15ch}
-h1 em{font-style:italic;background:linear-gradient(transparent 62%,var(--mark-soft) 62%);padding:0 .06em}
-.lede{font-size:clamp(18px,2vw,21px);line-height:1.55;color:var(--ink-2);max-width:60ch;margin:0}
-.cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
-.install{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;max-width:100%;min-width:0}
-.tabs{display:flex;gap:4px}
-.tabs button{border:0;background:transparent;color:var(--ink-3);font:500 13px var(--sans);padding:5px 10px;border-radius:6px;cursor:pointer}
-.tabs button:hover{color:var(--ink-2)}
-.tabs button[aria-selected="true"]{background:var(--sheet);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
-.cmd.prompt span{white-space:normal;font-family:var(--sans);font-size:15px;line-height:1.45}
-.cmd.prompt span::before{content:none}
-.install [hidden]{display:none}
-.install-note{margin:0;font-size:14px;color:var(--ink-3)}
-.cmd{display:flex;align-items:center;gap:12px;background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:12px 12px 12px 16px;font:14px var(--mono);max-width:100%;box-shadow:var(--shadow)}
-.cmd span{white-space:nowrap;overflow:auto;scrollbar-width:none}
-.cmd span::before{content:"$ ";color:var(--code-dim)}
-.copy{flex:none;border:1px solid #ffffff2a;background:transparent;color:var(--code-ink);font:500 12px var(--sans);border-radius:6px;padding:5px 9px;cursor:pointer}
-.copy:hover{background:#ffffff14}
-
-/* demo */
-.demo{margin:36px 0 24px;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:18px;align-items:stretch}
-.window{background:var(--paper-2);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
-.chrome{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line)}
-.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:var(--line)}
-.url{flex:1;font:12px var(--mono);color:var(--ink-3);background:var(--sheet);border-radius:6px;padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.viewport{position:relative;padding:22px;flex:1}
-.sheet{background:var(--sheet);border-radius:4px;padding:30px 34px 34px;box-shadow:0 1px 3px #1f2a231a;font-family:Georgia,var(--serif);color:var(--ink);position:relative;transition:opacity .25s}
-.sheet.reloading{opacity:.35}
-.sheet .kicker{font:500 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
-.sheet h3{font:400 28px/1.15 var(--serif);margin:0 0 12px}
-.sheet p{margin:0 0 14px;font-size:16px;line-height:1.55}
-.sheet table{width:100%;border-collapse:collapse;font:14px var(--sans)}
-.sheet th,.sheet td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
-.sheet th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
-.sheet td:last-child,.sheet th:last-child{text-align:right;font-variant-numeric:tabular-nums}
-.sheet tr.total td{font-weight:600}
-.editing{outline:2px solid var(--focus);outline-offset:5px;border-radius:2px}
-.caret{display:inline-block;width:1.5px;height:1.05em;background:var(--focus);vertical-align:-2px;margin-left:1px;animation:blink 1s steps(1) infinite}
-@keyframes blink{50%{opacity:0}}
-.typed{background:var(--mark-soft)}
-.fresh td{animation:fresh 2.4s ease-out}
-.changed{animation:fresh 2.4s ease-out;border-radius:3px}
-@keyframes fresh{0%,40%{background:var(--mark-soft)}100%{background:transparent}}
-.row-enter td{padding-top:0;padding-bottom:0;line-height:0;opacity:0}
-.sheet tr td{transition:padding .35s,line-height .35s,opacity .35s}
-.pill{position:absolute;right:18px;top:14px;font:500 12px var(--sans);background:var(--ink);color:var(--paper);border-radius:7px;padding:6px 10px;opacity:0;transform:translateY(4px);transition:.25s}
-.pill.show{opacity:.92;transform:none}
-.comment{position:absolute;width:min(270px,80%);background:var(--sheet);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:11px 12px;font:14px/1.45 var(--sans);opacity:0;transform:translateY(6px);transition:.3s;pointer-events:none;z-index:2}
-.comment.show{opacity:1;transform:none}
-.comment .who{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;margin-bottom:4px}
-.comment .who b{width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:11px}
-.comment .target{font:11px var(--mono);color:var(--ink-3);margin-top:6px}
-.selected{outline:2px dashed var(--accent);outline-offset:4px;border-radius:2px}
-.sel{background:var(--sel);border-radius:2px}
-.cell-edit{outline:2px solid var(--focus);outline-offset:-2px;border-radius:2px}
-/* the editor's own toolbar and drag handle, as they look on the page */
-.tb{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:#1f2a24;box-shadow:0 3px 12px #0004;font:13px/1 -apple-system,system-ui,sans-serif;color:#e8ece9;white-space:nowrap}
-.tb span{min-width:26px;height:26px;padding:0 6px;border-radius:5px;line-height:26px;text-align:center;transition:background .15s}
-.tb span.on{background:#ffffff33;color:#fff}
-.tb span.sep{min-width:0;width:1px;height:16px;padding:0;margin:0 3px;background:#ffffff33}
-.tb .mono{font-family:ui-monospace,monospace}
-#d-toolbar{position:absolute;z-index:3;opacity:0;transform:translateY(4px);transition:opacity .2s,transform .2s;pointer-events:none}
-#d-toolbar.show{opacity:1;transform:none}
-.gutter{position:absolute;z-index:3;display:flex;gap:3px;opacity:0;transition:opacity .15s;pointer-events:none}
-.gutter.show{opacity:1}
-.grip.plus{letter-spacing:0;font-size:16px}
-.grip.on{background:#eef2fb;color:#1f2a24;box-shadow:0 0 0 2px var(--focus)}
-.grip{display:inline-block;width:18px;height:22px;border-radius:4px;background:#fff;color:#7a8580;box-shadow:0 1px 4px #0002;font:14px/22px system-ui,sans-serif;letter-spacing:-3px;text-align:center;flex:none}
-
-.agent{background:var(--code-bg);color:var(--code-ink);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;min-height:260px}
-.agent header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #ffffff14;font:500 13px var(--sans)}
-.agent header span{color:var(--code-dim);font-weight:400}
-.agent:has(.log .show) .idle{display:none}
-.idle{margin:0;padding:14px 16px 0;font:13px/1.6 var(--mono);color:var(--code-dim)}
-.log{padding:14px 16px;font:13px/1.6 var(--mono);flex:1;display:flex;flex-direction:column;gap:10px}
-.log div{opacity:0;transform:translateY(4px);transition:.3s}
-.log div.show{opacity:1;transform:none}
-.log .o{color:var(--code-dim)}
-.log .a{color:var(--code-ink)}
-.log .c{color:var(--add)}
-.log code{color:var(--mark)}
-.log .tag{display:inline-block;font:500 10.5px/1.7 var(--sans);letter-spacing:.04em;text-transform:uppercase;padding:0 6px;border-radius:4px;margin-right:7px;background:#ffffff14;color:var(--code-dim);vertical-align:1px}
-.log .a .tag{background:#9fd3a826;color:var(--add)}
-.replay{margin:0 16px 14px;align-self:flex-start;border:1px solid #ffffff2a;background:transparent;color:var(--code-ink);font:500 12px var(--sans);border-radius:6px;padding:6px 10px;cursor:pointer}
-.replay:hover{background:#ffffff14}
-.caption{font-size:14px;color:var(--ink-3);margin:6px 0 0}
-
-/* sections */
-section{padding:64px 0}
-section+section{border-top:1px solid var(--line)}
-h2{font:400 clamp(30px,3.6vw,42px)/1.12 var(--serif);letter-spacing:-.01em;margin:0 0 14px;max-width:24ch}
-.intro{color:var(--ink-2);max-width:62ch;margin:0 0 34px}
-.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:34px 40px}
-.points h3{font:600 17px var(--sans);margin:0 0 6px}
-.points p{margin:0;color:var(--ink-2)}
-.points .n{font:400 15px var(--serif);font-style:italic;color:var(--ink-3);display:block;margin-bottom:6px}
-
-.steps{list-style:none;padding:0;margin:0;display:grid;gap:26px;counter-reset:s}
-.steps li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 14px;counter-increment:s}
-.steps li::before{content:counter(s);grid-row:span 2;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font:400 17px var(--serif);color:var(--ink-2);background:var(--sheet)}
-.steps h3{font:600 17px var(--sans);margin:4px 0 2px}
-.steps p{margin:0 0 10px;color:var(--ink-2)}
-.steps li>*{grid-column:2}
-.steps .cmd{display:inline-flex;justify-self:start;box-shadow:none}
-
-.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:48px;align-items:start}
-pre.diff{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:18px 0;font-size:13px;line-height:1.7;overflow:auto;box-shadow:var(--shadow)}
-pre.diff span{display:block;padding:0 18px;white-space:pre}
-pre.diff .h{color:var(--code-dim)}
-pre.diff .d{color:var(--del);background:#e9a59614}
-pre.diff .p{color:var(--add);background:#9fd3a814}
-pre.changelog span{white-space:pre-wrap;padding-left:calc(18px + 9ch);text-indent:-9ch;margin-bottom:6px}
-pre.changelog i{font-style:normal;color:var(--code-dim)}
-.split p{color:var(--ink-2)}
-.split p:first-of-type{margin-top:0}
-.split code{font-size:.88em;background:var(--paper-2);padding:1px 5px;border-radius:4px}
-
-.features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
-.feature{background:var(--sheet);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
-.feature .vis{height:150px;background:var(--paper-2);border-bottom:1px solid var(--line);display:grid;place-items:center;padding:16px;position:relative}
-.feature .body{padding:18px 20px 20px}
-.feature h3{font:600 17px var(--sans);margin:0 0 6px}
-.feature p{margin:0;color:var(--ink-2);font-size:15px}
-.feature code,.note code,.points code{font-size:.88em;background:var(--paper-2);padding:1px 5px;border-radius:4px}
-.vis .doc{background:var(--sheet);border-radius:4px;box-shadow:0 1px 3px #1f2a231a;padding:12px 14px;font:15px/1.5 Georgia,var(--serif);color:var(--ink);width:min(250px,100%)}
-.vis .stack{display:grid;gap:8px;width:min(250px,100%)}
-.vis .stack div{display:flex;align-items:center;gap:8px;font:14px var(--sans)}
-.vis .stack div b{flex:1;font-weight:400;background:var(--sheet);border-radius:4px;padding:6px 10px;box-shadow:0 1px 3px #1f2a231a}
-.vis .stack .lift b{box-shadow:0 0 0 2px var(--focus),0 6px 16px #1f2a2333;transform:translateX(6px) rotate(-.6deg)}
-.vis .stack .ghost{height:3px;margin-left:26px;border-radius:2px;background:var(--focus)}
-.vis .stack .ghost b{display:none}
-.vis .stack .empty b{box-shadow:0 0 0 2px var(--focus);min-height:31px}
-.vis .stack .pad{width:18px;flex:none}
-.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
-.note{background:var(--sheet);border:1px solid var(--line);border-radius:12px;padding:20px}
-.note h3{font:600 16px var(--sans);margin:0 0 6px}
-.note p{margin:0;color:var(--ink-2);font-size:15px}
-
-footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between;border-top:1px solid var(--line)}
-.top-right{display:flex;align-items:center;gap:22px}
-.top nav a{white-space:nowrap}
-.theme{display:flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:8px}
-.theme button{display:grid;place-items:center;width:28px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--ink-3);cursor:pointer}
-.theme button:hover{color:var(--ink)}
-.theme button[aria-pressed="true"]{background:var(--sheet);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
-.theme svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-
-@media (max-width:1000px){.points{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:860px){
-  .demo{grid-template-columns:minmax(0,1fr)}
-  .agent{min-height:0}
-  .points,.split,.notes,.features{grid-template-columns:minmax(0,1fr)}
-  .split{gap:28px}
-}
-@media (max-width:560px){
-  .wrap{padding:0 16px}
-  .top nav{gap:14px;font-size:14px}.top nav .hide-sm{display:none}
-  .top-right{gap:12px}
-  .hero{padding:32px 0 20px}
-  .viewport{padding:10px}
-  .sheet{padding:20px 18px 24px}
-  .sheet h3{font-size:23px}
-  .pill{right:12px;top:10px}
-  .gutter .grip:not(.plus){display:none}
-  section{padding:48px 0}
-}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-</style>
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
 <div class="wrap">
@@ -231,7 +24,7 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
   </a>
   <div class="top-right">
     <nav>
-      <a href="#how" class="hide-sm">How it works</a>
+      <a href="how-it-works.html" class="hide-sm">How it works</a>
       <a href="#start">Get started</a>
       <a href="https://github.com/jonasjancarik/inplace">GitHub</a>
     </nav>
@@ -303,49 +96,36 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 </div>
 <p class="caption">You bold a word and add a row on the page. The agent sees the new row and fixes the total, then writes the paragraph you asked for in a comment.</p>
 
-<section>
-  <div class="split">
-    <div>
-      <h2>What happens to your file</h2>
-      <p>The first time the page opens, inplace adds a <code>data-id</code> to each block and container that doesn't have one. The ids don't change how the page looks or prints, and existing ids are never renamed.</p>
-      <p>After that, the file only changes when you make a change on the page, and then only in the block you edited or the element you moved. If the document is in git, every edit shows up as a small, readable diff.</p>
-    </div>
-    <pre class="diff" aria-label="Example diff"><span class="h">@@ garden-proposal.html @@</span><span class="d">-&lt;h1&gt;A garden on the roof&lt;/h1&gt;</span><span class="p">+&lt;h1 data-id="h1-1"&gt;A garden on the roof&lt;/h1&gt;</span><span class="d">-&lt;table aria-label="Estimated costs"&gt;</span><span class="p">+&lt;table data-id="table-1" aria-label="Estimated costs"&gt;</span><span class="h"> …</span><span class="d">-&lt;p data-id="p-4"&gt;Volunteers water in summer.&lt;/p&gt;</span><span class="p">+&lt;p data-id="p-4"&gt;Volunteers take turns watering in summer.&lt;/p&gt;</span></pre>
-  </div>
-</section>
-
 <section id="how">
   <h2>Why not just use a rich-text editor?</h2>
-  <p class="intro">Agents now write documents as hand-crafted HTML, with real typography, colour-coded tables, charts and print layouts. Rich-text editors turn that into their own format and lose half of it. inplace leaves the file alone and only lets you change what you can see.</p>
+  <p class="intro">Agents now write documents as carefully designed HTML, with colour-coded tables, charts and print layouts. A rich-text editor converts all of that into its own format, and much of the design gets lost on the way.</p>
   <div class="points">
-    <div><span class="n">One</span><h3>Your edits touch one element</h3><p>Typing changes the text inside a single paragraph, heading, list item or table cell. Adding or moving something touches only that element's markup. CSS, SVG charts and everything else stay byte-for-byte the same.</p></div>
-    <div><span class="n">Two</span><h3>The agent sees what you changed</h3><p>inplace reports every edit you make. The agent reads that before it acts, so a changed amount gets its total fixed and a moved section gets its references updated, without you having to ask.</p></div>
-    <div><span class="n">Three</span><h3>You can both work at once</h3><p>Edits to different blocks never get in each other's way. If the agent rewrites the paragraph you're typing in, your save is refused instead of overwriting its text, and what you typed goes to your clipboard.</p></div>
-    <div><span class="n">Four</span><h3>The HTML file is the document</h3><p>There's no editor format, database or export step. What you see in the browser is the file on disk, and what you print or send is that same file.</p></div>
-    <div><span class="n">Five</span><h3>Comments point at the right place</h3><p>Every block and table gets a stable <code>data-id</code>. When you comment on an element in your agent's browser, the agent gets that id and finds the exact spot in the file, even after the wording has changed.</p></div>
-    <div><span class="n">Six</span><h3>Formatting stays plain HTML</h3><p>Bold, italics, code and links are written as <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;code&gt;</code> and <code>&lt;a&gt;</code>, so the document's own styles decide how they look.</p></div>
+    <div><span class="n">One</span><h3>Your document stays as it is</h3><p>You edit the file itself, so there's nothing to import or export. Charts, colours and print layout stay exactly as your agent made them, and what you print or send is that same file.</p></div>
+    <div><span class="n">Two</span><h3>Your agent sees what you changed</h3><p>Change an amount and your agent fixes the total that depends on it. Move a section and it updates the &ldquo;see below&rdquo; that now points the wrong way, without you having to ask.</p></div>
+    <div><span class="n">Three</span><h3>You can both work at once</h3><p>You and your agent can edit different parts of the document at the same time. If it rewrites the paragraph you're typing in, nothing is lost: what you typed is copied to your clipboard.</p></div>
   </div>
+  <p class="more"><a href="how-it-works.html">How it works in detail &rarr;</a></p>
 </section>
 
 <section id="page">
   <h2>What you can do on the page</h2>
-  <p class="intro">Everything here is saved straight to the file after a short pause. Anything bigger, like a new section, a chart or a different layout, you ask for with a comment.</p>
+  <p class="intro">Your changes are saved as you go. For anything bigger, like a new section, a chart or a different layout, leave a comment for your agent.</p>
   <div class="features">
     <div class="feature">
       <div class="vis" aria-hidden="true"><div class="doc">Open to all residents from May<span class="caret"></span></div></div>
-      <div class="body"><h3>Type</h3><p>Click into any paragraph, heading, list item or table cell and change the text. Pasted text arrives without stray formatting.</p></div>
+      <div class="body"><h3>Type</h3><p>Click into any paragraph, heading, list item or table cell and change the text.</p></div>
     </div>
     <div class="feature">
       <div class="vis" aria-hidden="true"><div class="stack"><div><span class="pad"></span><span class="grip">⋮⋮</span><b>Raised beds</b></div><div><span class="grip plus on">+</span><span class="grip">⋮⋮</span><b>Soil and compost</b></div><div class="empty"><span class="pad"></span><span class="pad"></span><b><span class="caret"></span></b></div></div></div>
-      <div class="body"><h3>Add and remove</h3><p>Press Enter for a new paragraph or list item, or click the + beside a block or table row to add one below. It looks like its neighbours. To remove one, empty it and press Backspace once more.</p></div>
+      <div class="body"><h3>Add and remove</h3><p>Press Enter for a new paragraph or list item, or click the + beside a block or table row to add one below. To remove one, empty it and press Backspace once more.</p></div>
     </div>
     <div class="feature">
       <div class="vis" aria-hidden="true"><div style="display:grid;gap:10px;justify-items:center"><div class="tb"><span class="on"><b>B</b></span><span><i>I</i></span><span><s>S</s></span><span class="mono">&lt;/&gt;</span><span>Link</span><span class="sep"></span><span class="on">Text</span><span>H1</span><span>H2</span></div><div class="doc">proposes <strong>shared</strong> raised beds</div></div></div>
-      <div class="body"><h3>Format</h3><p>Select text for bold, italic, strikethrough, code or a link, or type Markdown such as <code>**bold**</code>. The same toolbar turns a paragraph into a heading, and so does typing <code>##</code> and a space.</p></div>
+      <div class="body"><h3>Format</h3><p>Select text to make it bold, italic or a link, or to turn a paragraph into a heading. Markdown shortcuts such as <code>**bold**</code> and <code>##</code> work too.</p></div>
     </div>
     <div class="feature">
       <div class="vis" aria-hidden="true"><div class="stack"><div><span class="grip">⋮⋮</span><b>Raised beds</b></div><div class="ghost"><b></b></div><div class="lift"><span class="grip">⋮⋮</span><b>Rain barrel</b></div><div><span class="grip">⋮⋮</span><b>Soil and compost</b></div></div></div>
-      <div class="body"><h3>Move</h3><p>Drag the handle beside a paragraph, list item, table row, figure or section to put it somewhere else among its neighbours. Its markup moves as it is.</p></div>
+      <div class="body"><h3>Move</h3><p>Drag the handle beside a paragraph, list item, table row or section to change its order.</p></div>
     </div>
   </div>
 </section>
@@ -354,30 +134,10 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
   <h2>Get started</h2>
   <p class="intro">You need Node.js 22 or newer and an agent with a built-in browser, such as Claude Code in the Claude app or Codex.</p>
   <ol class="steps">
-    <li><h3>Give your agent the skill</h3><p>It teaches the agent to start inplace, find commented elements by their id, keep the ids intact, and check totals and charts after you change a number.</p><div class="cmd"><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div></li>
-    <li><h3>Tell your agent what you want to work on</h3><p>For example: &ldquo;Let&rsquo;s work on report.html together in inplace.&rdquo; The agent starts inplace and opens the page in its browser, where you can type straight into the document and leave comments for the agent.</p></li>
+    <li><h3>Give your agent the skill</h3><p>It shows your agent how to open documents in inplace and keep up with your edits.</p><div class="cmd"><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div></li>
+    <li><h3>Tell your agent what you want to work on</h3><p>For example: &ldquo;Let&rsquo;s work on report.html together in inplace.&rdquo; Your agent opens the document in its browser, and you can start typing.</p></li>
   </ol>
-</section>
-
-<section>
-  <div class="split">
-    <div>
-      <h2>How the agent finds out about your edits</h2>
-      <p>While it runs, inplace prints one line for every change made on the page, showing only the part that changed. The skill has the agent start inplace in the background and read these lines before it handles a comment or touches the file.</p>
-      <p>That way it notices a changed amount and fixes the totals and charts that depend on it, or a moved section and the “see the table below” that now points the wrong way. You can also just tell it to check your edits.</p>
-      <p>When you stop typing for a few seconds, inplace sums up what you changed. Claude Code watches for that, or gets it as a message when it runs inplace as an MCP server, and catches up straight away. Codex can check in every few minutes, and any agent with a headless mode can be started by inplace itself.</p>
-    </div>
-    <pre class="diff changelog" aria-label="Example of inplace's change log"><span><i>16:34:18</i> edited p-1: "…proposes shared raised…" → "…proposes &lt;strong&gt;shared&lt;/strong&gt; raised…"</span><span><i>16:34:40</i> edited td-4: "€1,150" → "€1,350"</span><span><i>16:34:52</i> changed p-3 from &lt;p&gt; to &lt;h2&gt;</span><span><i>16:35:21</i> moved li-1 before li-3 (inside ul-1)</span><span><i>16:36:02</i> added p-5 &lt;p&gt; after p-2: "A structural survey last autumn confirmed…"</span><span><i>16:36:07</i> paused after 5 changes: edited p-1, edited td-4, changed p-3, moved li-1, added p-5</span></pre>
-  </div>
-</section>
-
-<section>
-  <h2>Good to know</h2>
-  <div class="notes" style="margin-top:26px">
-    <div class="note"><h3>Small changes on the page, the rest through the agent</h3><p>You can type, format, add and remove paragraphs, list items and rows, and reorder things among their neighbours. New sections or tables, moving something into another section, styling and charts are asked for with a comment.</p></div>
-    <div class="note"><h3>The page doesn't do the maths</h3><p>When you change an amount, the agent sees it and updates totals and charts, as long as it has the skill. Mark values that shouldn't change by hand with <code>data-locked</code>.</p></div>
-    <div class="note"><h3>Made for your own computer</h3><p>It serves one document with no login. Keep it on a network you trust, or start it with <code>--host 127.0.0.1</code>.</p></div>
-  </div>
+  <p class="fine">inplace runs on your computer without a login, so anyone on the same network who has the address can open and edit the document. If you don&rsquo;t need it on another device, ask your agent to keep it to this computer.</p>
 </section>
 
 <footer class="site">
@@ -401,18 +161,6 @@ tabs.forEach((t) => t.addEventListener("click", () => tabs.forEach((o) => {
   o.setAttribute("aria-selected", o === t);
   document.getElementById(o.getAttribute("aria-controls")).hidden = o !== t;
 })));
-
-// Theme switch: light, system or dark (remembered per browser when storage is available)
-const root = document.documentElement, themeBtns = document.querySelectorAll(".theme button");
-const setTheme = (t) => {
-  if (t === "light" || t === "dark") root.dataset.theme = t; else delete root.dataset.theme;
-  themeBtns.forEach((b) => b.setAttribute("aria-pressed", b.dataset.theme === (root.dataset.theme || "system")));
-};
-try { setTheme(localStorage.getItem("inplace-theme")); } catch { setTheme(); }
-themeBtns.forEach((b) => b.addEventListener("click", () => {
-  setTheme(b.dataset.theme);
-  try { b.dataset.theme === "system" ? localStorage.removeItem("inplace-theme") : localStorage.setItem("inplace-theme", b.dataset.theme); } catch {}
-}));
 
 // Demo timeline
 (() => {
@@ -556,5 +304,6 @@ themeBtns.forEach((b) => b.addEventListener("click", () => {
   }, { threshold: 0.35 }).observe(sheet);
 })();
 </script>
+<script src="theme.js"></script>
 </body>
 </html>
