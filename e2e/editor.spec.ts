@@ -256,7 +256,9 @@ test.describe("working alongside an agent", () => {
     await expect(corner).toBeVisible();
     await expect(corner.locator(".dot")).toHaveCount(0);
 
-    doc.edit(/A garden on the roof(?=<)/, "A garden on the roof of building B");
+    writeFileSync(doc.path, doc.read()
+      .replace(/A garden on the roof(?=<)/, "A garden on the roof of building B")
+      .replace("Two beds stay open for herbs", "Three beds stay open for herbs and flowers"));
     await expect(editor.locator("h1")).toHaveText("A garden on the roof of building B");
     await expect(corner.locator(".dot")).toHaveCount(1);
     await editor.getByRole("button", { name: "Changes" }).click();
@@ -267,7 +269,13 @@ test.describe("working alongside an agent", () => {
     await expect(entries).toHaveCount(2);
     await expect(entries.nth(0)).toContainText("Your agent");
     await expect(entries.nth(0)).toContainText("Edited heading");
-    await expect(entries.nth(0).locator("ins")).toHaveText("of building B");
+    const heading = entries.nth(0).locator(".change").filter({ hasText: "Edited heading" });
+    await expect(heading.locator("ins")).toHaveText("of building B");
+    // Only the changed words are marked, each where it changed.
+    const item = entries.nth(0).locator(".change").filter({ hasText: "Edited list item" });
+    await expect(item.locator("del")).toHaveText(["Two"]);
+    await expect(item.locator("ins")).toHaveText(["Three", "and flowers"]);
+    await expect(item.locator(".text")).toHaveText("Two Three beds stay open for herbs and flowers anyone can pick.");
     await expect(entries.nth(1)).toContainText("You");
     await expect(entries.nth(1).locator("ins")).toHaveText("daily");
 
