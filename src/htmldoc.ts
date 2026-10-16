@@ -475,6 +475,21 @@ export function removeBlock(source: string, blockId: string): string {
   return source.slice(0, cutStart(source, node)) + source.slice(node.end);
 }
 
+/** The element's markup as removeBlock cuts it out, with the line break and indentation in front of it. */
+export function cutChunk(source: string, blockId: string): string {
+  const node = findBlock(parse(source), blockId);
+  if (!node || !canMove(node)) throw new BlockNotFound(blockId);
+  return source.slice(cutStart(source, node), node.end);
+}
+
+/** Put markup cut out with cutChunk back in, right before or after the element with `anchorId`. */
+export function putChunk(source: string, chunk: string, anchorId: string, position: "before" | "after"): string {
+  const anchor = findBlock(parse(source), anchorId);
+  if (!anchor || !anchor.parent) throw new BlockNotFound(anchorId);
+  const at = position === "before" ? chunkStart(source, anchor) : anchor.end;
+  return source.slice(0, at) + chunk + source.slice(at);
+}
+
 /**
  * Replace the inside (`part: "inner"`) or the whole (`"outer"`) of the element
  * with this id, if it still matches `expected`, for agents that edit through

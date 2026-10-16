@@ -8,11 +8,11 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import { fileURLToPath } from "node:url";
 
 import {
-  assignIds, blockHashes, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
-  removeBlock, replaceElement, retagBlock,
+  assignIds, blockHashes, BlockConflict, BlockNotFound, cutChunk, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse,
+  patchBlock, putChunk, removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
-import { type Author, diffBlocks, History } from "./history.js";
+import { type Author, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
 import { type ChangeFeed } from "./wait.js";
@@ -69,6 +69,24 @@ export interface StashEntry {
   at: string; // ISO time
 }
 
+export type UndoKind = "move" | "add" | "remove" | "retag";
+
+/** One of the user's changes to the structure, with what it takes to reverse it. */
+interface UndoStep {
+  kind: UndoKind;
+  id: string;
+  tag: string;
+  before: string; // the file before the change
+  after: string; // and right after it
+  place?: Place; // move, remove: where the element was
+  chunk?: string; // remove: its markup
+  from?: string; // retag: the tags before and after
+  to?: string;
+}
+
+/** An undo that no longer fits the file, with a message for the user. */
+export class UndoGone extends Error {}
+
 /** The edited file, plus a version that changes whenever its content does. */
 export class Document {
   version = "";
@@ -81,6 +99,8 @@ export class Document {
   readonly history = new History();
   /** The file as inplace last saw it, with ids, to work out what each change did. */
   private last: string | null = null;
+  /** The user's recent moves, additions, removals and heading changes, oldest first, so they can be undone. */
+  private undos: UndoStep[] = [];
   /** Where set-aside edits are kept, so they survive a restart. Outside the document's folder on purpose. */
   readonly stashPath: string;
 
@@ -270,6 +290,7 @@ export class Document {
     const moved = moveBlock(text, id, target, position);
     if (moved !== text) {
       this.write(moved, "you");
+      this.pushUndo({ kind: "move", id, tag: findBlock(parse(text), id)!.tag, before: text, after: moved, place: placeOf(text, id) });
       const parent = findBlock(parse(moved), id)?.parent?.attrs.get("data-id");
       this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true);
     }
@@ -285,6 +306,7 @@ export class Document {
     const text = this.refresh();
     const inserted = insertBlock(text, id, position, tag, content, split);
     this.write(inserted.source, "you");
+    this.pushUndo({ kind: "add", id: inserted.id, tag, before: text, after: inserted.source });
     if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`, true);
     const what = squash(content) ? `: ${JSON.stringify(clip(squash(content), 200))}` : " (empty)";
     this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`, true);
@@ -293,7 +315,12 @@ export class Document {
 
   removeBlock(id: string): void {
     const text = this.refresh();
-    this.write(removeBlock(text, id), "you");
+    const removed = removeBlock(text, id);
+    this.write(removed, "you");
+    this.pushUndo({
+      kind: "remove", id, tag: findBlock(parse(text), id)!.tag, before: text, after: removed, place: placeOf(text, id),
+      chunk: cutChunk(text, id),
+    });
     this.log(`${time()} removed ${id}, which the user had emptied`, true);
   }
 
@@ -302,8 +329,98 @@ export class Document {
     const retagged = retagBlock(text, id, from, to);
     if (retagged !== text) {
       this.write(retagged, "you");
+      this.pushUndo({ kind: "retag", id, tag: to, before: text, after: retagged, from, to });
       this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true);
     }
+    return this.version;
+  }
+
+  // --- undoing the user's moves, additions, removals and heading changes ---
+
+  private pushUndo(step: UndoStep): void {
+    this.undos.push(step);
+    if (this.undos.length > 50) this.undos.shift();
+  }
+
+  /**
+   * The file with `step` reversed. If nothing else has changed since, that is exactly the file
+   * from before it; otherwise the element is put back next to one of its old neighbours.
+   */
+  private reverse(step: UndoStep, text: string): { text: string; where: string } {
+    const { id, place } = step;
+    const inside = place?.parent ? ` (inside ${place.parent})` : "";
+    const anchors = [[place?.next, "before"], [place?.prev, "after"]].filter(([a]) => a) as [string, "before" | "after"][];
+    const exact = text === step.after;
+    const gone = (why = "the elements around it have changed") => new UndoGone(`This can't be undone any more, because ${why}.`);
+    if (step.kind === "move") {
+      for (const [anchor, position] of anchors) {
+        try {
+          return { text: exact ? step.before : moveBlock(text, id, anchor, position), where: `${position} ${anchor}${inside}` };
+        } catch {
+          // try the other neighbour
+        }
+      }
+      throw gone();
+    }
+    if (step.kind === "add") {
+      if (exact) return { text: step.before, where: "" };
+      try {
+        return { text: removeBlock(text, id), where: "" };
+      } catch (e) {
+        throw gone(e instanceof BlockConflict ? "it has text in it now" : "it isn't there any more");
+      }
+    }
+    if (step.kind === "remove") {
+      if (findBlock(parse(text), id)) throw gone("it's back in the document already");
+      for (const [anchor, position] of anchors) {
+        try {
+          return { text: exact ? step.before : putChunk(text, step.chunk!, anchor, position), where: `${position} ${anchor}${inside}` };
+        } catch {
+          // try the other neighbour
+        }
+      }
+      throw gone();
+    }
+    try {
+      return { text: exact ? step.before : retagBlock(text, id, step.to!, step.from!), where: "" };
+    } catch {
+      throw gone("it has been changed again since");
+    }
+  }
+
+  /** The user's changes that can still be undone, as the kind of change and the element's id. */
+  undoable(): { kind: UndoKind; id: string }[] {
+    const text = this.refresh();
+    const found = new Map<string, { kind: UndoKind; id: string }>();
+    for (const step of [...this.undos].reverse()) {
+      const key = `${step.kind} ${step.id}`;
+      if (found.has(key)) continue;
+      try {
+        this.reverse(step, text);
+        found.set(key, { kind: step.kind, id: step.id });
+      } catch {
+        // can't be undone any more
+      }
+    }
+    return [...found.values()];
+  }
+
+  /** Undo the user's latest change of this kind to this element. Throws UndoGone if that's no longer possible. */
+  undo(kind: UndoKind, id: string): string {
+    const i = this.undos.findLastIndex((s) => s.kind === kind && s.id === id);
+    if (i === -1) throw new UndoGone("This can't be undone any more.");
+    const step = this.undos[i];
+    const text = this.refresh();
+    const { text: reversed, where } = this.reverse(step, text);
+    this.undos.splice(i, 1);
+    if (reversed !== text) this.write(reversed, "you");
+    const line = {
+      move: `moved ${id} ${where}`,
+      add: `removed ${id}, which the user had just added`,
+      remove: `added ${id} <${step.tag}> back ${where}`,
+      retag: `changed ${id} from <${step.to}> to <${step.from}>`,
+    }[kind];
+    this.log(`${time()} ${line} (undone)`, true);
     return this.version;
   }
 
@@ -497,6 +614,8 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
         (body.position === "before" || body.position === "after")) {
       const split = str("old") !== null && str("new") !== null ? { old: str("old")!, new: str("new")! } : undefined;
       apply = () => doc.insertBlock(id, body.position as "before" | "after", str("tag")!, str("content")!, split);
+    } else if (path === "undo" && id && ["move", "add", "remove", "retag"].includes(body.kind as string)) {
+      apply = () => doc.undo(body.kind as UndoKind, id);
     } else if (path === "remove" && id) {
       apply = () => (doc.removeBlock(id), {});
     } else if (path === "stash/resolve" && typeof body.n === "number" &&
@@ -507,7 +626,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     try {
       const result = apply();
       // Structure changed: send the page the new lists of editable and movable elements.
-      const lists = path === "insert" || path === "remove" || path === "stash/resolve"
+      const lists = path === "insert" || path === "remove" || path === "undo" || path === "stash/resolve"
         ? (() => { const { text } = doc.load(); return { editable: editableIds(text), movable: movableIds(text) }; })()
         : {};
       json(res, 200, { ...(typeof result === "string" ? {} : result), ...lists, version: doc.version });
@@ -517,6 +636,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
       }
       if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found", version: doc.version });
       if (e instanceof UnsafeLink) return json(res, 400, { error: e.message, version: doc.version });
+      if (e instanceof UndoGone) return json(res, 409, { error: e.message, version: doc.version });
       throw e;
     }
   };
@@ -566,7 +686,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
         if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
-          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove", "stash/resolve"].includes(action)
+          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove", "undo", "stash/resolve"].includes(action)
             ? change(req, res)
             : json(res, 404, { error: "not found" });
         }
@@ -579,7 +699,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
         if (path === EDITOR_PREFIX + "history") {
           doc.poll();
-          return json(res, 200, { entries: doc.history.entries, revision: doc.history.revision });
+          return json(res, 200, { entries: doc.history.entries, revision: doc.history.revision, undoable: doc.undoable() });
         }
         return staticFile(path, res);
       })
