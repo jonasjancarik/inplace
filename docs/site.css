@@ -47,10 +47,12 @@ h1 em{font-style:italic;background:linear-gradient(transparent 62%,var(--mark-so
 .tabs button{border:1px solid var(--line);background:transparent;color:var(--ink-3);font:500 13px var(--sans);padding:5px 10px;border-radius:6px;cursor:pointer}
 .tabs button:hover{color:var(--ink);border-color:var(--ink-3)}
 .tabs button[aria-selected="true"]{background:var(--sheet);color:var(--ink);border-color:var(--ink-3);cursor:default}
-.cmd.prompt span{white-space:normal;font-family:var(--sans);font-size:15px;line-height:1.45}
+.cmd.prompt span{white-space:normal;overflow-wrap:anywhere;font-family:var(--sans);font-size:15px;line-height:1.45}
 .cmd.prompt span::before{content:none}
 .install [hidden]{display:none}
 .install-note{margin:0;font-size:14px;color:var(--ink-3)}
+.try-label{margin:8px 0 0;font-size:15px;color:var(--ink-2)}
+.cmd.try{box-shadow:none}
 .cmd{display:flex;align-items:center;gap:12px;background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:12px 12px 12px 16px;font:14px var(--mono);max-width:100%;box-shadow:var(--shadow)}
 .cmd span{white-space:nowrap;overflow:auto;scrollbar-width:none}
 .cmd span::before{content:"$ ";color:var(--code-dim)}
@@ -135,13 +137,6 @@ h2{font:400 clamp(30px,3.6vw,42px)/1.12 var(--serif);letter-spacing:-.01em;margi
 .points p{margin:0;color:var(--ink-2)}
 .points .n{font:400 15px var(--serif);font-style:italic;color:var(--ink-3);display:block;margin-bottom:6px}
 
-.steps{list-style:none;padding:0;margin:0;display:grid;gap:26px;counter-reset:s}
-.steps li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 14px;counter-increment:s}
-.steps li::before{content:counter(s);grid-row:span 2;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font:400 17px var(--serif);color:var(--ink-2);background:var(--sheet)}
-.steps h3{font:600 17px var(--sans);margin:4px 0 2px}
-.steps p{margin:0 0 10px;color:var(--ink-2)}
-.steps li>*{grid-column:2}
-.steps .cmd{display:inline-flex;justify-self:start;box-shadow:none}
 
 .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:48px;align-items:start}
 pre.diff{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:18px 0;font-size:13px;line-height:1.7;overflow:auto;box-shadow:var(--shadow)}
@@ -230,4 +225,3 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 #move-stack.animated .ghost.show{opacity:1}
 #move-stack .lift{position:relative;z-index:1}
 .fine+.fine{margin-top:10px}
-#start h2{margin-bottom:34px}
