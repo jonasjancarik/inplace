@@ -789,8 +789,9 @@ test.describe("comments", () => {
     await expect(listed).toContainText("drying laundry");
 
     // The agent marks it done: it's greyed out with the reply, and can be cleared.
-    await fetch(new URL("/__inplace/comment", doc.url), { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "resolve", n: 1, reply: "Buildings A and B." }) });
+    const { execFileSync } = await import("node:child_process");
+    execFileSync(process.execPath, [new URL("../dist/src/cli.js", import.meta.url).pathname, "resolve", "1",
+      "--reply", "Buildings A and B.", "--port", new URL(doc.url).port]);
     await expect(listed).toContainText("Done");
     await expect(listed).toContainText("Your agent: Buildings A and B.");
     await expect(editor.locator("#inplace-comment-layer .marker")).toHaveCount(0);
