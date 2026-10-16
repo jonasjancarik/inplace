@@ -1795,12 +1795,21 @@
   const commentNoun = (el) => (el.tagName.toLowerCase() === "svg" ? "chart" : el.tagName === "IMG" ? "image" : nameOf(el));
 
   // Character offsets in an element's text, and back.
+  // Text as the file has it: words crossed out by "Show what changed" and
+  // other page-only marks don't count, but the words it marks as new do.
+  const NOT_IN_FILE = "[data-inplace-ui]:not(ins)";
+  function fileText(root) {
+    const copy = root.cloneNode(true);
+    for (const ui of copy.querySelectorAll(NOT_IN_FILE)) ui.remove();
+    return copy.textContent;
+  }
   function textOffset(el, node, offset) {
     const range = document.createRange();
     range.setStart(el, 0);
     range.setEnd(node, offset);
-    return range.toString().length;
+    return fileText(range.cloneContents()).length;
   }
+  const inUi = (node) => !!(node.nodeType === 1 ? node : node.parentElement)?.closest(NOT_IN_FILE);
   function rangeIn(el, start, end) {
     const range = document.createRange();
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -1928,13 +1937,15 @@
       const sel = getSelection();
       if (!sel.rangeCount) return;
       range = sel.getRangeAt(0);
+      if (inUi(range.startContainer) || inUi(range.endContainer))
+        return status("Crossed-out text is no longer in the document, so it can't be commented on.", "info", 4000);
       const node = range.commonAncestorContainer;
       el = (node.nodeType === 1 ? node : node.parentElement)?.closest("[data-id]");
       if (!el || el.closest("[data-inplace-ui]")) return;
     }
     let ctx = { quote: "", prefix: "", suffix: "" };
     if (range && !range.collapsed && anchoring) {
-      const text = el.textContent;
+      const text = fileText(el);
       const start = textOffset(el, range.startContainer, range.startOffset);
       const end = textOffset(el, range.endContainer, range.endOffset);
       // Leave out spaces at the edges of the selection.
@@ -2394,9 +2405,12 @@
       if (!gone) continue;
       const del = make("del", { className: "inplace-del", textContent: clipText(gone, 400) });
       del.dataset.inplaceUi = "";
+      // The space between the old and new words isn't in the file either.
+      const gap = make("span", { textContent: " " });
+      gap.dataset.inplaceUi = "";
       const spot = first ?? textAt(el, from);
-      if (spot) spot.before(del, " ");
-      else el.append(" ", del);
+      if (spot) spot.before(del, gap);
+      else el.append(gap, del);
     }
   }
 

@@ -394,6 +394,28 @@ test.describe("showing what changed", () => {
     await expect(page.getByRole("region", { name: "What changed" })).toBeVisible();
   }
 
+  test("a comment added while changes are shown leaves the crossed-out words out", async ({ editor, doc }) => {
+    agentEdits(doc);
+    await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+    await turnOn(editor);
+    const p = block(editor, "p", "October confirmed");
+
+    await selectText(p.locator("del"), "autumn");
+    await editor.keyboard.press(`${MOD}+Alt+KeyM`);
+    await expect(editor.locator("#inplace-status")).toContainText("Crossed-out text is no longer in the document");
+    await expect(editor.getByRole("dialog", { name: "Comment" })).toBeHidden();
+
+    await selectText(p, "confirmed");
+    await editor.keyboard.press(`${MOD}+Alt+KeyM`);
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await box.getByRole("textbox").fill("Who did the survey?");
+    await box.getByRole("textbox").press("Enter");
+    await expect.poll(() => doc.output).toContain('at "confirmed": "Who did the survey?"');
+    const [comment] = await editor.evaluate(async () => (await (await fetch("/__inplace/comments")).json()).comments);
+    expect(comment.prefix).toMatch(/last October $/);
+    expect(comment.prefix).not.toContain("autumn");
+  });
+
   test("the page shows the agent's changes in place, read-only, and leaving restores it", async ({ editor, doc }) => {
     agentEdits(doc);
     await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
