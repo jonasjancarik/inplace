@@ -30,14 +30,34 @@ test("removed blocks and changed tags are reported", () => {
     .replace(`<p data-id="p-2">Second &amp; last.</p>`, `<h2 data-id="p-2">Second &amp; last.</h2>`);
   assert.deepEqual(diffBlocks(BASE, after), [
     { id: "p-2", kind: "changed", tag: "h2", fromTag: "p", before: "Second & last.", after: "Second & last." },
-    { id: "p-1", kind: "removed", tag: "p", before: "First paragraph." },
+    { id: "p-1", kind: "removed", tag: "p", before: "First paragraph.", place: { parent: "", prev: "h1-1", next: "p-2" } },
   ]);
 });
 
 test("a moved block is reported once, not its neighbours", () => {
   const p1 = `<p data-id="p-1">First paragraph.</p>`;
   const after = BASE.replace(p1 + "\n", "").replace(`<table`, p1 + "\n<table");
-  assert.deepEqual(diffBlocks(BASE, after), [{ id: "p-1", kind: "moved", tag: "p", after: "First paragraph." }]);
+  assert.deepEqual(diffBlocks(BASE, after), [
+    { id: "p-1", kind: "moved", tag: "p", after: "First paragraph.", place: { parent: "", prev: "h1-1", next: "p-2" } },
+  ]);
+});
+
+test("a removed row remembers its neighbours in the table, not the table's neighbours", () => {
+  const after = BASE.replace(/<tr data-id="tr-1">.*?<\/tr>\n/, "");
+  assert.deepEqual(diffBlocks(BASE, after), [
+    { id: "tr-1", kind: "removed", tag: "tr", before: "A 1", place: { parent: "table-1", next: "tr-2" } },
+  ]);
+});
+
+test("a block moved and then removed keeps the place it had first", () => {
+  const p1 = `<p data-id="p-1">First paragraph.</p>`;
+  const moved = BASE.replace(p1 + "\n", "").replace(`<table`, p1 + "\n<table");
+  const history = new History();
+  history.add("you", diffBlocks(BASE, moved));
+  history.add("you", diffBlocks(moved, moved.replace(p1, "")));
+  assert.deepEqual(history.entries[0].changes, [
+    { id: "p-1", kind: "removed", tag: "p", before: "First paragraph.", place: { parent: "", prev: "h1-1", next: "p-2" } },
+  ]);
 });
 
 test("nothing is reported when only whitespace between blocks changes", () => {
