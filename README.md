@@ -36,7 +36,7 @@ To try it without a document of your own, give your agent this prompt:
 Download https://raw.githubusercontent.com/jonasjancarik/inplace/main/examples/garden-proposal.html into this folder, open it in inplace, and walk me through how we can work on it together. Check the inplace skill for what I can do on the page.
 ```
 
-The skill tells the agent how to run inplace, find a commented element by its `data-id`, keep the ids intact, and check totals and charts after you change a number.
+The skill tells the agent how to start inplace. The detailed instructions, such as how to find a commented element by its `data-id`, keep the ids intact, and check totals and charts after you change a number, come from inplace itself (`inplace guide`, or the first `open_document` call over MCP), so they always match the version that runs, even if the installed skill is older.
 
 ### Running it yourself
 
@@ -191,6 +191,7 @@ Some things to know before you rely on it:
 ```text
 inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
+inplace guide
 inplace mcp [--pause 5] [--log <file>]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
 ```
@@ -205,6 +206,8 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 
 | `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
 | `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
 | `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
+
+`inplace guide` prints the instructions an agent needs to work on a document with you.
 
 Images, stylesheets and other files next to the document are served too, so relative links keep working.
 

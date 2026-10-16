@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-import { appendFileSync, existsSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
+import { AGENT_GUIDE_PATH } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
 import { createInplaceServer, Document, serverUrls } from "./server.js";
 
 const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                            [--pause 5] [--log <file>] [--on-pause <command>]
+       inplace guide
        inplace mcp [--pause 5] [--log <file>]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
 
@@ -24,6 +26,8 @@ Edit an HTML document in the browser while an agent edits the same file.
   --log <file>      also append every change line to this file
   --on-pause <cmd>  run this shell command each time the user pauses, with that pause's
                     change lines on stdin
+
+inplace guide prints the instructions an agent needs to work on a document with you.
 
 inplace mcp runs an MCP server on stdin/stdout instead, with tools to open, read and edit a
 document and read the changes, and a Claude Code channel event at each pause. Change lines go
@@ -58,7 +62,9 @@ if (!(pauseSeconds >= 0)) {
   process.exit(2);
 }
 const logPath = values.log ? resolve(values.log) : undefined;
-if (positionals[0] === "mcp" && values.http) {
+if (positionals[0] === "guide") {
+  process.stdout.write(readFileSync(AGENT_GUIDE_PATH, "utf8"));
+} else if (positionals[0] === "mcp" && values.http) {
   // A tunnel makes this reachable from the internet, so stay local and require a token.
   const port = Number(values.port ?? "8766");
   const host = values.host ?? "127.0.0.1";

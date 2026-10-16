@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -76,6 +76,7 @@ test("serves a document through MCP tools and sends one channel event per pause"
 
     const opened = await server.tool("open_document", { path, port: 0, host: "127.0.0.1" });
     assert.ok(!opened.isError, opened.text);
+    assert.match(opened.text, /# Working on a document with inplace/, "the first open carries the agent guide");
     const url = opened.text.match(/http:\/\/localhost:\d+\//)![0];
     await fetch(url).then((r) => r.text()); // the first page load adds the ids
     assert.match(readFileSync(path, "utf8"), /<p data-id="p-1">Ten trees<\/p>/);
@@ -194,6 +195,12 @@ test("answers MCP over HTTP only at the secret URL", async () => {
   } finally {
     proc.kill();
   }
+});
+
+test("prints the agent guide", () => {
+  const out = execFileSync(process.execPath, [CLI, "guide"], { encoding: "utf8" });
+  assert.match(out, /^# Working on a document with inplace/);
+  assert.match(out, /## Handling a browser comment/);
 });
 
 test("pause events escape anything that could close the channel tag", () => {
