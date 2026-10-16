@@ -34,6 +34,22 @@ test.describe("typing", () => {
     await expect(editor.locator("#inplace-status")).toHaveText("Saved");
   });
 
+  // Typing and then leaving the page at once, before the save timer runs.
+  for (const [how, leave] of [
+    ["closing the tab", (page: Page) => page.close({ runBeforeUnload: true })],
+    ["reloading", (page: Page) => page.reload()],
+    ["going to another page", (page: Page) => page.goto("about:blank")],
+  ] as const) {
+    test(`text typed just before ${how} is saved`, async ({ editor, doc }) => {
+      const p = block(editor, "p", "The roof is already used");
+      const id = await idOf(p);
+      await caretAfter(p, "drying laundry");
+      await editor.keyboard.type(" and bikes", { delay: 0 });
+      await leave(editor);
+      await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry and bikes");
+    });
+  }
+
   test("Enter in a table cell leaves it instead of adding a line", async ({ editor, doc }) => {
     const cell = block(editor, "td", "Raised beds");
     await caretAfter(cell);
