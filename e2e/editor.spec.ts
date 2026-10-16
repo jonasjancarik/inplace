@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import type { Page } from "@playwright/test";
 
 import { block, caretAfter, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
 
@@ -208,6 +209,10 @@ test.describe("moving", () => {
   });
 });
 
+/** The text the page currently marks as changed words, in document order. */
+const highlighted = (page: Page) => page.evaluate(() =>
+  [...CSS.highlights.values()].flatMap((h) => [...h]).map((r) => r.toString()));
+
 test.describe("working alongside an agent", () => {
   test("an edit to the file on disk reloads the page", async ({ editor, doc }) => {
     doc.edit("Two beds stay open", "Three beds stay open");
@@ -230,11 +235,13 @@ test.describe("working alongside an agent", () => {
     await expect(h1).toHaveText("A garden on the roof of building B");
     const pill = editor.locator("#inplace-status");
     await expect(pill).toContainText("Your agent made 3 changes. 2 are out of view.");
-    await expect(h1).toHaveClass(/inplace-changed-fade/);
-    await expect(block(editor, "li", "Three beds stay open")).toHaveClass(/inplace-changed\b/);
+    // In a paragraph only the changed words are tinted; a new row is tinted whole.
+    await expect.poll(() => highlighted(editor)).toEqual(["of building B", "Three"]);
+    await expect(h1).not.toHaveClass(/inplace-changed/);
+    await expect(block(editor, "li", "Three beds stay open")).toHaveClass(/inplace-changed-words/);
     await expect(block(editor, "tr", "Tools")).toHaveClass(/inplace-changed\b/);
     await expect(editor.locator("table")).not.toHaveClass(/inplace-changed/);
-    await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(3);
+    await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(1);
     await expect(mine).not.toHaveClass(/inplace-changed/);
 
     await pill.getByRole("button", { name: "Show" }).click();
@@ -244,6 +251,7 @@ test.describe("working alongside an agent", () => {
     await expect(pill).toHaveText("Your agent made 3 changes.");
     // Once seen, the tint fades away.
     await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(0, { timeout: 8_000 });
+    await expect.poll(() => highlighted(editor), { timeout: 8_000 }).toEqual([]);
   });
 
   test("the corner button lists your changes and the agent's, and stays open while the agent works", async ({ editor, doc }) => {
@@ -288,6 +296,9 @@ test.describe("working alongside an agent", () => {
 
     await entries.nth(0).getByRole("button", { name: /New table row/ }).click();
     await expect(block(editor, "tr", "Tools")).toHaveClass(/inplace-changed/);
+    // Showing an edited paragraph again lights up only its changed words.
+    await item.click();
+    await expect.poll(() => highlighted(editor)).toContain("and flowers");
     await editor.keyboard.press("Escape");
     await expect(panel).toBeHidden();
   });
