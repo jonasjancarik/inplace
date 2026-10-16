@@ -76,7 +76,7 @@ A new element copies how its neighbours are written: the same tag, classes and o
 
 Everything else structural is the agent's job: adding sections, figures, tables or lists, removing anything that still has content, moving something into a different list or section, changing styles or layout, and anything inside SVG charts. Tables, rows, lists, figures and charts can't be typed into as a whole, but they have ids too, so you can comment on them.
 
-To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can't be typed into or moved, but it can still be commented on.
+To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can't be typed into or moved, but it can still be commented on. Text that the page's own scripts fill in, such as a total added up from a table, is kept out of reach automatically: hovering over it explains that your agent has to change it.
 
 ## What inplace changes in your file
 
