@@ -291,9 +291,14 @@
     const el = e.target.closest?.("[data-id][contenteditable=true]");
     if (el) save(el);
   });
+  // While an input method (Japanese, Chinese, Korean…) is building a word,
+  // Enter and Escape belong to it. Safari sends the confirming Enter after
+  // compositionend, so isComposing is already false there; keyCode 229 marks it.
+  const composing = (e) => e.isComposing || e.keyCode === 229;
+
   document.addEventListener("keydown", (e) => {
     const el = e.target.closest?.("[data-id][contenteditable=true]");
-    if (!el) return;
+    if (!el || composing(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (SPLITTABLE.has(el.tagName)) splitBlock(el);
@@ -560,7 +565,11 @@
     endLink(true);
   });
   linkInput.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
+    if (composing(e)) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      endLink(true);
+    } else if (e.key === "Escape") {
       e.preventDefault();
       endLink(false);
     }

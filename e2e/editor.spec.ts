@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { block, caretAfter, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
 
@@ -55,6 +55,84 @@ test.describe("typing", () => {
     await p.blur();
     await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry (quiet text)");
     expect(sourceOf(doc, id)).not.toMatch(/<b|style=/);
+  });
+});
+
+test.describe("typing with an input method", () => {
+  // Playwright can't drive a real input method, so these send the events one
+  // would: Enter while a word is being composed, flagged either way browsers do.
+  const composeEnter = (el: Locator) => el.evaluate((node) => {
+    node.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
+    node.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    // Safari sends the confirming Enter after compositionend, with keyCode 229.
+    const late = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(late, "keyCode", { value: 229 });
+    node.dispatchEvent(late);
+  });
+  const plainEnter = (el: Locator) => el.evaluate((node) =>
+    node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+
+  test("Enter that confirms a word doesn't split the paragraph", async ({ editor }) => {
+    const inserts: string[] = [];
+    editor.on("request", (r) => { if (r.url().endsWith("/__inplace/insert")) inserts.push(r.url()); });
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "stands empty.");
+    await composeEnter(p);
+    await editor.waitForTimeout(300);
+    expect(inserts).toEqual([]);
+    await expect(editor.locator(`[data-id="${id}"]`)).toContainText("A structural survey");
+    // An ordinary Enter still splits it.
+    await plainEnter(p);
+    await expect(editor.locator(`[data-id="${id}"] + p`)).toHaveText(/^\s*A structural survey/);
+    expect(inserts).toHaveLength(1);
+  });
+
+  test("Enter that confirms a word stays in the table cell", async ({ editor }) => {
+    const cell = block(editor, "td", "Raised beds");
+    await caretAfter(cell);
+    await composeEnter(cell);
+    await expect(cell).toBeFocused();
+    await plainEnter(cell);
+    await expect(cell).not.toBeFocused();
+  });
+
+  test("Enter that confirms a word doesn't apply the link", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await selectText(p, "structural survey");
+    await editor.keyboard.press(`${MOD}+k`);
+    const input = editor.getByLabel("Link address");
+    await input.fill("example.com/survey");
+    await composeEnter(input);
+    await expect(input).toBeVisible();
+    await expect(input).toBeFocused();
+    await input.press("Enter");
+    await expect.poll(() => sourceOf(doc, id)).toContain('<a href="https://example.com/survey">structural survey</a>');
+  });
+
+  test("Markdown marks typed through an input method stay as typed", async ({ editor }) => {
+    const p = block(editor, "p", "The roof is already used");
+    // The text changes as an input method would change it, then the page gets
+    // the input event that comes with it.
+    const typed = (inputType: string) => p.evaluate((node, inputType) => {
+      const text = [...node.childNodes].find((n): n is Text => n.nodeType === 3 && n.data.includes("drying laundry"))!;
+      const at = text.data.indexOf("drying laundry") + "drying laundry".length;
+      text.insertData(at, " **word**");
+      const range = document.createRange();
+      range.setStart(text, at + " **word**".length);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+      node.dispatchEvent(new InputEvent("input", { inputType, data: "*", bubbles: true }));
+    }, inputType);
+    await caretAfter(p, "drying laundry");
+    await typed("insertCompositionText");
+    await expect(p.locator("strong")).toHaveCount(0);
+    await expect(p).toContainText("drying laundry **word**");
+    // The same text typed directly becomes bold.
+    await typed("insertText");
+    await expect(p.locator("strong")).toHaveText("word");
   });
 });
 
