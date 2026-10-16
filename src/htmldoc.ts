@@ -4,7 +4,7 @@
 // document: every change is a splice into the original text, so markup, CSS,
 // SVG and formatting outside the edited block stay byte-for-byte identical.
 
-import { parse as parseDocument, parseFragment } from "parse5";
+import { parse as parseDocument, parseFragment, serialize } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
 
 type ParentNode = DefaultTreeAdapterMap["parentNode"];
@@ -151,6 +151,43 @@ export function isAnchor(node: Node): boolean {
 /** Ids of the blocks whose text may be edited in the browser. */
 export function editableIds(source: string): string[] {
   return editableBlocks(parse(source)).flatMap((n) => (n.attrs.has(ID_ATTR) ? [n.attrs.get(ID_ATTR)!] : []));
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " " };
+
+/**
+ * A short hash of a block's inner HTML that a browser's `innerHTML` of the same
+ * content hashes to as well: entities decoded and runs of space collapsed, so
+ * the browser's and parse5's ways of writing them out don't matter. The editor
+ * has a copy of this; the two must stay the same.
+ */
+export function contentHash(html: string): string {
+  const text = html.replace(/&(amp|lt|gt|quot|nbsp);/g, (_, e: string) => ENTITIES[e]).replace(/\s+/g, " ").trim();
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * The content hash of each editable block as the file has it, so the page can
+ * tell which blocks its own scripts have changed. Null when the document has
+ * no scripts, since then nothing but the user changes the page.
+ */
+export function blockHashes(source: string): Record<string, string> | null {
+  const ids = new Set(editableIds(source));
+  const hashes: Record<string, string> = {};
+  let scripted = false;
+  const visit = (from: ParentNode) => {
+    for (const child of from.childNodes) {
+      if (!isElement(child)) continue;
+      if (child.tagName === "script" || child.attrs.some((a) => a.name.startsWith("on"))) scripted = true;
+      const id = child.attrs.find((a) => a.name === ID_ATTR)?.value;
+      if (id !== undefined && ids.has(id)) hashes[id] = contentHash(serialize(child));
+      visit(child);
+    }
+  };
+  visit(parseDocument(source));
+  return scripted ? hashes : null;
 }
 
 /**

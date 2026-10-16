@@ -8,7 +8,7 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import { fileURLToPath } from "node:url";
 
 import {
-  assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
+  assignIds, blockHashes, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
   removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
@@ -438,10 +438,11 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
 
   const page = (res: ServerResponse) => {
     const { text, version } = doc.load();
+    const hashes = blockHashes(text);
     const tag =
       `<script src="${EDITOR_PREFIX}editor.js" data-inplace data-version="${version}" ` +
       `data-file="${escapeAttr(basename(doc.path))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
-      `data-movable="${escapeAttr(movableIds(text).join(" "))}"></script>`;
+      `data-movable="${escapeAttr(movableIds(text).join(" "))}"${hashes ? ` data-hashes="${escapeAttr(JSON.stringify(hashes))}"` : ""}></script>`;
     const at = text.toLowerCase().lastIndexOf("</body>");
     send(res, 200, at === -1 ? text + tag : text.slice(0, at) + tag + text.slice(at), "text/html; charset=utf-8");
   };
