@@ -221,25 +221,41 @@ test.describe("working alongside an agent", () => {
     await expect(editor.locator(`[data-id="${id}"]`)).toBeFocused();
   });
 
-  test("a save to a block the agent changed meanwhile is refused", async ({ editor, doc }) => {
+  test("your edit and the agent's edit to the same paragraph are combined", async ({ editor, doc }) => {
     const p = block(editor, "p", "The roof is already used");
     const id = await idOf(p);
-    // Simulate the race: the page still shows the old text while the file has the agent's.
-    await editor.evaluate(() => {
-      // Hold back the reload so the stale page can try to save.
-      (window as unknown as { EventSource: unknown }).EventSource = class { addEventListener() {} };
-    });
+    await caretAfter(p, "drying laundry");
+    await editor.keyboard.type(" every day");
+    // The agent edits the start of the same paragraph before the page has saved.
+    doc.edit("The roof is already used", "The flat roof is already used");
+    await expect.poll(() => sourceOf(doc, id)).toContain("The flat roof is already used for drying laundry every day");
+    await expect(editor.locator(`[data-id="${id}"]`)).toContainText("The flat roof is already used for drying laundry every day");
+    expect(doc.output).toContain(`edited ${id}, merged with the file's newer version`);
+  });
+
+  test("a clashing edit is set aside and can be put back from the page", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    const old = await p.evaluate((el) => el.innerHTML);
     doc.edit("The roof is already used for drying laundry", "AGENT: The roof is used for laundry");
-    const res = await editor.evaluate(async (id) => {
-      const r = await fetch("/__inplace/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, old: document.querySelector(`[data-id="${id}"]`)!.innerHTML, new: "mine" }),
-      });
-      return r.status;
-    }, id);
-    expect(res).toBe(409);
+    // A save from a page that still shows the old text, as in a race with the agent.
+    const status = await editor.evaluate(async ({ id, old }) => (await fetch("/__inplace/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, old, new: old.replace("drying laundry", "MINE: hanging washing") }),
+    })).status, { id, old });
+    expect(status).toBe(409);
     expect(sourceOf(doc, id)).toContain("AGENT: The roof is used for laundry");
+    expect(doc.output).toMatch(new RegExp(`conflict on ${id}: .*MINE: hanging washing`));
+
+    await editor.getByRole("button", { name: "1 edit set aside" }).click();
+    const dialog = editor.getByRole("dialog", { name: "Set-aside edits" });
+    await expect(dialog).toContainText("MINE: hanging washing");
+    await expect(dialog).toContainText("AGENT: The roof is used for laundry");
+    await dialog.getByRole("button", { name: "Use my version" }).click();
+    await expect.poll(() => sourceOf(doc, id)).toContain("MINE: hanging washing");
+    await expect(editor.locator(`[data-id="${id}"]`)).toContainText("MINE: hanging washing");
+    await expect(editor.getByRole("button", { name: /set aside/ })).toBeHidden();
   });
 
   test("every change is listed in the server output", async ({ editor, doc }) => {

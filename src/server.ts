@@ -1,9 +1,9 @@
 // Serve one HTML file for in-place editing, with live reload when it changes on disk.
 
 import { createHash } from "node:crypto";
-import { readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { hostname } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,7 @@ import {
   assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
   removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
+import { mergeInner } from "./merge.js";
 
 const EDITOR_PREFIX = "/__inplace/";
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "static");
@@ -53,12 +54,28 @@ export function describeEdit(before: string, after: string, context = 30): strin
 
 const time = () => new Date().toTimeString().slice(0, 8);
 const sameText = (a: string, b: string) => squash(a) === squash(b);
+const plain = (html: string) => squash(html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " "));
+
+/** A user's edit that couldn't be saved because the block had changed in the file in the meantime. */
+export interface StashEntry {
+  n: number;
+  id: string;
+  mine: string; // the user's inner HTML
+  theirs: string; // what the file had when the save was refused
+  at: string; // ISO time
+}
+
+const STASH_LIMIT = 20;
 
 /** The edited file, plus a version that changes whenever its content does. */
 export class Document {
   version = "";
   private stamp = "";
   private listeners = new Set<(version: string) => void>();
+  private stashListeners = new Set<() => void>();
+  private stashed: StashEntry[] = [];
+  /** Where set-aside edits are kept, so they survive a restart. Outside the document's folder on purpose. */
+  readonly stashPath: string;
 
   /**
    * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
@@ -68,7 +85,14 @@ export class Document {
     readonly path: string,
     readonly writeIds = true,
     readonly log: (line: string, byUser: boolean) => void = () => {},
+    stashDir = join(tmpdir(), "inplace"),
   ) {
+    this.stashPath = join(stashDir, `stash-${digest(resolve(path))}.json`);
+    try {
+      this.stashed = JSON.parse(readFileSync(this.stashPath, "utf8"));
+    } catch {
+      this.stashed = [];
+    }
     this.refresh();
   }
 
@@ -116,14 +140,102 @@ export class Document {
     return { text, version: this.version };
   }
 
-  saveBlock(id: string, oldInner: string, newInner: string): string {
+  /**
+   * Save the user's edit to one block. If the block changed in the file since the page loaded it,
+   * the two edits are merged when they touch different words; otherwise the user's version is
+   * set aside in the stash and BlockConflict is thrown.
+   */
+  saveBlock(id: string, oldInner: string, newInner: string): { version: string; merged?: true } {
     const text = this.refresh();
-    const patched = patchBlock(text, id, oldInner, newInner);
+    let patched: string;
+    try {
+      patched = patchBlock(text, id, oldInner, newInner);
+    } catch (e) {
+      if (!(e instanceof BlockConflict)) throw e;
+      const merged = mergeInner(oldInner, newInner, e.current);
+      if (merged === null) {
+        const n = this.stash(id, newInner, e.current);
+        this.log(
+          `${time()} conflict on ${id}: the user and the file both changed it, so the user's version was set aside ` +
+          `(stash #${n}). The user wrote ${JSON.stringify(clip(plain(newInner), 400))}; ` +
+          `the file has ${JSON.stringify(clip(plain(e.current), 400))}`,
+          true,
+        );
+        throw e;
+      }
+      this.write(patchBlock(text, id, e.current, merged));
+      this.log(`${time()} edited ${id}, merged with the file's newer version: ${describeEdit(e.current, merged)}`, true);
+      return { version: this.version, merged: true };
+    }
     if (patched !== text) {
       this.write(patched);
       this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`, true);
     }
-    return this.version;
+    return { version: this.version };
+  }
+
+  private stash(id: string, mine: string, theirs: string): number {
+    const n = Math.max(0, ...this.stashed.map((e) => e.n)) + 1;
+    this.stashed = [...this.stashed, { n, id, mine, theirs, at: new Date().toISOString() }].slice(-STASH_LIMIT);
+    this.saveStash();
+    return n;
+  }
+
+  private saveStash(): void {
+    try {
+      mkdirSync(dirname(this.stashPath), { recursive: true });
+      writeFileSync(this.stashPath, JSON.stringify(this.stashed), "utf8");
+    } catch {
+      // the stash still works in memory
+    }
+    for (const listener of this.stashListeners) listener();
+  }
+
+  /** The set-aside edits, each with what its block contains now (null if the block is gone). */
+  stashEntries(): (StashEntry & { current: string | null; changed: boolean })[] {
+    const { text } = this.load();
+    const root = parse(text);
+    return this.stashed.map((e) => {
+      const node = findBlock(root, e.id);
+      const current = node ? text.slice(node.openEnd, node.innerEnd) : null;
+      return { ...e, current, changed: current !== null && plain(current) !== plain(e.theirs) };
+    });
+  }
+
+  get stashCount(): number {
+    return this.stashed.length;
+  }
+
+  /**
+   * Act on a set-aside edit: put the user's version in place of the block's current content
+   * ("mine"), add it as a new block right after ("below"), or drop it ("discard").
+   */
+  resolveStash(n: number, action: "mine" | "below" | "discard"): void {
+    const entry = this.stashed.find((e) => e.n === n);
+    if (!entry) throw new BlockNotFound(`stash #${n}`);
+    if (action !== "discard") {
+      const text = this.load().text;
+      const node = findBlock(parse(text), entry.id);
+      if (!node) throw new BlockNotFound(entry.id);
+      const current = text.slice(node.openEnd, node.innerEnd);
+      if (action === "mine") {
+        const patched = patchBlock(text, entry.id, current, entry.mine);
+        if (patched !== text) this.write(patched);
+        this.log(`${time()} edited ${entry.id}, using the user's set-aside version: ${describeEdit(current, entry.mine)}`, true);
+      } else {
+        const inserted = insertBlock(text, entry.id, "after", node.tag, entry.mine);
+        this.write(inserted.source);
+        this.log(`${time()} added ${inserted.id} <${node.tag}> after ${entry.id}, with the user's set-aside version: ` +
+          JSON.stringify(clip(plain(entry.mine), 200)), true);
+      }
+    }
+    this.stashed = this.stashed.filter((e) => e.n !== n);
+    this.saveStash();
+  }
+
+  onStashChange(listener: () => void): () => void {
+    this.stashListeners.add(listener);
+    return () => this.stashListeners.delete(listener);
   }
 
   moveBlock(id: string, target: string, position: "before" | "after"): string {
@@ -254,11 +366,15 @@ export function createInplaceServer(doc: Document): Server {
   const events = (req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
     const push = (version: string) => res.write(`event: version\ndata: ${version}\n\n`);
+    const pushStash = () => res.write(`event: stash\ndata: ${doc.stashCount}\n\n`);
     push(doc.version);
+    pushStash();
     const off = doc.onChange(push);
+    const offStash = doc.onStashChange(pushStash);
     const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
     req.on("close", () => {
       off();
+      offStash();
       clearInterval(ping);
     });
   };
@@ -288,17 +404,22 @@ export function createInplaceServer(doc: Document): Server {
       apply = () => doc.insertBlock(id, body.position as "before" | "after", str("tag")!, str("content")!, split);
     } else if (path === "remove" && id) {
       apply = () => (doc.removeBlock(id), {});
+    } else if (path === "stash/resolve" && typeof body.n === "number" &&
+        (body.action === "mine" || body.action === "below" || body.action === "discard")) {
+      apply = () => (doc.resolveStash(body.n as number, body.action as "mine" | "below" | "discard"), {});
     }
     if (!apply) return json(res, 400, { error: "missing or invalid fields" });
     try {
       const result = apply();
       // Structure changed: send the page the new lists of editable and movable elements.
-      const lists = path === "insert" || path === "remove"
+      const lists = path === "insert" || path === "remove" || path === "stash/resolve"
         ? (() => { const { text } = doc.load(); return { editable: editableIds(text), movable: movableIds(text) }; })()
         : {};
       json(res, 200, { ...(typeof result === "string" ? {} : result), ...lists, version: doc.version });
     } catch (e) {
-      if (e instanceof BlockConflict) return json(res, 409, { error: "conflict", current: e.current, version: doc.version });
+      if (e instanceof BlockConflict) {
+        return json(res, 409, { error: "conflict", current: e.current, version: doc.version, stash: doc.stashCount });
+      }
       if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found", version: doc.version });
       throw e;
     }
@@ -323,7 +444,7 @@ export function createInplaceServer(doc: Document): Server {
       .then(() => {
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
-          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove"].includes(action)
+          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove", "stash/resolve"].includes(action)
             ? change(req, res)
             : json(res, 404, { error: "not found" });
         }
@@ -332,6 +453,7 @@ export function createInplaceServer(doc: Document): Server {
           return send(res, 200, editorScript, "text/javascript; charset=utf-8");
         }
         if (path === EDITOR_PREFIX + "events") return events(req, res);
+        if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
         return staticFile(path, res);
       })
       .catch((e: unknown) => {
