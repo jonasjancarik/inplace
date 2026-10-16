@@ -135,7 +135,7 @@ Some things to know before you rely on it:
 - Channels are a research preview and need Claude Code 2.1.80 or newer. Team and Enterprise organizations have to enable them first.
 - inplace isn't on Claude Code's list of approved channels, so it only works with `--dangerously-load-development-channels`. Claude Code shows a warning each time you start it this way; choose **I am using this for local development**. The flag is ignored in non-interactive runs (`claude -p`).
 - Started without the flag, the tools still work, but no messages arrive while Claude is idle. It sees your edits through `get_edits` when it next does something.
-- Anyone who can open the page can type into it, and what they type reaches Claude. inplace marks it as document content, not instructions, and the skill tells Claude not to follow it, but keep the page on `127.0.0.1` (ask Claude to open it with that host) unless you need it on other devices.
+- Anyone who can open the page can type into it, and what they type reaches Claude. inplace marks it as document content, not instructions, and the skill tells Claude not to follow it, so only share the page on your network (see `--host` below) with people you trust.
 
 `--pause` and `--log` work as below; add them after `mcp` in the `claude mcp add` command. In this mode the change lines go to standard error and the log file, because standard output carries the MCP messages.
 
@@ -183,7 +183,7 @@ Some things to know before you rely on it:
 ## Options
 
 ```text
-inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
+inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
 inplace mcp [--pause 5] [--log <file>]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
@@ -192,7 +192,7 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 
 | Option | Default | |
 | --- | --- | --- |
 | `--port` | `8765` | Port to listen on. |
-| `--host` | `0.0.0.0` | Address to listen on. The default makes the page reachable from other devices on your network, such as a tablet; use `127.0.0.1` to keep it on this computer. |
+| `--host` | `127.0.0.1` | Address to listen on. By default only this computer can open the page. Use `0.0.0.0` to open it on other devices on your network, such as a tablet, or to edit it with people on the same Wi-Fi; or just ask your agent to share it on your network. There's no login, so anyone on that network with the address can edit the document. |
 | `--no-write-ids` | off | Don't add `data-id` attributes to the file. |
 | `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
 | `--log` | none | Also append every change line to this file. |
@@ -212,7 +212,7 @@ The server also watches the file. When it changes on disk, every open page saves
 
 ## Limitations
 
-- It's built for one document and a small number of people at a time, on your own computer. There's no login, so don't run it on a network you don't trust.
+- It's built for one document and a small number of people at a time, on your own computer. There's no login, so only share it on your network (`--host 0.0.0.0`) when you trust the people on it.
 - On the page you can change text, add simple formatting, add and remove paragraphs, list items and rows, and reorder elements among their neighbours. New sections, tables or lists, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
 - Each save re-reads the whole file, so very large documents respond a little more slowly.

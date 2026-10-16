@@ -11,7 +11,7 @@ The HTML file is the only source of truth. There is no separate content store, e
 
 ## Starting it
 
-**If you have inplace's MCP tools** (`open_document`, `get_edits`, `close_document`, from `inplace mcp`), use them instead of running the command below: `open_document` with the file's path starts serving it and returns the URLs, `get_edits` returns the change lines described under "Seeing what the user changed", and `close_document` stops it. The server handles one document at a time. Pass `host: "127.0.0.1"` unless the user wants the page on other devices, and `port: 0` if 8765 is taken. Everything else in this skill applies unchanged.
+**If you have inplace's MCP tools** (`open_document`, `get_edits`, `close_document`, from `inplace mcp`), use them instead of running the command below: `open_document` with the file's path starts serving it and returns the URLs, `get_edits` returns the change lines described under "Seeing what the user changed", and `close_document` stops it. The server handles one document at a time. The page is only reachable from this computer unless you pass `host: "0.0.0.0"` (see "Sharing on the network" below). Pass `port: 0` if 8765 is taken. Everything else in this skill applies unchanged.
 
 **If you have these tools but can't read or write files** (for example in ChatGPT, through a tunnel), do your part with the editing tools instead of the file: `read_document` reads the whole document, or one element with `id`, which is better for large documents; `replace_element` replaces an element's inside (`part: "inner"`) or the whole element (`"outer"`) by its `data-id`, with `expected` set to its current HTML as you just read it; `find_replace` changes exact source text when a change spans many elements. If `replace_element` says the element has changed, the user edited it: read it again and redo your change on top of theirs. Wherever this skill says to grep, read or edit the file, use these tools. You can't be woken by pauses, so call `get_edits` at the start of each turn.
 
@@ -25,9 +25,13 @@ If the user has installed it (`npm install -g github:jonasjancarik/inplace`), `i
 
 - Run it in the background; it keeps running until stopped. Check the port is free first and pick another if not. Keep hold of its output: that's where the user's edits are reported (see below).
 - `--log` writes the same lines to a file, so you can still read them after the background process's output is out of reach, and watch them (see "Reacting while you're idle"). Put the log in a temp or scratch directory, not next to the document.
-- It listens on all interfaces by default (`--host 0.0.0.0`) and prints the URLs it can be reached at. Use `--host 127.0.0.1` if the document shouldn't be reachable from other machines on the network.
+- It listens only on this computer by default (`--host 127.0.0.1`) and prints the URL it can be reached at. See "Sharing on the network" if the user wants it on another device or with other people.
 - Open the localhost URL in your built-in browser if you have one, so the user can type and comment there. Otherwise give the user the URL.
 - One server per document. Stop it when the user is done with the document.
+
+### Sharing on the network
+
+If the user wants to open the document on another device (a tablet, a second laptop) or edit it together with people on the same network, restart inplace with `--host 0.0.0.0` (MCP: `close_document`, then `open_document` with `host: "0.0.0.0"`), keeping the same port. It then also prints a `.local` URL; give the user that one to share, since `localhost` only works on this computer. Tell them once that the page has no login, so anyone on that network who has the address can open and edit the document, and that you can switch it back to this computer only whenever they like. Don't do this unless they ask, and don't suggest it on networks they describe as public or untrusted. The page they already have open reconnects after the restart; if it doesn't, they reload it.
 
 The first time the page is opened, inplace adds `data-id` attributes to the file (`p-3`, `td-12`, `table-1`, …). This is expected. If the document is under version control, commit that change on its own before content edits, so later diffs stay readable. Pass `--no-write-ids` only if the file must not be changed this way; the browser then can't edit or anchor blocks without an id.
 
