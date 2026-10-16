@@ -224,6 +224,7 @@ Once anything has changed, a button in the bottom-left corner opens a list of ch
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so only share it on your network (`--host 0.0.0.0`) when you trust the people on it.
+- Other websites open in your browser can't change the document: inplace only accepts changes sent from its own page. It also only answers to `localhost`, your computer's own name (and its `.local` form) and IP addresses, so open it by one of those. Other names, such as a custom DNS name or a Tailscale MagicDNS name, are refused; use the computer's IP address instead.
 - On the page you can change text, add simple formatting, add and remove paragraphs, list items and rows, and reorder elements among their neighbours. New sections, tables or lists, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
 - Each save re-reads the whole file, so very large documents respond a little more slowly.
