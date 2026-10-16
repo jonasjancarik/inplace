@@ -66,7 +66,7 @@ You can change the text of any paragraph, heading, list item, table cell, captio
 | Code | ⌘E / Ctrl+E | `` `code` `` |
 | Link | ⌘K / Ctrl+K | |
 
-The toolbar also turns a paragraph into a heading (H1–H3) or back. Typing `#`, `##` or `###` and a space at the start of a paragraph does the same. The formatting is written as plain HTML (`<strong>`, `<em>`, `<s>`, `<code>`, `<a>`), so the document's own styles decide how it looks.
+The toolbar also turns a paragraph into a heading (H1–H3) or back. Typing `#`, `##` or `###` and a space at the start of a paragraph does the same. The formatting is written as plain HTML (`<strong>`, `<em>`, `<s>`, `<code>`, `<a>`), so the document's own styles decide how it looks. A link can go to a web page, an email address or a phone number (`http`, `https`, `mailto` or `tel`), or to another place in the document; inplace adds `https://` or `mailto:` when you type just a domain or an email address.
 
 **Adding and removing.** Enter in a paragraph, heading or list item starts a new one, and if the caret is in the middle of the text, the rest of it moves to the new one. After a heading you get a paragraph. Hover over a block or table row and click the + beside it to add one below; a new row has the same cells as the others, empty. To get rid of a paragraph, item or row, delete its text and press Backspace once more. Only empty elements can be removed this way, so text is never thrown away by accident.
 
