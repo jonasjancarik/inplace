@@ -288,8 +288,21 @@ tabs.forEach((t) => t.addEventListener("click", () => tabs.forEach((o) => {
     } catch { /* superseded by a newer run */ }
   }
 
+  // Keep room for the finished document, so the demo never changes height and the page around it stays still.
+  let reservedWidth = 0;
+  function reserve(force) {
+    if (!force && innerWidth === reservedWidth) return;
+    reservedWidth = innerWidth;
+    run++; sheet.style.minHeight = ""; finalState();
+    sheet.style.minHeight = sheet.offsetHeight + "px";
+    if (visible && !reduced) play();
+  }
+  reserve();
+  document.fonts?.ready.then(() => reserve(true));
+
   $("d-replay").addEventListener("click", () => (reduced ? finalState() : play()));
   addEventListener("resize", () => {
+    reserve();
     if (comment.classList.contains("show")) placeComment();
     if (toolbar.classList.contains("show")) placeToolbar();
     if (gutter.classList.contains("show")) placeGutter();
