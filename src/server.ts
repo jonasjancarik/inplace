@@ -65,8 +65,6 @@ export interface StashEntry {
   at: string; // ISO time
 }
 
-const STASH_LIMIT = 20;
-
 /** The edited file, plus a version that changes whenever its content does. */
 export class Document {
   version = "";
@@ -176,7 +174,7 @@ export class Document {
 
   private stash(id: string, mine: string, theirs: string): number {
     const n = Math.max(0, ...this.stashed.map((e) => e.n)) + 1;
-    this.stashed = [...this.stashed, { n, id, mine, theirs, at: new Date().toISOString() }].slice(-STASH_LIMIT);
+    this.stashed = [...this.stashed, { n, id, mine, theirs, at: new Date().toISOString() }];
     this.saveStash();
     return n;
   }
