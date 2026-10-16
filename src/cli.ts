@@ -7,7 +7,7 @@ import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
 import { createInplaceServer, Document, serverUrls } from "./server.js";
 
-const USAGE = `usage: inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-write-ids]
+const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
                            [--pause 5] [--log <file>] [--on-pause <command>]
        inplace mcp [--pause 5] [--log <file>]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
@@ -15,7 +15,8 @@ const USAGE = `usage: inplace <file.html> [--port 8765] [--host 0.0.0.0] [--no-w
 Edit an HTML document in the browser while an agent edits the same file.
 
   --port <n>        port to listen on (default 8765)
-  --host <addr>     address to listen on (default 0.0.0.0; use 127.0.0.1 to stay local)
+  --host <addr>     address to listen on (default 127.0.0.1, this computer only; use 0.0.0.0
+                    to open the page on other devices on your network)
   --no-write-ids    don't add data-id attributes to the file
                     (blocks without one can't be edited or commented on precisely)
   --pause <s>       after this many seconds without a change on the page, print one
@@ -88,7 +89,7 @@ function serve(): void {
   }
 
   const port = Number(values.port ?? "8765");
-  const host = values.host ?? "0.0.0.0";
+  const host = values.host ?? "127.0.0.1";
   if (values["on-pause"] && !pauseSeconds) {
     console.error("inplace: --on-pause needs --pause to be more than 0");
     process.exit(2);

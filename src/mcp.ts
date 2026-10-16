@@ -43,7 +43,7 @@ const TOOLS = [
       properties: {
         path: { type: "string", description: "Path to the .html file, absolute or relative to where the server runs" },
         port: { type: "number", description: "Port for the page (default 8765; 0 picks a free one)" },
-        host: { type: "string", description: "Address for the page (default 0.0.0.0; 127.0.0.1 keeps it on this computer)" },
+        host: { type: "string", description: "Address for the page (default 127.0.0.1, this computer only; 0.0.0.0 lets other devices on the network open it)" },
       },
       required: ["path"],
     },
@@ -143,7 +143,7 @@ class Session {
     if (!existsSync(path) || !statSync(path).isFile()) throw new Error(`no such file: ${path}`);
     if (![".html", ".htm"].includes(extname(path).toLowerCase())) throw new Error("only .html files can be opened");
     const port = args.port === undefined ? 8765 : Number(args.port);
-    const host = typeof args.host === "string" ? args.host : "0.0.0.0";
+    const host = typeof args.host === "string" ? args.host : "127.0.0.1";
     await this.close();
 
     const record = (line: string) => {
