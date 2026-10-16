@@ -23,6 +23,7 @@ If the user wants to open the document on another device (a tablet, a second lap
 - **Adding and removing:** the user can add a `p`, heading, `li`, `dt`/`dd` or `tr` next to an existing one (Enter or a + button). The new element copies the start tags of its most common sibling and gets a fresh id straight away; a new row has empty copies of the usual cells. Empty blocks stay editable. The user can remove a paragraph, item or row only once it's empty.
 - **Moving:** the user can drag any element with an id (except table cells, captions and table sections) to another place among its siblings. The element is moved unchanged, never into a different parent.
 - Elements with `data-locked` or `contenteditable="false"`, and anything in `<svg>`, `<nav>`, `<script>` and `<style>`, can't be edited in the browser.
+- **Blocks a script changes:** if the page's own scripts change a block's text (a computed total, today's date, a chart label), the browser shows something the file doesn't have, so that block isn't editable on the page and tells the user to ask you instead. When you write such a script, put `data-locked` on the elements it fills in so the intent is in the file.
 - The `contenteditable` and `spellcheck` attributes you may see in comment payloads are added by the page script. They aren't in the file; don't add them.
 
 ## Handling a browser comment
