@@ -43,11 +43,12 @@
   <div class="cta">
     <div class="install">
       <div class="tabs" role="tablist" aria-label="How to install the skill">
-        <button role="tab" aria-selected="true" aria-controls="install-cmd" id="tab-cmd">In your terminal</button>
-        <button role="tab" aria-selected="false" aria-controls="install-prompt" id="tab-prompt">Ask your agent</button>
+        <button role="tab" aria-selected="true" aria-controls="install-prompt" id="tab-prompt">Ask your agent</button>
+        <span class="or" aria-hidden="true">or</span>
+        <button role="tab" aria-selected="false" aria-controls="install-cmd" id="tab-cmd">In your terminal</button>
       </div>
-      <div class="cmd" role="tabpanel" id="install-cmd" aria-labelledby="tab-cmd"><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div>
-      <div class="cmd prompt" role="tabpanel" id="install-prompt" aria-labelledby="tab-prompt" hidden><span>Install the inplace skill by running npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="Install the inplace skill by running npx skills add jonasjancarik/inplace">Copy</button></div>
+      <div class="cmd prompt" role="tabpanel" id="install-prompt" aria-labelledby="tab-prompt"><span>Install the inplace skill by running npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="Install the inplace skill by running npx skills add jonasjancarik/inplace">Copy</button></div>
+      <div class="cmd" role="tabpanel" id="install-cmd" aria-labelledby="tab-cmd" hidden><span>npx skills add jonasjancarik/inplace</span><button class="copy" data-copy="npx skills add jonasjancarik/inplace">Copy</button></div>
       <p class="install-note">Install the skill, then tell your agent which document you want to work on together.</p>
     </div>
   </div>

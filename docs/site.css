@@ -42,10 +42,11 @@ h1 em{font-style:italic;background:linear-gradient(transparent 62%,var(--mark-so
 .lede{font-size:clamp(18px,2vw,21px);line-height:1.55;color:var(--ink-2);max-width:60ch;margin:0}
 .cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
 .install{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;max-width:100%;min-width:0}
-.tabs{display:flex;gap:4px}
-.tabs button{border:0;background:transparent;color:var(--ink-3);font:500 13px var(--sans);padding:5px 10px;border-radius:6px;cursor:pointer}
-.tabs button:hover{color:var(--ink-2)}
-.tabs button[aria-selected="true"]{background:var(--sheet);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.tabs{display:flex;align-items:center;gap:8px}
+.tabs .or{font-size:13px;color:var(--ink-3)}
+.tabs button{border:1px solid var(--line);background:transparent;color:var(--ink-3);font:500 13px var(--sans);padding:5px 10px;border-radius:6px;cursor:pointer}
+.tabs button:hover{color:var(--ink);border-color:var(--ink-3)}
+.tabs button[aria-selected="true"]{background:var(--sheet);color:var(--ink);border-color:var(--ink-3);cursor:default}
 .cmd.prompt span{white-space:normal;font-family:var(--sans);font-size:15px;line-height:1.45}
 .cmd.prompt span::before{content:none}
 .install [hidden]{display:none}
