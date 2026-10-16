@@ -385,3 +385,61 @@ test("deliberate non-breaking spaces stay when you edit nearby", async ({ page }
     doc.stop();
   }
 });
+
+test.describe("blocks changed by the page's scripts", () => {
+  const TABLE = `<!doctype html><title>t</title><body><table><tr>
+    <td data-id="td-1">Tom &amp; Jerry&nbsp;<a href='x.html' title=a&quot;b>link</a><br/>two</td>
+    <td data-id="td-2">0</td></tr></table>`;
+
+  test("a cell a script fills in on load can't be edited; its neighbour can", async ({ page }) => {
+    const doc = await startDoc(undefined, TABLE +
+      `<script>document.querySelector('[data-id="td-2"]').textContent = "42";</script></body>`);
+    try {
+      await page.goto(doc.url);
+      const total = page.locator('[data-id="td-2"]');
+      await expect(total).toHaveText("42");
+      await expect(total).not.toHaveAttribute("contenteditable", "true");
+      await expect(total).toHaveAttribute("title", /filled in by a script/);
+      await expect(page.locator('[data-id="td-1"]')).toHaveAttribute("contenteditable", "true");
+      // After an agent's edit elsewhere, the filled-in cell isn't shown as changed.
+      doc.edit("two", "three");
+      await expect(page.locator('[data-id="td-1"]')).toHaveClass(/inplace-changed/);
+      await expect(total).not.toHaveClass(/inplace-changed/);
+    } finally {
+      doc.stop();
+    }
+  });
+
+  test("a script that changes a block after load doesn't get its text into the file", async ({ page }) => {
+    const doc = await startDoc(undefined, TABLE +
+      `<script>setTimeout(() => (document.querySelector('[data-id="td-2"]').textContent = "42"), 300);</script></body>`);
+    try {
+      await page.goto(doc.url);
+      const total = page.locator('[data-id="td-2"]');
+      await expect(total).toHaveText("42");
+      await expect(total).not.toHaveAttribute("contenteditable", "true");
+      const before = doc.read();
+      await total.click();
+      await page.keyboard.type("1");
+      await page.locator('[data-id="td-1"]').click();
+      await page.waitForTimeout(800);
+      expect(doc.read()).toBe(before);
+    } finally {
+      doc.stop();
+    }
+  });
+
+  test("blocks a script leaves alone stay editable and save as usual", async ({ page }) => {
+    const doc = await startDoc(undefined, TABLE + `<script>window.ready = true;</script></body>`);
+    try {
+      await page.goto(doc.url);
+      const cell = page.locator('[data-id="td-1"]');
+      await expect(cell).toHaveAttribute("contenteditable", "true");
+      await caretAfter(cell, "two");
+      await page.keyboard.type(" three");
+      await expect.poll(() => doc.read()).toContain(">two three</td>");
+    } finally {
+      doc.stop();
+    }
+  });
+});

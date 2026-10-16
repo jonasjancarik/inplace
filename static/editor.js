@@ -161,15 +161,74 @@
   // Containers (tables, rows, figures) also carry a data-id so comments on
   // them can be traced, but only text blocks are editable.
   let editable = new Set((script.dataset.editable || "").split(" "));
+
+  // In a document with scripts, what each block holds in the file, as a hash.
+  // A block a script has changed shows something the file doesn't have, so
+  // typing in it would save the script's output into the file: it stays as it
+  // is. The hash must match contentHash in src/htmldoc.ts.
+  const hashes = script.dataset.hashes ? JSON.parse(script.dataset.hashes) : null;
+  const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', nbsp: " " };
+  function contentHash(html) {
+    const text = html.replace(/&(amp|lt|gt|quot|nbsp);/g, (_, e) => ENTITIES[e]).replace(/\s+/g, " ").trim();
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+    return (h >>> 0).toString(36);
+  }
+  const scripted = new Set(); // ids of blocks a script has changed
+  const changedByScript = (el) => hashes?.[el.dataset.id] !== undefined && contentHash(el.innerHTML) !== hashes[el.dataset.id];
+  function lockScripted(el) {
+    const id = el.dataset.id;
+    scripted.add(id);
+    el.removeAttribute("contenteditable");
+    el.title = "This text is filled in by a script on the page. To change it, ask your agent.";
+    clearTimeout(timers.get(id));
+    timers.delete(id);
+  }
+
   function makeEditable(root) {
     for (const el of [root, ...root.querySelectorAll("[data-id]")]) {
       if (!editable.has(el.dataset?.id) || el.closest("svg, nav, [data-locked], [contenteditable=false]")) continue;
+      if (scripted.has(el.dataset.id) || changedByScript(el)) {
+        lockScripted(el);
+        continue;
+      }
       el.contentEditable = "true";
       el.spellcheck = true;
       saved.set(el.dataset.id, el.innerHTML);
     }
   }
   makeEditable(document.body);
+
+  // Scripts that change a block later (once the page has loaded, after
+  // fetching data) lock it the same way. Watching stops when the user starts
+  // editing, or after a while, so it costs nothing during normal editing.
+  if (hashes) {
+    const check = (records) => {
+      for (const r of records) {
+        const el = (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest("[data-id][contenteditable=true]");
+        if (el && changedByScript(el)) lockScripted(el);
+      }
+    };
+    const watcher = new MutationObserver(check);
+    watcher.observe(document.body, { childList: true, characterData: true, subtree: true });
+    const userEdit = (e) => {
+      // Clicking into text isn't an edit yet; clicking inplace's own buttons can be.
+      if (!e.target.closest?.(e.type === "pointerdown" ? "[data-inplace-ui]" : "[data-id][contenteditable=true]")) return;
+      check(watcher.takeRecords());
+      stopWatching();
+    };
+    const EVENTS = ["beforeinput", "keydown", "paste", "pointerdown"];
+    const stopWatching = () => {
+      watcher.disconnect();
+      clearTimeout(quiet);
+      for (const type of EVENTS) document.removeEventListener(type, userEdit, true);
+    };
+    for (const type of EVENTS) document.addEventListener(type, userEdit, true);
+    const quiet = setTimeout(() => {
+      check(watcher.takeRecords());
+      stopWatching();
+    }, 10_000);
+  }
 
   // Undo the markup browsers add while typing: <div> line wraps, <font>,
   // style attributes and empty spans. Existing inline markup is kept.
@@ -921,6 +980,8 @@
   // content does, such as a row being added or removed.
   const tpl = document.createElement("template");
   function fingerprint(el) {
+    // A block a script had already filled in when the page loaded: what the file has.
+    if (scripted.has(el.dataset.id) && !saved.has(el.dataset.id)) return `script:${hashes[el.dataset.id]}`;
     tpl.innerHTML = saved.get(el.dataset.id) ?? el.innerHTML;
     for (const inner of tpl.content.querySelectorAll("[data-id]")) inner.replaceWith(`\u0001${inner.dataset.id}\u0001`);
     const text = tpl.innerHTML;
