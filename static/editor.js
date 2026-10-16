@@ -257,10 +257,13 @@
   async function post(action, payload) {
     busy++;
     try {
+      const body = JSON.stringify(payload);
       const res = await fetch(`/__inplace/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body,
+        // A hidden tab may be closed before the reply comes; let the request finish anyway.
+        keepalive: document.hidden && fits(body),
       });
       return { ok: res.ok, status: res.status, body: await res.json() };
     } catch {
@@ -286,6 +289,37 @@
     if (!el) return;
     if (e.inputType === "insertText") markdown(el, e.data);
     schedule(el);
+  });
+  // Browsers cap requests that outlive the page at 64 KB in total.
+  const fits = (body) => new Blob([body]).size < 60_000;
+
+  // Closing, reloading or leaving the page doesn't wait for a pending save, so
+  // send what's left with keepalive, which outlives the page. The reply can't
+  // be handled; a clash with the agent is set aside on the server as usual.
+  addEventListener("pagehide", () => {
+    for (const id of pending()) {
+      clearTimeout(timers.get(id));
+      timers.delete(id);
+      const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (!el) continue;
+      clean(el);
+      const html = tidySpaces(saved.get(id), el.innerHTML);
+      if (html === saved.get(id)) continue;
+      const body = JSON.stringify({ id, old: saved.get(id), new: html });
+      if (!fits(body)) continue;
+      fetch("/__inplace/save", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body })
+        .catch(() => {});
+      saved.set(id, html);
+    }
+  });
+  // Mobile browsers often discard a hidden tab without a pagehide, so save
+  // pending blocks as soon as the tab is hidden.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) return;
+    for (const id of pending()) {
+      const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (el) save(el);
+    }
   });
   document.addEventListener("focusout", (e) => {
     const el = e.target.closest?.("[data-id][contenteditable=true]");
