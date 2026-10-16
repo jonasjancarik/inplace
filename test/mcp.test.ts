@@ -262,7 +262,7 @@ test("answers MCP over HTTP only at the secret URL", async () => {
 test("prints the agent guide", () => {
   const out = execFileSync(process.execPath, [CLI, "guide"], { encoding: "utf8" });
   assert.match(out, /^# Working on a document with inplace/);
-  assert.match(out, /## Handling a browser comment/);
+  assert.match(out, /## Comments made on the page/);
 });
 
 test("pause events escape anything that could close the channel tag", () => {
