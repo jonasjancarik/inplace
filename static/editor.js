@@ -120,6 +120,32 @@
     #inplace-changes .entry[data-by=you] .who,#inplace-changes .entry[data-by=you] .text{color:#5b6660}
     #inplace-changes .entry[data-by=you] ins{background:#e9eeeb;color:#1f2a24}
     #inplace-changes .empty{margin:0;padding:4px 8px 10px;color:#7a8580}
+    #inplace-changes .review-switch{display:flex;align-items:center;gap:5px;margin-left:auto;margin-right:4px;font-size:12px;
+      color:#3d4a43;cursor:pointer;user-select:none}
+    #inplace-changes .review-switch input{margin:0;accent-color:#6a52c9}
+    #inplace-review-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;flex-wrap:wrap;align-items:center;
+      gap:6px 16px;padding:9px 16px;background:#1f2a24;color:#fff;font:13px/1.35 -apple-system,system-ui,sans-serif;
+      box-shadow:0 2px 10px #0003}
+    #inplace-review-bar .what{flex:1 1 260px}
+    #inplace-review-bar label{display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+    #inplace-review-bar label input{margin:0;accent-color:#b39cff}
+    #inplace-review-bar button{all:unset;padding:4px 12px;border-radius:6px;background:#fff;color:#1f2a24;font-weight:600;cursor:pointer}
+    #inplace-review-bar button:focus-visible{outline:2px solid #b39cff}
+    #inplace-review-bar .removed{flex-basis:100%;margin:0;color:#d5dcd8}
+    #inplace-review-bar .removed del{color:#f3c3b3}
+    html.inplace-reviewing [data-id][contenteditable]{box-shadow:none!important}
+    #inplace-review-layer{position:absolute;top:0;left:0;width:0;height:0;z-index:2147483645}
+    .inplace-review-label{position:absolute;display:flex;flex-direction:column;align-items:flex-end;padding:1px 6px;border-radius:5px;
+      background:#ece5ff;color:#3d2a85;font:11px/1.45 -apple-system,system-ui,sans-serif;white-space:nowrap;pointer-events:none}
+    ins.inplace-ins{background:#ece5ff;color:#3d2a85;text-decoration:none;border-radius:2px;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    del.inplace-del{background:#fbe9e3;color:#a1452a;text-decoration:line-through;text-decoration-color:#a1452a99;border-radius:2px;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .inplace-ghost{opacity:.85}
+    .inplace-ghost td{text-align:start}
+    ol > li.inplace-ghost{display:block}
+    [data-id].inplace-review-new{background-color:#c4b2ff38!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    @media print{#inplace-review-bar,#inplace-review-spacer,#inplace-review-layer{display:none!important}}
     #inplace-changes li.undoable{display:flex;align-items:flex-start}
     #inplace-changes .undo{all:unset;flex:none;margin:5px 4px 0;padding:0 6px;border-radius:5px;cursor:pointer;font-size:12px;
       font-weight:600;color:#3d2a85;text-decoration:underline}
@@ -839,7 +865,7 @@
   const sameChain = (a, b) => a.length === b.length && a.every((el, i) => el === b[i]);
 
   document.addEventListener("mousemove", (e) => {
-    if (drag) return;
+    if (drag || reviewing) return;
     if (e.target.closest?.(".inplace-grip")) {
       clearTimeout(hoverTimer);
       hoverTimer = null;
@@ -1101,7 +1127,7 @@
     if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "z" || composing(e)) return;
     if (e.target.closest?.("input, textarea, [data-inplace-ui]")) return;
     const step = undoSteps.at(-1);
-    if (!step || lastInputAt > step.at) return;
+    if (!step || lastInputAt > step.at || reviewing) return;
     e.preventDefault();
     undoChange(step.kind, step.id);
   });
@@ -1420,6 +1446,7 @@
   // Changed and new blocks are tinted, and the tint fades once the block has
   // been on screen for a moment. `quiet` leaves the status message to a conflict.
   function showChanges(before, skip, quiet, earlier, texts) {
+    if (reviewScope()) return; // review mode marks every change already
     const old = new Map(before.map(([id, hash, parent]) => [id, { hash, parent }]));
     const now = new Map([...document.querySelectorAll("[data-id]")].map((el) => [el.dataset.id, el]));
     const added = [], changed = [];
@@ -1885,7 +1912,7 @@
       list.append(node);
     }
     changesPanel.replaceChildren(
-      make("header", {}, make("h2", { textContent: "Changes" }),
+      make("header", {}, make("h2", { textContent: "Changes" }), reviewSwitch(),
         make("button", { type: "button", className: "x", textContent: "\u00d7", ariaLabel: "Close", onclick: closeChanges })),
       list);
   }
@@ -1908,6 +1935,236 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && changesPanel.classList.contains("open") && !overlay.classList.contains("open")) closeChanges();
   });
+  // --- review mode: every change since inplace started, shown in the page ---
+  // A read-only view: the old words are put into the page crossed out, so
+  // editing is paused while it's on, and leaving reloads the page.
+  const REVIEW_KEY = `${STATE_KEY}:review`; // "agent" or "all" while review mode is on
+  function reviewScope() {
+    try { return sessionStorage.getItem(`${STATE_KEY}:review`); } catch { return null; } // also before REVIEW_KEY is set
+  }
+  let reviewing = false;
+  const reviewLayer = make("div", { id: "inplace-review-layer" });
+  reviewLayer.dataset.inplaceUi = "";
+
+  // Each block's changes in scope combined into one: its earliest text and
+  // place, and whether it was added, removed, moved or retagged on the way.
+  function combinedChanges(onlyAgent) {
+    const out = new Map();
+    for (const entry of history) {
+      if (onlyAgent && entry.by !== "agent") continue;
+      for (const c of entry.changes) {
+        const prev = out.get(c.id);
+        if (!prev) {
+          out.set(c.id, { ...c, before: c.kind === "moved" ? c.after : c.before, moved: c.kind === "moved" });
+          continue;
+        }
+        if (prev.kind === "added") {
+          if (c.kind === "removed") out.delete(c.id);
+          else prev.tag = c.tag;
+          continue;
+        }
+        if (c.kind === "removed") prev.kind = "removed";
+        else if (c.kind === "added") prev.kind = "changed"; // removed and put back
+        else if (prev.kind !== "removed") prev.kind = "changed";
+        prev.moved ||= c.kind === "moved";
+        prev.place ??= c.place;
+        prev.fromTag ??= c.fromTag ?? (c.tag !== prev.tag ? prev.tag : undefined);
+        prev.tag = c.tag;
+      }
+    }
+    return out;
+  }
+
+  // The block's text nodes with their offsets, leaving out old words already
+  // put in.
+  function reviewTextNodes(el) {
+    const nodes = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(), pos = 0; n; n = walker.nextNode()) {
+      if (n.parentElement.closest(".inplace-del")) continue;
+      nodes.push([n, pos]);
+      pos += n.data.length;
+    }
+    return nodes;
+  }
+  // Split the text so a text node starts at `offset`; null at the very end.
+  function textAt(el, offset) {
+    for (const [n, pos] of reviewTextNodes(el)) {
+      if (offset === pos && n.data.length) return n;
+      if (offset > pos && offset < pos + n.data.length) return n.splitText(offset - pos);
+    }
+    return null;
+  }
+
+  // Put the words that went into the block crossed out and mark the new ones.
+  function markWords(el, before) {
+    let text = el.textContent;
+    // The history keeps the first 600 characters of a long block; leave the
+    // part after that unmarked rather than mark all of it as new.
+    const clipped = before.length > 600 && before.endsWith("…");
+    if (clipped) before = before.slice(0, -1);
+    if (flat(before) === flat(text)) return;
+    const runs = diffWords(before, text);
+    if (clipped && !runs.at(-1).same) runs.pop();
+    const ops = [];
+    let at = 0;
+    for (const run of runs) {
+      if (run.same) { at += run.same.join("").length; continue; }
+      const gone = run.gone.join(""), added = run.added.join("");
+      const lead = added.length - added.trimStart().length;
+      if (added.trim()) ops.push({ from: at + lead, to: at + added.trimEnd().length, gone: gone.trim() });
+      else if (gone.trim()) ops.push({ from: at + lead, to: at + lead, gone: gone.trim() });
+      at += added.length;
+    }
+    for (const { from, to, gone } of ops.reverse()) {
+      let first = null;
+      if (to > from) {
+        textAt(el, to);
+        textAt(el, from);
+        for (const [n, pos] of reviewTextNodes(el)) {
+          if (pos < from || pos >= to || !n.data.length) continue;
+          const ins = make("ins", { className: "inplace-ins" });
+          ins.dataset.inplaceUi = "";
+          n.before(ins);
+          ins.append(n);
+          first ??= ins;
+        }
+      }
+      if (!gone) continue;
+      const del = make("del", { className: "inplace-del", textContent: clipText(gone, 400) });
+      del.dataset.inplaceUi = "";
+      const spot = first ?? textAt(el, from);
+      if (spot) spot.before(del, " ");
+      else el.append(" ", del);
+    }
+  }
+
+  const article = (word) => (/^[aeiou]/.test(word) ? "an" : "a");
+  function reviewLabel(el, lines) {
+    const label = make("span", { className: "inplace-review-label" });
+    for (const line of lines) label.append(make("span", { textContent: line }));
+    reviewLayer.append(label);
+    label.block = el;
+  }
+  function placeLabels() {
+    for (const label of reviewLayer.children) {
+      const r = label.block.getBoundingClientRect();
+      const w = label.offsetWidth;
+      const left = r.left - w - 10;
+      label.style.left = `${Math.max(4, left) + scrollX}px`;
+      label.style.top = `${r.top + scrollY + (left < 4 ? -label.offsetHeight - 2 : 1)}px`;
+    }
+  }
+
+  // The old text of a removed block, where the block used to be.
+  function ghost(change) {
+    const tag = /^(li|dt|dd|tr)$/.test(change.tag) ? change.tag : "div";
+    const node = make(tag, { className: "inplace-ghost" });
+    node.dataset.inplaceUi = "";
+    node.dataset.ghost = change.id;
+    const del = make("del", { className: "inplace-del", textContent: clipText(change.before || "", 400) });
+    if (tag === "tr") node.append(make("td", { colSpan: 99 }, del));
+    else node.append(del);
+    return node;
+  }
+
+  async function enterReview(scope) {
+    for (const id of pending()) {
+      const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (el && !(await save(el))) return;
+    }
+    try { sessionStorage.setItem(REVIEW_KEY, scope); } catch {}
+    reviewing = true;
+    document.activeElement?.blur?.();
+    getSelection().removeAllRanges();
+    for (const el of document.querySelectorAll("[data-id][contenteditable=true]")) el.contentEditable = "false";
+    toolbar.style.display = "none";
+    showGrips([]);
+    hideTip();
+    // The arrival highlights would mix with the marks.
+    pill.style.display = "none";
+    for (const el of document.querySelectorAll(".inplace-changed, .inplace-changed-fade, .inplace-changed-words"))
+      el.classList.remove("inplace-changed", "inplace-changed-fade", "inplace-changed-words");
+    for (const name of [...(window.CSS?.highlights?.keys() ?? [])]) if (name.startsWith("inplace-words-")) CSS.highlights.delete(name);
+    document.documentElement.classList.add("inplace-reviewing");
+    await loadHistory();
+
+    const find = (id) => id && (document.querySelector(`[data-id="${CSS.escape(id)}"]`) ||
+      document.querySelector(`[data-ghost="${CSS.escape(id)}"]`));
+    const leftOver = [];
+    for (const [id, change] of combinedChanges(scope === "agent")) {
+      if (change.kind === "removed") {
+        const prev = find(change.place?.prev), next = find(change.place?.next);
+        if (prev) prev.after(ghost(change));
+        else if (next && !change.place?.prev) next.before(ghost(change));
+        else leftOver.push(change);
+        continue;
+      }
+      const el = find(id);
+      if (!el || el.dataset.ghost) continue;
+      if (change.kind === "added") {
+        el.classList.add("inplace-review-new");
+        continue;
+      }
+      const lines = [];
+      if (change.moved) lines.push("Moved here");
+      if (change.fromTag && noun(change.fromTag) !== noun(change.tag))
+        lines.push(`Was ${article(noun(change.fromTag))} ${noun(change.fromTag)}`);
+      if (lines.length) reviewLabel(el, lines);
+      if (change.before !== undefined && editable.has(id)) markWords(el, change.before);
+    }
+
+    const only = make("input", { type: "checkbox", checked: scope === "agent", onchange: () => {
+      try { sessionStorage.setItem(REVIEW_KEY, only.checked ? "agent" : "all"); } catch {}
+      reloadAsIs();
+    } });
+    const bar = make("div", { id: "inplace-review-bar", role: "region", ariaLabel: "What changed" },
+      make("span", { className: "what", textContent: "Showing what changed since inplace started. Editing is paused." }),
+      make("label", {}, only, "Only the agent’s changes"),
+      make("button", { type: "button", textContent: "Done", onclick: leaveReview }));
+    bar.dataset.inplaceUi = "";
+    if (leftOver.length) {
+      bar.append(make("p", { className: "removed" }, "Also removed: ",
+        ...leftOver.flatMap((c, i) => [i ? " " : "", make("del", { textContent: clipText(c.before || "", 160) })])));
+    }
+    const spacer = make("div", { id: "inplace-review-spacer" });
+    spacer.dataset.inplaceUi = "";
+    document.body.prepend(spacer);
+    document.body.append(bar, reviewLayer);
+    spacer.style.height = `${bar.offsetHeight}px`;
+    placeLabels();
+    if (changesPanel.classList.contains("open")) renderChanges();
+  }
+
+  // Reload keeping the scroll position and the open list, but without
+  // comparing blocks, which now hold the marks.
+  function reloadAsIs() {
+    const spacer = document.getElementById("inplace-review-spacer");
+    try {
+      sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: Math.max(0, scrollY - (spacer?.offsetHeight ?? 0)),
+        changes: changesPanel.classList.contains("open") }));
+    } catch {}
+    location.reload();
+  }
+
+  function leaveReview() {
+    try { sessionStorage.removeItem(REVIEW_KEY); } catch {}
+    reloadAsIs();
+  }
+
+  function reviewSwitch() {
+    return make("label", { className: "review-switch" },
+      make("input", { type: "checkbox", role: "switch", checked: reviewing,
+        onchange: (e) => (e.target.checked ? enterReview("agent") : leaveReview()) }),
+      "Show what changed");
+  }
+
+  addEventListener("resize", () => { if (reviewing) placeLabels(); });
+  // Escape leaves review mode, once the list of changes is closed.
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && reviewing && !changesPanel.classList.contains("open") && !overlay.classList.contains("open")) leaveReview();
+  }, true);
+  if (reviewScope()) enterReview(reviewScope());
   // Times like "2 minutes ago" stay current while the list is open.
   setInterval(() => { if (changesPanel.classList.contains("open")) renderChanges(); }, 30_000);
   if (reopenChanges) openChanges();

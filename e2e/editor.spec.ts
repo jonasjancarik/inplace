@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import type { Locator, Page } from "@playwright/test";
 
-import { block, caretAfter, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
+import { block, caretAfter, type Doc, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
 
 const MOD = "ControlOrMeta";
 
@@ -376,6 +376,86 @@ test.describe("undoing", () => {
     await expect.poll(() => doc.read()).toBe(original);
     await expect(panel).toBeVisible();
     await expect(panel.getByRole("button", { name: /^Undo/ })).toHaveCount(0);
+  });
+});
+
+test.describe("showing what changed", () => {
+  /** Changes as an agent might make them: two paragraphs, a new row and a removed item. */
+  function agentEdits(doc: Doc): void {
+    writeFileSync(doc.path, doc.read()
+      .replace("last autumn confirmed", "last October confirmed")
+      .replace("Two beds stay open", "Three beds stay open")
+      .replace(/(<tr[^>]*><td[^>]*>Water<)/, "<tr><td>Tools</td><td>Spades and gloves</td><td>€150</td></tr>\n$1")
+      .replace(/<li[^>]*>Volunteers[^<]*<\/li>\n/, ""));
+  }
+  async function turnOn(page: Page): Promise<void> {
+    await page.getByRole("button", { name: "Changes" }).click();
+    await page.getByRole("switch", { name: "Show what changed" }).check();
+    await expect(page.getByRole("region", { name: "What changed" })).toBeVisible();
+  }
+
+  test("the page shows the agent's changes in place, read-only, and leaving restores it", async ({ editor, doc }) => {
+    agentEdits(doc);
+    await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+    const written = doc.read();
+    await turnOn(editor);
+
+    const p = block(editor, "p", "October confirmed");
+    await expect(p.locator("del")).toHaveText(["autumn"]);
+    await expect(p.locator("ins")).toHaveText(["October"]);
+    const item = block(editor, "li", "Three beds stay open");
+    await expect(item.locator("del")).toHaveText(["Two"]);
+    await expect(item.locator("ins")).toHaveText(["Three"]);
+    await expect(block(editor, "tr", "Tools")).toHaveClass(/inplace-review-new/);
+    const ghost = editor.locator("ul > .inplace-ghost");
+    await expect(ghost).toHaveText(/^Volunteers take turns watering/);
+    // The ghost stands where the item was: after the one before it.
+    await expect(editor.locator("ul > *").nth(2)).toHaveClass(/inplace-ghost/);
+
+    // Typing does nothing.
+    await p.click();
+    await editor.keyboard.type("xyz");
+    await expect(p).not.toContainText("xyz");
+
+    await editor.getByRole("region", { name: "What changed" }).getByRole("button", { name: "Done" }).click();
+    await expect(editor.getByRole("region", { name: "What changed" })).toBeHidden();
+    await expect(editor.locator("ins, del, .inplace-ghost")).toHaveCount(0);
+    await expect(block(editor, "p", "October confirmed")).toHaveAttribute("contenteditable", "true");
+    await editor.waitForTimeout(800);
+    expect(doc.read()).toBe(written);
+  });
+
+  test("it stays on when the agent changes the file again, and marks the new change too", async ({ editor, doc }) => {
+    agentEdits(doc);
+    await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+    await turnOn(editor);
+    doc.edit("first season", "first two seasons");
+    await expect(block(editor, "td", "roof mix").locator("ins")).toHaveText("two seasons");
+    await expect(editor.getByRole("region", { name: "What changed" })).toBeVisible();
+    await expect(block(editor, "p", "October confirmed").locator("del")).toHaveText(["autumn"]);
+    // Escape closes the list of changes first, then leaves.
+    await editor.keyboard.press("Escape");
+    await expect(editor.getByRole("dialog", { name: "Changes" })).toBeHidden();
+    await expect(editor.getByRole("region", { name: "What changed" })).toBeVisible();
+    await editor.keyboard.press("Escape");
+    await expect(editor.getByRole("region", { name: "What changed" })).toBeHidden();
+    await expect(editor.locator("ins, del")).toHaveCount(0);
+  });
+
+  test("your own edits are left out unless you ask for them", async ({ editor, doc }) => {
+    const mine = block(editor, "p", "The roof is already used");
+    await caretAfter(mine, "drying laundry");
+    await editor.keyboard.type(" daily");
+    await expect.poll(() => doc.read()).toContain("drying laundry daily");
+    agentEdits(doc);
+    await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+    await turnOn(editor);
+    await expect(mine.locator("ins")).toHaveText(["October"]);
+
+    const bar = editor.getByRole("region", { name: "What changed" });
+    await bar.getByRole("checkbox", { name: "Only the agent’s changes" }).uncheck();
+    await expect(mine.locator("ins")).toHaveText(["daily", "October"]);
+    await expect(bar.getByRole("checkbox", { name: "Only the agent’s changes" })).not.toBeChecked();
   });
 });
 
