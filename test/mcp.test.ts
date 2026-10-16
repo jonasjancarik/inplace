@@ -51,7 +51,7 @@ function startServer(args: string[]) {
 }
 
 const post = (url: string, action: string, body: Record<string, unknown>) =>
-  fetch(new URL(`/__inplace/${action}`, url), { method: "POST", body: JSON.stringify(body) }).then((r) => r.json());
+  fetch(new URL(`/__inplace/${action}`, url), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
 
 test("serves a document through MCP tools and sends one channel event per pause", async () => {
   const dir = mkdtempSync(join(tmpdir(), "inplace-mcp-"));
