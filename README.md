@@ -30,6 +30,12 @@ npx skills add jonasjancarik/inplace
 
 Then tell your agent, such as Claude Code or Codex, that you want to work on a document together in inplace, for example: "Let's work on report.html together in inplace." The agent starts inplace and opens the page in its built-in browser. Click into any paragraph, heading, list item or table cell to type, and comment on an element with the browser's comment tool when you want the agent to change something.
 
+To try it without a document of your own, give your agent this prompt:
+
+```text
+Download https://raw.githubusercontent.com/jonasjancarik/inplace/main/examples/garden-proposal.html into this folder and let's work on it together in inplace.
+```
+
 The skill tells the agent how to run inplace, find a commented element by its `data-id`, keep the ids intact, and check totals and charts after you change a number.
 
 ### Running it yourself
