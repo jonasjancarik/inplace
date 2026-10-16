@@ -16,10 +16,17 @@
     [data-id][contenteditable]:hover{box-shadow:0 0 0 2px #4a7bd433}
     [data-id][contenteditable]:focus{box-shadow:0 0 0 2px #4a7bd4aa}
     [data-id].inplace-conflict{box-shadow:0 0 0 2px #d4734a!important}
-    [data-id].inplace-changed{background-color:#f7dc6f73!important}
-    [data-id].inplace-changed-fade{animation:inplace-fade 3s ease-in 1.2s both}
-    @keyframes inplace-fade{from{background-color:#f7dc6f73}}
-    @media (prefers-reduced-motion:reduce){[data-id].inplace-changed-fade{animation-timing-function:steps(1,end)}}
+    [data-id].inplace-changed{background-color:#b9a3ff3d!important}
+    [data-id].inplace-changed-fade{animation:inplace-shimmer 1.3s ease-out,inplace-glow 2.6s ease-out,inplace-fade 2.4s ease-in 1.4s both}
+    @keyframes inplace-fade{from{background-color:#b9a3ff3d}}
+    @keyframes inplace-shimmer{from,to{background-image:linear-gradient(105deg,transparent 38%,#fff3c8d0 50%,transparent 62%);
+      background-size:300% 100%;background-repeat:no-repeat}from{background-position:100% 0}to{background-position:0 0}}
+    @keyframes inplace-glow{from,to{box-shadow:0 0 0 1px #9b7bff00,0 0 0 #9b7bff00}25%{box-shadow:0 0 0 1px #9b7bff8c,0 0 22px #9b7bff59}}
+    .inplace-sparkle{position:fixed;z-index:2147483646;pointer-events:none;line-height:1;font-family:system-ui,sans-serif;
+      animation:inplace-sparkle .9s ease-out both}
+    @keyframes inplace-sparkle{from{opacity:0;transform:translateY(4px) scale(.2) rotate(0)}30%{opacity:1;transform:translateY(-4px) scale(1.15) rotate(40deg)}
+      to{opacity:0;transform:translateY(-16px) scale(.4) rotate(110deg)}}
+    @media (prefers-reduced-motion:reduce){[data-id].inplace-changed-fade{animation:inplace-fade 3.8s steps(1,end) both}.inplace-sparkle{display:none}}
     #inplace-status{position:fixed;right:14px;bottom:14px;z-index:2147483647;font:12px/1.3 -apple-system,system-ui,sans-serif;
       background:#1f2a24;color:#fff;padding:7px 11px;border-radius:7px;box-shadow:0 3px 12px #0003;max-width:340px;opacity:.88}
     #inplace-status[data-kind=error]{background:#9c3b1c}
@@ -73,7 +80,7 @@
     #inplace-stash button.primary{background:#1f2a24;color:#fff}
     #inplace-stash button.primary:hover{background:#34433a}
     #inplace-stash .close{float:right}
-    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-stash-badge{display:none!important}[data-id][contenteditable]{box-shadow:none!important}
+    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-stash-badge{display:none!important}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
       [data-id].inplace-changed,[data-id].inplace-changed-fade{background-color:transparent!important;animation:none!important}}`;
   document.head.append(style);
 
@@ -934,8 +941,8 @@
     };
     const total = marks.length + removed;
     const summary = marks.length
-      ? total === 1 ? "Your agent made a change." : `Your agent made ${total} changes.`
-      : removed === 1 ? "Your agent removed a paragraph." : `Your agent removed ${removed} paragraphs.`;
+      ? total === 1 ? "\u2726 Your agent made a change." : `\u2726 Your agent made ${total} changes.`
+      : removed === 1 ? "\u2726 Your agent removed a paragraph." : `\u2726 Your agent removed ${removed} paragraphs.`;
     function render() {
       if (quiet) return;
       if (!unseen.size) {
@@ -953,18 +960,40 @@
     function seen(el) {
       if (!unseen.delete(el)) return;
       observer.unobserve(el);
-      el.classList.replace("inplace-changed", "inplace-changed-fade");
+      reveal(el);
       if (pill.dataset.owner === "changes") render();
+    }
+    // A shimmer sweeps across the block and a few sparkles rise from its edges.
+    function reveal(el) {
+      el.classList.replace("inplace-changed", "inplace-changed-fade");
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const r = el.getBoundingClientRect();
+      for (let i = 0; i < 6; i++) {
+        const top = Math.random() < 0.5;
+        const spark = make("span", { className: "inplace-sparkle", textContent: i % 3 ? "\u2726" : "\u2727" });
+        spark.dataset.inplaceUi = "";
+        spark.style.left = `${r.left + Math.random() * r.width - 6}px`;
+        spark.style.top = `${(top ? r.top - 10 : r.bottom - 4) + Math.random() * 8}px`;
+        spark.style.fontSize = `${9 + Math.random() * 7}px`;
+        spark.style.color = i % 2 ? "#e2b23c" : "#9b7bff";
+        spark.style.animationDelay = `${150 + i * 90}ms`;
+        spark.addEventListener("animationend", () => spark.remove());
+        document.body.append(spark);
+      }
     }
     const observer = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) seen(e.target);
     }, { rootMargin: "-10% 0px -10% 0px" });
     for (const el of marks) {
       el.classList.add("inplace-changed");
-      el.addEventListener("animationend", () => el.classList.remove("inplace-changed-fade"), { once: true });
+      el.addEventListener("animationend", function done(e) {
+        if (e.target !== el || e.animationName !== "inplace-fade") return;
+        el.classList.remove("inplace-changed-fade");
+        el.removeEventListener("animationend", done);
+      });
       if (inView(el)) {
         unseen.delete(el);
-        el.classList.replace("inplace-changed", "inplace-changed-fade");
+        reveal(el);
       } else observer.observe(el);
     }
     render();
