@@ -12,6 +12,7 @@ import {
   removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { type Author, diffBlocks, History } from "./history.js";
+import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
 
 const EDITOR_PREFIX = "/__inplace/";
@@ -169,6 +170,7 @@ export class Document {
    * set aside in the stash and BlockConflict is thrown.
    */
   saveBlock(id: string, oldInner: string, newInner: string): { version: string; merged?: true } {
+    checkNewLinks(oldInner, newInner);
     const text = this.refresh();
     let patched: string;
     try {
@@ -275,6 +277,9 @@ export class Document {
   insertBlock(
     id: string, position: "before" | "after", tag: string, content: string, split?: { old: string; new: string },
   ): { id: string; html: string } {
+    // The new element's text comes from the block it was split from.
+    if (split) checkNewLinks(split.old, split.new + content);
+    else checkNewLinks("", content);
     const text = this.refresh();
     const inserted = insertBlock(text, id, position, tag, content, split);
     this.write(inserted.source, "you");
@@ -491,6 +496,7 @@ export function createInplaceServer(doc: Document): Server {
         return json(res, 409, { error: "conflict", current: e.current, version: doc.version, stash: doc.stashCount });
       }
       if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found", version: doc.version });
+      if (e instanceof UnsafeLink) return json(res, 400, { error: e.message, version: doc.version });
       throw e;
     }
   };

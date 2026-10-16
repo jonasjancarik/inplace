@@ -51,6 +51,7 @@
       text-align:center;cursor:grab;user-select:none;touch-action:none}
     .inplace-grip:hover{color:#1f2a24;background:#eef2fb}
     .inplace-add{letter-spacing:0;font-size:17px;cursor:pointer}
+    html.inplace-plain-links [data-id][contenteditable=true] a{text-decoration:underline}
     [data-id][contenteditable]:empty{min-height:1.2em}
     [data-id][contenteditable]:empty:focus::before{content:"Type here";color:#9aa39e;pointer-events:none}
     #inplace-outline{position:fixed;z-index:2147483645;pointer-events:none;border:2px solid #4a7bd4aa;border-radius:3px}
@@ -257,10 +258,13 @@
   async function post(action, payload) {
     busy++;
     try {
+      const body = JSON.stringify(payload);
       const res = await fetch(`/__inplace/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body,
+        // A hidden tab may be closed before the reply comes; let the request finish anyway.
+        keepalive: document.hidden && fits(body),
       });
       return { ok: res.ok, status: res.status, body: await res.json() };
     } catch {
@@ -287,13 +291,49 @@
     if (e.inputType === "insertText") markdown(el, e.data);
     schedule(el);
   });
+  // Browsers cap requests that outlive the page at 64 KB in total.
+  const fits = (body) => new Blob([body]).size < 60_000;
+
+  // Closing, reloading or leaving the page doesn't wait for a pending save, so
+  // send what's left with keepalive, which outlives the page. The reply can't
+  // be handled; a clash with the agent is set aside on the server as usual.
+  addEventListener("pagehide", () => {
+    for (const id of pending()) {
+      clearTimeout(timers.get(id));
+      timers.delete(id);
+      const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (!el) continue;
+      clean(el);
+      const html = tidySpaces(saved.get(id), el.innerHTML);
+      if (html === saved.get(id)) continue;
+      const body = JSON.stringify({ id, old: saved.get(id), new: html });
+      if (!fits(body)) continue;
+      fetch("/__inplace/save", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body })
+        .catch(() => {});
+      saved.set(id, html);
+    }
+  });
+  // Mobile browsers often discard a hidden tab without a pagehide, so save
+  // pending blocks as soon as the tab is hidden.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) return;
+    for (const id of pending()) {
+      const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (el) save(el);
+    }
+  });
   document.addEventListener("focusout", (e) => {
     const el = e.target.closest?.("[data-id][contenteditable=true]");
     if (el) save(el);
   });
+  // While an input method (Japanese, Chinese, Korean…) is building a word,
+  // Enter and Escape belong to it. Safari sends the confirming Enter after
+  // compositionend, so isComposing is already false there; keyCode 229 marks it.
+  const composing = (e) => e.isComposing || e.keyCode === 229;
+
   document.addEventListener("keydown", (e) => {
     const el = e.target.closest?.("[data-id][contenteditable=true]");
-    if (!el) return;
+    if (!el || composing(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (SPLITTABLE.has(el.tagName)) splitBlock(el);
@@ -339,6 +379,19 @@
   const SHORTCUTS = { b: "bold", i: "italic", e: "code", "shift+x": "strike", k: "link" };
   const HEADINGS = ["P", "H1", "H2", "H3"];
   const MOD = /Mac|iP/.test(navigator.platform) ? "⌘" : "Ctrl+";
+  // Pages with a CSS reset, such as Tailwind's preflight, style links as plain
+  // text, so a link added here would look as if nothing happened. Underline
+  // links in editable text then, only while the page is open here.
+  let linksChecked = false;
+  function checkLinkStyle(a = document.querySelector("[data-id][contenteditable=true] a[href]")) {
+    if (linksChecked || !a?.parentElement) return;
+    linksChecked = true;
+    const own = getComputedStyle(a);
+    if (own.color === getComputedStyle(a.parentElement).color && !own.textDecorationLine.includes("underline")) {
+      document.documentElement.classList.add("inplace-plain-links");
+    }
+  }
+  checkLinkStyle();
   const blockOf = (node) =>
     (node?.nodeType === 1 ? node : node?.parentElement)?.closest?.("[data-id][contenteditable=true]");
 
@@ -407,6 +460,7 @@
         range.insertNode(frag);
       }
       select(el, el);
+      if (name === "link") checkLinkStyle(el);
     }
     schedule(block);
     updateToolbar();
@@ -537,6 +591,23 @@
     linkInput.select();
   }
 
+  // What to write as the link's address: relative addresses as typed, a bare
+  // domain with https:// and an email address with mailto: added. Null for
+  // any other scheme, such as javascript: or data:, which the file shouldn't get.
+  const LINK_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:"]);
+  function normalizeHref(value) {
+    let href = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+    if (!href || /^(#|\/|\.\.?\/|\?)/.test(href)) return href;
+    // "localhost:3000/x" starts with a host and port, not a scheme.
+    const hostPort = /^[^:/?#]+:\d+([/?#]|$)/.test(href) && !/^tel:/i.test(href);
+    if (!/^[a-z][\w+.-]*:/i.test(href) || hostPort) href = (href.includes("@") && !href.includes("/") ? "mailto:" : "https://") + href;
+    try {
+      return LINK_SCHEMES.has(new URL(href, "https://relative.invalid").protocol) ? href : null;
+    } catch {
+      return null;
+    }
+  }
+
   function endLink(apply) {
     const state = linking;
     linking = null;
@@ -548,8 +619,8 @@
     if (state.existing && state.range.collapsed) state.range.selectNodeContents(state.existing);
     sel.addRange(state.range);
     if (!apply) return updateToolbar();
-    let href = linkInput.value.trim();
-    if (href && !/^([a-z][\w+.-]*:|[#/?.])/i.test(href)) href = (href.includes("@") ? "mailto:" : "https://") + href;
+    const href = normalizeHref(linkInput.value);
+    if (href === null) return status("Links can start with http, https, mailto or tel", "error", 4000);
     const ctx = { range: state.range, block: state.block };
     if (href) applyFormat(ctx, "link", { href });
     else if (state.existing) applyFormat(ctx, "link");
@@ -560,7 +631,11 @@
     endLink(true);
   });
   linkInput.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
+    if (composing(e)) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      endLink(true);
+    } else if (e.key === "Escape") {
       e.preventDefault();
       endLink(false);
     }
@@ -1159,15 +1234,17 @@
     marks.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 
     const unseen = new Set(marks);
+    // A block in a closed <details> or hidden tab panel counts as out of view.
     const inView = (el) => {
       const r = el.getBoundingClientRect();
-      return r.bottom > innerHeight * 0.1 && r.top < innerHeight * 0.9;
+      return isShown(el) && r.bottom > innerHeight * 0.1 && r.top < innerHeight * 0.9;
     };
     const total = marks.length + removed;
     const summary = marks.length
       ? total === 1 ? "Your agent made a change." : `Your agent made ${total} changes.`
       : removed === 1 ? "Your agent removed a paragraph." : `Your agent removed ${removed} paragraphs.`;
-    function render() {
+    // `lead` takes the summary's place once, to say why Show didn't scroll.
+    function render(lead = "") {
       if (quiet) return;
       const star = () => {
         const icon = make("span", { className: "star" });
@@ -1176,14 +1253,23 @@
         pill.dataset.owner = "changes";
       };
       if (!unseen.size) {
-        status(summary, "info", 4000);
+        status(lead || summary, "info", 4000);
         return star();
       }
-      status(`${summary} ${unseen.size === 1 ? "One is" : `${unseen.size} are`} out of view.`, "info", true);
+      const more = lead ? (unseen.size === 1 ? "One more is" : `${unseen.size} more are`) : unseen.size === 1 ? "One is" : `${unseen.size} are`;
+      status(`${lead || summary} ${more} out of view.`, "info", true);
       star();
-      pill.append(make("button", { type: "button", textContent: "Show", onclick: () => {
+      pill.append(make("button", { type: "button", textContent: "Show", onclick: async () => {
         const next = [...unseen][0];
-        next?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        if (!next) return;
+        if (await uncover(next)) {
+          return next.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        }
+        // Still hidden: move on to the next one. Its tint plays when it's shown.
+        unseen.delete(next);
+        observer.unobserve(next);
+        reveal(next);
+        render(HIDDEN_CHANGE);
       } }));
     }
     function seen(el) {
@@ -1195,11 +1281,12 @@
     // In a background tab nothing counts as seen until the tab is shown.
     const observer = new IntersectionObserver((entries) => {
       if (document.hidden) return;
-      for (const e of entries) if (e.isIntersecting) seen(e.target);
+      for (const e of entries) if (e.isIntersecting && isShown(e.target)) seen(e.target);
     }, { rootMargin: "-10% 0px -10% 0px" });
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) for (const el of [...unseen]) if (inView(el)) seen(el);
-    });
+    const check = () => { if (!document.hidden) for (const el of [...unseen]) if (inView(el)) seen(el); };
+    document.addEventListener("visibilitychange", check);
+    // Opening a <details> doesn't move what's inside it, so no intersection is reported.
+    document.addEventListener("toggle", check, true);
     for (const el of marks) {
       const id = el.dataset.id;
       if (!(old.has(id) && texts[id] !== undefined && tintWords(el, texts[id]))) el.classList.add("inplace-changed");
@@ -1475,8 +1562,9 @@
     return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  function goTo(el, change) {
+  async function goTo(el, change) {
     if (matchMedia("(max-width: 600px)").matches) closeChanges();
+    if (!(await uncover(el))) return status(HIDDEN_CHANGE, "info", 4000);
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const r = el.getBoundingClientRect();
     const before = change.kind === "changed" ? change.before : undefined;
@@ -1486,6 +1574,31 @@
     addEventListener("scrollend", then, { once: true });
     setTimeout(then, reduced ? 0 : 700);
     el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  }
+
+  // A block inside a closed <details>, a hidden tab panel or a collapsed
+  // accordion has no size, so scrolling to it does nothing. Open what hides it
+  // first, as a person would. False if it's still hidden.
+  const HIDDEN_CHANGE = "This change is in a part of the page that's hidden.";
+  // The content of a closed <details> still has a size, so ask the browser.
+  function isShown(el) {
+    return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
+  }
+  async function uncover(el) {
+    for (let d = el.closest("details:not([open])"); d; d = d.parentElement?.closest("details:not([open])")) d.open = true;
+    const clicked = new Set();
+    while (!isShown(el)) {
+      let hidden = el;
+      while (hidden && !(hidden.hidden || getComputedStyle(hidden).display === "none")) hidden = hidden.parentElement;
+      // The usual pattern for tabs and accordions: a button with aria-controls.
+      const control = hidden?.id && [...document.querySelectorAll("[aria-controls]")]
+        .find((c) => c.getAttribute("aria-controls").split(/\s+/).includes(hidden.id) && !c.closest("[data-inplace-ui]"));
+      if (!control || clicked.has(control)) break;
+      clicked.add(control);
+      control.click();
+      if (!isShown(el)) await new Promise(requestAnimationFrame);
+    }
+    return isShown(el);
   }
 
   function renderChanges() {

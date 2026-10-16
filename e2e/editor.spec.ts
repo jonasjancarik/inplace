@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { block, caretAfter, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
 
@@ -34,6 +34,22 @@ test.describe("typing", () => {
     await expect(editor.locator("#inplace-status")).toHaveText("Saved");
   });
 
+  // Typing and then leaving the page at once, before the save timer runs.
+  for (const [how, leave] of [
+    ["closing the tab", (page: Page) => page.close({ runBeforeUnload: true })],
+    ["reloading", (page: Page) => page.reload()],
+    ["going to another page", (page: Page) => page.goto("about:blank")],
+  ] as const) {
+    test(`text typed just before ${how} is saved`, async ({ editor, doc }) => {
+      const p = block(editor, "p", "The roof is already used");
+      const id = await idOf(p);
+      await caretAfter(p, "drying laundry");
+      await editor.keyboard.type(" and bikes", { delay: 0 });
+      await leave(editor);
+      await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry and bikes");
+    });
+  }
+
   test("Enter in a table cell leaves it instead of adding a line", async ({ editor, doc }) => {
     const cell = block(editor, "td", "Raised beds");
     await caretAfter(cell);
@@ -55,6 +71,84 @@ test.describe("typing", () => {
     await p.blur();
     await expect.poll(() => sourceOf(doc, id)).toContain("drying laundry (quiet text)");
     expect(sourceOf(doc, id)).not.toMatch(/<b|style=/);
+  });
+});
+
+test.describe("typing with an input method", () => {
+  // Playwright can't drive a real input method, so these send the events one
+  // would: Enter while a word is being composed, flagged either way browsers do.
+  const composeEnter = (el: Locator) => el.evaluate((node) => {
+    node.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
+    node.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    // Safari sends the confirming Enter after compositionend, with keyCode 229.
+    const late = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(late, "keyCode", { value: 229 });
+    node.dispatchEvent(late);
+  });
+  const plainEnter = (el: Locator) => el.evaluate((node) =>
+    node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+
+  test("Enter that confirms a word doesn't split the paragraph", async ({ editor }) => {
+    const inserts: string[] = [];
+    editor.on("request", (r) => { if (r.url().endsWith("/__inplace/insert")) inserts.push(r.url()); });
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await caretAfter(p, "stands empty.");
+    await composeEnter(p);
+    await editor.waitForTimeout(300);
+    expect(inserts).toEqual([]);
+    await expect(editor.locator(`[data-id="${id}"]`)).toContainText("A structural survey");
+    // An ordinary Enter still splits it.
+    await plainEnter(p);
+    await expect(editor.locator(`[data-id="${id}"] + p`)).toHaveText(/^\s*A structural survey/);
+    expect(inserts).toHaveLength(1);
+  });
+
+  test("Enter that confirms a word stays in the table cell", async ({ editor }) => {
+    const cell = block(editor, "td", "Raised beds");
+    await caretAfter(cell);
+    await composeEnter(cell);
+    await expect(cell).toBeFocused();
+    await plainEnter(cell);
+    await expect(cell).not.toBeFocused();
+  });
+
+  test("Enter that confirms a word doesn't apply the link", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    await selectText(p, "structural survey");
+    await editor.keyboard.press(`${MOD}+k`);
+    const input = editor.getByLabel("Link address");
+    await input.fill("example.com/survey");
+    await composeEnter(input);
+    await expect(input).toBeVisible();
+    await expect(input).toBeFocused();
+    await input.press("Enter");
+    await expect.poll(() => sourceOf(doc, id)).toContain('<a href="https://example.com/survey">structural survey</a>');
+  });
+
+  test("Markdown marks typed through an input method stay as typed", async ({ editor }) => {
+    const p = block(editor, "p", "The roof is already used");
+    // The text changes as an input method would change it, then the page gets
+    // the input event that comes with it.
+    const typed = (inputType: string) => p.evaluate((node, inputType) => {
+      const text = [...node.childNodes].find((n): n is Text => n.nodeType === 3 && n.data.includes("drying laundry"))!;
+      const at = text.data.indexOf("drying laundry") + "drying laundry".length;
+      text.insertData(at, " **word**");
+      const range = document.createRange();
+      range.setStart(text, at + " **word**".length);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+      node.dispatchEvent(new InputEvent("input", { inputType, data: "*", bubbles: true }));
+    }, inputType);
+    await caretAfter(p, "drying laundry");
+    await typed("insertCompositionText");
+    await expect(p.locator("strong")).toHaveCount(0);
+    await expect(p).toContainText("drying laundry **word**");
+    // The same text typed directly becomes bold.
+    await typed("insertText");
+    await expect(p.locator("strong")).toHaveText("word");
   });
 });
 
@@ -99,6 +193,22 @@ test.describe("formatting", () => {
     await input.fill("example.com/survey");
     await input.press("Enter");
     await expect.poll(() => sourceOf(doc, id)).toContain('<a href="https://example.com/survey">structural survey</a>');
+  });
+
+  test("a javascript: address doesn't become a link", async ({ editor, doc }) => {
+    const p = block(editor, "p", "The roof is already used");
+    const id = await idOf(p);
+    const before = sourceOf(doc, id);
+    await selectText(p, "structural survey");
+    await editor.keyboard.press(`${MOD}+k`);
+    const input = editor.getByLabel("Link address");
+    await input.fill("javascript:alert(1)");
+    await input.press("Enter");
+    await expect(editor.locator("#inplace-status")).toHaveText("Links can start with http, https, mailto or tel");
+    await expect(p.locator("a")).toHaveCount(0);
+    await p.blur();
+    await editor.waitForTimeout(800);
+    expect(sourceOf(doc, id)).toBe(before);
   });
 
   test("typing ## and a space turns a paragraph into a heading, keeping its id", async ({ editor, doc }) => {
@@ -384,4 +494,103 @@ test("deliberate non-breaking spaces stay when you edit nearby", async ({ page }
   } finally {
     doc.stop();
   }
+});
+
+test.describe("pages with unusual styles and parts", () => {
+  /** Serve `html`, open it, run `body`, then stop the server. */
+  async function withDoc(page: Page, html: string, body: (doc: Awaited<ReturnType<typeof startDoc>>) => Promise<void>) {
+    const doc = await startDoc(undefined, html);
+    try {
+      await page.goto(doc.url);
+      await page.waitForFunction(() => document.querySelector("#inplace-toolbar"));
+      await body(doc);
+    } finally {
+      doc.stop();
+    }
+  }
+  const RESET = "<style>a{color:inherit;text-decoration:inherit}</style>";
+  const decoration = (el: Locator) => el.evaluate((a) => getComputedStyle(a).textDecorationLine);
+
+  async function addLink(page: Page) {
+    const p = page.locator("p").first();
+    await selectText(p, "survey");
+    await page.keyboard.press(`${MOD}+k`);
+    await page.getByLabel("Link address").fill("example.com");
+    await page.getByLabel("Link address").press("Enter");
+    return p.locator("a");
+  }
+
+  test("a new link is underlined while editing when the page's reset hides it", async ({ page }) => {
+    await withDoc(page, `<!doctype html><title>t</title>${RESET}<body><p>Read the survey now.</p></body>`, async (doc) => {
+      const a = await addLink(page);
+      await expect.poll(() => decoration(a)).toBe("underline");
+      await expect.poll(() => doc.read()).toContain('<a href="https://example.com">survey</a>');
+      expect(doc.read()).not.toMatch(/underline|style=/);
+    });
+  });
+
+  test("links already on a page with a reset are underlined from the start", async ({ page }) => {
+    await withDoc(page, `<!doctype html><title>t</title>${RESET}<body><p>See <a href="/x">this</a>.</p></body>`, async () => {
+      await expect.poll(() => decoration(page.locator("a"))).toBe("underline");
+    });
+  });
+
+  test("links keep the page's own style when it sets them apart", async ({ page }) => {
+    const html = "<!doctype html><title>t</title><style>a{color:#c00;text-decoration:none}</style><body><p>Read the survey now.</p></body>";
+    await withDoc(page, html, async () => {
+      const a = await addLink(page);
+      await expect(a).toHaveCount(1);
+      expect(await decoration(a)).toBe("none");
+      await expect(page.locator("html")).not.toHaveClass(/inplace-plain-links/);
+    });
+  });
+
+  const PARTS = `<!doctype html><title>t</title><body>
+<p>Intro text.</p>
+<details><summary>More</summary><p>Folded text here.</p></details>
+<div role="tablist"><button role="tab" aria-controls="tab-a">A</button><button role="tab" aria-controls="tab-b">B</button></div>
+<div id="tab-a" role="tabpanel"><p>Alpha panel text.</p></div>
+<div id="tab-b" role="tabpanel" hidden><p>Beta panel text.</p></div>
+<div style="display:none"><p>Hidden for good.</p></div>
+<script>for (const b of document.querySelectorAll("[role=tab]")) b.onclick = () => {
+  for (const p of document.querySelectorAll("[role=tabpanel]")) p.hidden = p.id !== b.getAttribute("aria-controls");
+};</script>
+</body>`;
+
+  test("Show opens a closed details and a tab panel to reach the agent's changes", async ({ page }) => {
+    await withDoc(page, PARTS, async (doc) => {
+      writeFileSync(doc.path, doc.read().replace("Folded text here", "Folded words here").replace("Beta panel text", "Beta panel words"));
+      const pill = page.locator("#inplace-status");
+      await expect(pill).toContainText("Your agent made 2 changes. 2 are out of view.");
+      await pill.getByRole("button", { name: "Show" }).click();
+      await expect(block(page, "p", "Folded words here")).toBeVisible();
+      await expect(pill).toContainText("One is out of view.");
+      await pill.getByRole("button", { name: "Show" }).click();
+      await expect(block(page, "p", "Beta panel words")).toBeVisible();
+      await expect(block(page, "p", "Alpha panel text")).toBeHidden();
+      await expect(pill).toHaveText("Your agent made 2 changes.");
+      await expect.poll(() => highlighted(page)).toEqual(expect.arrayContaining(["words"]));
+    });
+  });
+
+  test("the list of changes opens the tab panel a change is in", async ({ page }) => {
+    await withDoc(page, PARTS, async (doc) => {
+      doc.edit("Beta panel text", "Beta panel words");
+      await expect(page.locator("#inplace-status")).toContainText("One is out of view.");
+      await page.getByRole("button", { name: "Changes" }).click();
+      await page.getByRole("dialog", { name: "Changes" }).getByRole("button", { name: /Edited paragraph/ }).click();
+      await expect(block(page, "p", "Beta panel words")).toBeVisible();
+      await expect.poll(() => highlighted(page)).toContain("words");
+    });
+  });
+
+  test("a change that can't be shown says so", async ({ page }) => {
+    await withDoc(page, PARTS, async (doc) => {
+      doc.edit("Hidden for good", "Hidden for ever");
+      const pill = page.locator("#inplace-status");
+      await expect(pill).toContainText("One is out of view.");
+      await pill.getByRole("button", { name: "Show" }).click();
+      await expect(pill).toHaveText("This change is in a part of the page that's hidden.");
+    });
+  });
 });
