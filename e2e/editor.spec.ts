@@ -323,6 +323,28 @@ test.describe("moving", () => {
 const highlighted = (page: Page) => page.evaluate(() =>
   [...CSS.highlights.values()].flatMap((h) => [...h]).map((r) => r.toString()));
 
+/** Move the mouse onto the first occurrence of a word on the page. */
+async function hoverWord(page: Page, word: string): Promise<void> {
+  const box = await page.evaluate(async (word) => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode() as Text | null; t; t = walker.nextNode() as Text | null) {
+      const i = t.data.indexOf(word);
+      if (i === -1) continue;
+      t.parentElement!.scrollIntoView({ block: "center" });
+      // Let the scroll settle, since scrolling hides the tooltip.
+      await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+      const range = document.createRange();
+      range.setStart(t, i);
+      range.setEnd(t, i + word.length);
+      const r = range.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }
+    throw new Error(`hoverWord: "${word}" not found`);
+  }, word);
+  await page.mouse.move(box.x - 1, box.y);
+  await page.mouse.move(box.x, box.y);
+}
+
 test.describe("working alongside an agent", () => {
   test("an edit to the file on disk reloads the page", async ({ editor, doc }) => {
     doc.edit("Two beds stay open", "Three beds stay open");
@@ -411,6 +433,58 @@ test.describe("working alongside an agent", () => {
     await expect.poll(() => highlighted(editor)).toContain("and flowers");
     await editor.keyboard.press("Escape");
     await expect(panel).toBeHidden();
+  });
+
+  test("hovering a word the agent changed shows the word it replaced, and nothing reaches the file", async ({ editor, doc }) => {
+    doc.edit("last autumn confirmed", "last October confirmed");
+    const p = block(editor, "p", "last October confirmed");
+    await expect.poll(() => highlighted(editor)).toEqual(["October"]);
+    const written = doc.read();
+    const tip = editor.getByRole("tooltip");
+
+    await hoverWord(editor, "October");
+    await expect(tip).toHaveText("Was: autumn");
+    await expect(tip.locator("del")).toHaveText("autumn");
+    await hoverWord(editor, "confirmed");
+    await expect(tip).toBeHidden();
+    // Clicking the word puts the caret there; leaving the paragraph would save
+    // anything that had ended up inside it.
+    await hoverWord(editor, "October");
+    await editor.mouse.down();
+    await editor.mouse.up();
+    await expect(tip).toBeVisible();
+    await expect(p).toBeFocused();
+    await editor.locator("h1").click();
+    await editor.waitForTimeout(1000);
+    expect(doc.read()).toBe(written);
+    expect(doc.output).not.toMatch(/edited/);
+  });
+
+  test("each changed stretch shows its own old words", async ({ editor, doc }) => {
+    // A replacement and an insertion in one paragraph.
+    doc.edit("last autumn confirmed it can carry raised beds", "last October confirmed it can carry wooden raised beds");
+    await expect.poll(() => highlighted(editor)).toEqual(["October", "wooden"]);
+    const tip = editor.getByRole("tooltip");
+    await hoverWord(editor, "October");
+    await expect(tip).toHaveText("Was: autumn");
+    await hoverWord(editor, "wooden");
+    await expect(tip).toHaveText("Added by your agent");
+  });
+
+  test("hovering works after the tint has faded, until the next reload", async ({ editor, doc }) => {
+    doc.edit("last autumn confirmed", "last October confirmed");
+    await expect(block(editor, "p", "last October confirmed")).toBeVisible();
+    await expect.poll(() => highlighted(editor), { timeout: 8_000 }).toEqual([]);
+    const tip = editor.getByRole("tooltip");
+    await hoverWord(editor, "October");
+    await expect(tip).toHaveText("Was: autumn");
+
+    await editor.mouse.move(1, 1);
+    doc.edit("Two beds stay open", "Three beds stay open");
+    await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+    await hoverWord(editor, "October");
+    await editor.waitForTimeout(200);
+    await expect(tip).toBeHidden();
   });
 
   test("your caret block survives the reload", async ({ editor, doc }) => {

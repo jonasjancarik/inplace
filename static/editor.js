@@ -56,6 +56,12 @@
     [data-id][contenteditable]:empty:focus::before{content:"Type here";color:#9aa39e;pointer-events:none}
     #inplace-outline{position:fixed;z-index:2147483645;pointer-events:none;border:2px solid #4a7bd4aa;border-radius:3px}
     #inplace-marker{position:fixed;z-index:2147483646;pointer-events:none;background:#4a7bd4;border-radius:2px}
+    #inplace-tip{position:fixed;z-index:2147483647;display:none;box-sizing:border-box;max-width:min(360px,calc(100vw - 16px));
+      padding:5px 9px;border-radius:7px;background:#fff;color:#1f2a24;box-shadow:0 3px 14px #0003,0 0 0 1px #0000000f;
+      font:13px/1.4 -apple-system,system-ui,sans-serif;overflow-wrap:anywhere;pointer-events:none}
+    #inplace-tip del{padding:0 2px;border-radius:3px;background:#fbe9e3;color:#a1452a;text-decoration:line-through;
+      text-decoration-color:#a1452a88}
+    @media print{#inplace-tip{display:none!important}}
     .inplace-dragging{opacity:.35}
     html.inplace-is-dragging,html.inplace-is-dragging *{cursor:grabbing!important;user-select:none!important}
     #inplace-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:2px;padding:3px;border-radius:8px;
@@ -1135,7 +1141,7 @@
   // --- changed words inside a paragraph ---
   // Marked with the CSS Custom Highlight API, which colours text ranges without
   // touching the page's HTML, so nothing extra ends up in what gets saved.
-  const wordChanges = new WeakMap(); // element -> { before, ranges, name, rule }
+  const wordChanges = new WeakMap(); // element -> { before, ranges, changes, by, name, rule }
   const wordStyle = document.createElement("style");
   wordStyle.dataset.inplaceUi = "";
   document.head.append(wordStyle);
@@ -1145,7 +1151,8 @@
   });
   let wordCount = 0;
 
-  // Text ranges in `el` that differ from `before`, or null when the change is
+  // Text ranges in `el` that differ from `before`, each with the words it
+  // replaced (`gone`, empty for an insertion), or null when the change is
   // better shown on the whole block: nothing added, or most of it rewritten.
   function changedRanges(el, before) {
     const text = el.textContent;
@@ -1155,7 +1162,7 @@
       const piece = (run.same || run.added).join("");
       if (!run.same && piece.trim()) {
         const lead = piece.length - piece.trimStart().length, trail = piece.length - piece.trimEnd().length;
-        spans.push([at + lead, at + piece.length - trail]);
+        spans.push([at + lead, at + piece.length - trail, run.gone.join("").trim()]);
         added += piece.trim().length;
       }
       at += piece.length;
@@ -1175,25 +1182,27 @@
       }
       return null;
     };
-    return spans.map(([from, to]) => {
+    return spans.map(([from, to, gone]) => {
       const range = document.createRange();
       const start = point(from, false), end = point(to, true);
       if (!start || !end) return null;
       range.setStart(...start);
       range.setEnd(...end);
-      return range;
+      return { range, gone };
     }).filter(Boolean);
   }
 
-  function tintWords(el, before) {
+  // `by` says who made the change, for the tooltip on added words.
+  function tintWords(el, before, by = "agent") {
     if (!window.CSS?.highlights || !window.Highlight || !editable.has(el.dataset.id)) return false;
-    const ranges = changedRanges(el, before);
-    if (!ranges?.length) return false;
+    const changes = changedRanges(el, before);
+    if (!changes?.length) return false;
+    const ranges = changes.map((c) => c.range);
     const name = `inplace-words-${++wordCount}`;
     CSS.highlights.set(name, new Highlight(...ranges));
     const sheet = wordStyle.sheet;
     const rule = sheet.cssRules[sheet.insertRule(`::highlight(${name}){background-color:rgba(${WORD_TINT.join(",")})}`, sheet.cssRules.length)];
-    wordChanges.set(el, { before, ranges, name, rule });
+    wordChanges.set(el, { before, ranges, changes, by, name, rule });
     el.classList.add("inplace-changed-words");
     return true;
   }
@@ -1219,6 +1228,81 @@
     CSS.highlights.delete(words.name);
     wordChanges.delete(el);
   }
+
+  // --- what the changed words replaced, shown on hover ---
+  // Highlights aren't elements and get no mouse events, so the pointer is
+  // checked against the stored ranges instead. The ranges stay until the next
+  // reload, so this keeps working after the tint has faded. The tooltip sits
+  // outside every block, so it can never be saved into the file.
+  const rewritten = new WeakMap(); // element tinted as a whole -> its text from before
+  const tip = document.createElement("div");
+  tip.id = "inplace-tip";
+  tip.dataset.inplaceUi = "";
+  tip.setAttribute("role", "tooltip");
+  document.body.append(tip);
+  let tipFor = null; // the change the tooltip shows
+  const flat = (s) => s.replace(/\s+/g, " ").trim();
+  // A block tinted as a whole shows its old text, if it had any and the text
+  // itself changed. New blocks show nothing.
+  function rememberRewritten(el, before) {
+    if (flat(before) && flat(before) !== flat(el.textContent)) rewritten.set(el, flat(before));
+  }
+
+  // The change under a point: a stretch of changed words, or a block that was
+  // rewritten as a whole, with the box the tooltip goes above.
+  function changeAt(x, y, target) {
+    const inside = (r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    for (let el = target?.closest?.("[data-id]"); el; el = el.parentElement?.closest("[data-id]")) {
+      const words = wordChanges.get(el);
+      if (words) {
+        for (const change of words.changes) {
+          const rects = [...change.range.getClientRects()].filter((r) => r.width > 0);
+          if (rects.some(inside)) return { key: change, el, gone: change.gone, by: words.by, box: rects[0] };
+        }
+        return null;
+      }
+      const before = rewritten.get(el);
+      if (before !== undefined) return { key: el, el, gone: before, box: el.getBoundingClientRect() };
+    }
+    return null;
+  }
+
+  function showTip(change) {
+    if (!change) return hideTip();
+    if (tipFor === change.key) return;
+    tipFor = change.key;
+    tip.replaceChildren(...(change.gone
+      ? ["Was: ", make("del", { textContent: clipText(change.gone, 160) })]
+      : [change.by === "you" ? "Added by you" : "Added by your agent"]));
+    tip.style.display = "block";
+    const { box } = change, w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.max(8, Math.min(box.left, innerWidth - w - 8))}px`;
+    tip.style.top = `${box.top - h - 6 >= 4 ? box.top - h - 6 : box.bottom + 6}px`;
+  }
+
+  function hideTip() {
+    tipFor = null;
+    tip.style.display = "none";
+  }
+
+  // One check per frame at most, however fast the pointer moves.
+  let tipFrame = 0, tipAt = null;
+  document.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return;
+    tipAt = e.buttons || drag ? null : [e.clientX, e.clientY, e.target];
+    tipFrame ||= requestAnimationFrame(() => {
+      tipFrame = 0;
+      showTip(tipAt && changeAt(...tipAt));
+    });
+  });
+  // On a touch screen a tap shows it, and the next tap elsewhere hides it.
+  // The tap still places the caret as usual.
+  document.addEventListener("pointerup", (e) => {
+    if (e.pointerType !== "mouse") showTip(changeAt(e.clientX, e.clientY, e.target));
+  });
+  document.documentElement.addEventListener("pointerleave", hideTip);
+  addEventListener("scroll", hideTip, { passive: true, capture: true });
+  document.addEventListener("input", hideTip);
 
 
   // `skip` lists blocks the user changed themselves, so they aren't shown as
@@ -1351,7 +1435,10 @@
     document.addEventListener("toggle", check, true);
     for (const el of marks) {
       const id = el.dataset.id;
-      if (!(old.has(id) && texts[id] !== undefined && tintWords(el, texts[id]))) el.classList.add("inplace-changed");
+      if (!(old.has(id) && texts[id] !== undefined && tintWords(el, texts[id]))) {
+        el.classList.add("inplace-changed");
+        if (old.has(id) && texts[id] !== undefined) rememberRewritten(el, texts[id]);
+      }
       if (inView(el) && !document.hidden) {
         unseen.delete(el);
         reveal(el);
@@ -1411,12 +1498,17 @@
 
   // Show a block's change again, as when it first appeared. With the text from
   // before the change, only the changed words light up.
-  function replay(el, before) {
+  function replay(el, before, by) {
     el.classList.remove("inplace-changed", "inplace-changed-fade", "inplace-changed-words");
     const words = wordChanges.get(el);
     if (words) clearWords(el, words);
+    rewritten.delete(el);
+    hideTip();
     void el.offsetWidth;
-    if (before === undefined || !tintWords(el, before)) el.classList.add("inplace-changed");
+    if (before === undefined || !tintWords(el, before, by)) {
+      el.classList.add("inplace-changed");
+      if (before !== undefined) rememberRewritten(el, before);
+    }
     reveal(el);
   }
 
@@ -1649,15 +1741,15 @@
     return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  async function goTo(el, change) {
+  async function goTo(el, change, by) {
     if (matchMedia("(max-width: 600px)").matches) closeChanges();
     if (!(await uncover(el))) return status(HIDDEN_CHANGE, "info", 4000);
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const r = el.getBoundingClientRect();
     const before = change.kind === "changed" ? change.before : undefined;
-    if (r.top >= 0 && r.bottom <= innerHeight) return replay(el, before);
+    if (r.top >= 0 && r.bottom <= innerHeight) return replay(el, before, by);
     let done = false;
-    const then = () => { if (!done) { done = true; replay(el, before); } };
+    const then = () => { if (!done) { done = true; replay(el, before, by); } };
     addEventListener("scrollend", then, { once: true });
     setTimeout(then, reduced ? 0 : 700);
     el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
@@ -1714,7 +1806,7 @@
         const body = [make("span", { className: "kind", textContent: describe(change) }),
           make("span", { className: "text" }, ...snippet(change))];
         items.append(make("li", {}, el
-          ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change) }, ...body)
+          ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change, entry.by) }, ...body)
           : make("div", { className: "change" }, ...body)));
       }
       const node = make("div", { className: "entry" }, who, items);
