@@ -97,6 +97,40 @@
     #inplace-changes .x:hover{background:#eef1ef;color:#1f2a24}
     #inplace-changes .list{overflow:auto;padding:0 8px 8px}
     #inplace-changes .agent-status{margin:0 8px 8px;color:#56615b}
+    ::highlight(inplace-comment){background-color:#ffe08a}
+    ::highlight(inplace-comment-draft){background-color:#ffe08a}
+    #inplace-comment-layer .marker{all:unset;box-sizing:border-box;position:fixed;z-index:2147483646;min-width:20px;height:20px;padding:0 5px;
+      border-radius:10px 10px 10px 3px;background:#e0a800;color:#1f2a24;font:600 11px/20px -apple-system,system-ui,sans-serif;
+      text-align:center;cursor:pointer;box-shadow:0 1px 4px #0003}
+    #inplace-comment-layer .marker:focus-visible{outline:2px solid #4a7bd4;outline-offset:2px}
+    #inplace-comment-here{all:unset;position:fixed;z-index:2147483646;display:none;padding:3px 9px;border-radius:6px;background:#1f2a24;
+      color:#e8ece9;font:12px/1.4 -apple-system,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px #0003}
+    #inplace-comment-here:hover{background:#34433a}
+    #inplace-comment-box{position:fixed;z-index:2147483647;display:none;box-sizing:border-box;width:min(320px,calc(100vw - 16px));
+      max-height:min(60vh,420px);overflow:auto;padding:10px;border-radius:10px;background:#fff;color:#1f2a24;
+      box-shadow:0 10px 32px #0003,0 0 0 1px #0000000f;font:13px/1.45 -apple-system,system-ui,sans-serif;text-align:left}
+    #inplace-comment-box.open{display:block}
+    #inplace-comment-box textarea,#inplace-changes .comment textarea{box-sizing:border-box;width:100%;min-height:60px;margin:0;padding:6px 8px;
+      border:1px solid #cfd6d2;border-radius:6px;background:#fff;color:#1f2a24;font:inherit;resize:vertical}
+    #inplace-comment-box .actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+    #inplace-comment-box .actions button{all:unset;padding:5px 10px;border-radius:6px;background:#eef1ef;cursor:pointer}
+    #inplace-comment-box .actions button.primary{background:#1f2a24;color:#fff}
+    #inplace-comment-box .comment+.comment{margin-top:8px;padding-top:8px;border-top:1px solid #eef1ef}
+    #inplace-comment-box p,#inplace-changes .comment p{margin:0 0 4px}
+    #inplace-comment-box .quote,#inplace-changes .comment .quote{padding-left:8px;border-left:3px solid #e0a800;color:#56615b}
+    #inplace-comment-box .about,#inplace-changes .comment .about,#inplace-changes .comment .lost{color:#7a8580;font-size:12px}
+    #inplace-comment-box .quote.old,#inplace-changes .comment .quote.old{border-left-color:#cfd6d2;text-decoration:line-through}
+    #inplace-comment-box .text,#inplace-changes .comment .text{white-space:pre-wrap;overflow-wrap:anywhere}
+    #inplace-comment-box .reply,#inplace-changes .comment .reply{color:#56615b}
+    #inplace-comment-box .meta,#inplace-changes .comment .meta{display:flex;align-items:center;gap:10px;font-size:12px;color:#7a8580}
+    #inplace-comment-box .meta span,#inplace-changes .comment .meta span{margin-right:auto}
+    #inplace-comment-box .meta button,#inplace-changes .comment .meta button,#inplace-changes .comments .clear{all:unset;cursor:pointer;
+      color:#1f2a24;text-decoration:underline}
+    #inplace-changes .comments{margin:0 0 8px;padding:0 8px 8px;border-bottom:1px solid #eef1ef}
+    #inplace-changes .comments h3{all:unset;display:block;margin:2px 0 6px;font-size:12px;font-weight:600}
+    #inplace-changes .comment{padding:6px 0}
+    #inplace-changes .comment.done{opacity:.6}
+    #inplace-changes .comments .clear{display:block;margin-top:4px;font-size:12px}
     #inplace-changes .aside{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;padding:9px 11px;
       border-radius:8px;background:#fbefe9;color:#7a2e14}
     #inplace-changes .aside button{all:unset;cursor:pointer;font-weight:600;text-decoration:underline;white-space:nowrap}
@@ -142,7 +176,7 @@
     #inplace-stash button.primary{background:#1f2a24;color:#fff}
     #inplace-stash button.primary:hover{background:#34433a}
     #inplace-stash .close{float:right}
-    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes{display:none!important}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
+    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes,#inplace-comment-layer,#inplace-comment-box,#inplace-comment-here{display:none!important}::highlight(inplace-comment){background-color:transparent}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
       [data-id].inplace-changed,[data-id].inplace-changed-fade{background-color:transparent!important;animation:none!important}}`;
   document.head.append(style);
 
@@ -1646,6 +1680,331 @@
     if (changesPanel.classList.contains("open")) renderChanges();
   }
 
+  // --- comments: select text or hover an element, and write what should change ---
+  // Comments are kept by the server, never in the document. The commented text is
+  // highlighted with the CSS Custom Highlight API, so the editable DOM isn't touched.
+  const COMMENT_SHORTCUT = MOD === "⌘" ? "⌘⌥M" : "Ctrl+Alt+M";
+  const canHighlight = typeof Highlight === "function" && !!CSS.highlights;
+  let comments = [];
+  let commentPlaces = new Map(); // n → { el, range, lost }: where each comment is on the page now
+  let anchoring = null;
+  const anchoringReady = import("/__inplace/anchor.js").then((m) => (anchoring = m), () => null);
+
+  const commentLayer = make("div", { id: "inplace-comment-layer" });
+  commentLayer.dataset.inplaceUi = "";
+  const commentBox = make("div", { id: "inplace-comment-box" });
+  commentBox.dataset.inplaceUi = "";
+  commentBox.setAttribute("role", "dialog");
+  commentBox.setAttribute("aria-label", "Comment");
+  const elementCommentButton = make("button", { type: "button", id: "inplace-comment-here", textContent: "Comment" });
+  elementCommentButton.dataset.inplaceUi = "";
+  document.body.append(commentLayer, commentBox, elementCommentButton);
+
+  // The selection toolbar gets a Comment button after the formatting buttons.
+  const commentButton = make("button", { type: "button", textContent: "Comment", title: `Comment (${COMMENT_SHORTCUT})` });
+  commentButton.dataset.comment = "";
+  toolbar.append(make("span", { className: "sep" }), commentButton);
+  commentButton.addEventListener("click", () => startComment());
+
+  const byId = (id) => document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  const commentNoun = (el) => (el.tagName.toLowerCase() === "svg" ? "chart" : el.tagName === "IMG" ? "image" : nameOf(el));
+
+  // Character offsets in an element's text, and back.
+  function textOffset(el, node, offset) {
+    const range = document.createRange();
+    range.setStart(el, 0);
+    range.setEnd(node, offset);
+    return range.toString().length;
+  }
+  function rangeIn(el, start, end) {
+    const range = document.createRange();
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let at = 0;
+    let started = false;
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+      const next = at + t.data.length;
+      if (!started && start <= next) { range.setStart(t, start - at); started = true; }
+      if (started && end <= next) { range.setEnd(t, end - at); return range; }
+      at = next;
+    }
+    return null;
+  }
+
+  async function loadComments() {
+    try {
+      comments = (await (await fetch("/__inplace/comments")).json()).comments;
+    } catch {
+      return;
+    }
+    await anchoringReady;
+    placeComments();
+    updateCorner();
+    if (changesPanel.classList.contains("open")) renderChanges();
+  }
+
+  function placeComments() {
+    commentPlaces = new Map();
+    for (const c of comments) {
+      const el = byId(c.id);
+      if (!el) commentPlaces.set(c.n, { el: null, range: null, lost: true });
+      else if (!c.quote) commentPlaces.set(c.n, { el, range: null, lost: false });
+      else {
+        const found = anchoring?.findQuote(el.textContent, c);
+        const range = found && rangeIn(el, found.start, found.end);
+        commentPlaces.set(c.n, { el, range, lost: !range });
+      }
+    }
+    paintComments();
+  }
+
+  function paintComments() {
+    const open = comments.filter((c) => c.status === "open");
+    if (canHighlight) {
+      const ranges = open.map((c) => commentPlaces.get(c.n)?.range).filter(Boolean);
+      if (ranges.length) CSS.highlights.set("inplace-comment", new Highlight(...ranges));
+      else CSS.highlights.delete("inplace-comment");
+    }
+    // One marker per element with open comments, at its top right corner.
+    const byElement = new Map();
+    for (const c of open) {
+      const el = commentPlaces.get(c.n)?.el;
+      if (el) byElement.set(el, [...(byElement.get(el) ?? []), c]);
+    }
+    commentLayer.replaceChildren(...[...byElement].map(([el, list]) => {
+      const marker = make("button", { type: "button", className: "marker", textContent: String(list.length),
+        title: list.length === 1 ? "1 comment" : `${list.length} comments` });
+      marker.setAttribute("aria-label", marker.title);
+      marker.inplaceTarget = el;
+      marker.addEventListener("click", () => showComments(list, marker.getBoundingClientRect()));
+      return marker;
+    }));
+    positionMarkers();
+  }
+
+  function positionMarkers() {
+    for (const marker of commentLayer.children) {
+      const r = marker.inplaceTarget.getBoundingClientRect();
+      const hidden = r.bottom < 0 || r.top > innerHeight || (!r.width && !r.height);
+      marker.style.display = hidden ? "none" : "";
+      marker.style.left = `${Math.min(innerWidth - 26, r.right + 4)}px`;
+      marker.style.top = `${Math.max(4, r.top - 2)}px`;
+    }
+  }
+  let markerFrame = 0;
+  const moveMarkers = () => {
+    if (!markerFrame) markerFrame = requestAnimationFrame(() => { markerFrame = 0; positionMarkers(); });
+  };
+  addEventListener("scroll", moveMarkers, { passive: true, capture: true });
+  addEventListener("resize", moveMarkers);
+  // Typing moves text around: find the commented words again once the user stops.
+  let replaceTimer = null;
+  document.addEventListener("input", () => {
+    clearTimeout(replaceTimer);
+    replaceTimer = setTimeout(placeComments, 400);
+  });
+
+  // The box under the selection, or next to a marker or element.
+  let draft = null; // { id, quote, prefix, suffix } while a new comment is being written
+  function openBox(rect, ...children) {
+    commentBox.replaceChildren(...children);
+    commentBox.classList.add("open");
+    const w = commentBox.offsetWidth;
+    const h = commentBox.offsetHeight;
+    const top = rect.bottom + 8 + h <= innerHeight - 8 ? rect.bottom + 8 : Math.max(8, rect.top - h - 8);
+    commentBox.style.top = `${top}px`;
+    commentBox.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, rect.left))}px`;
+  }
+  function closeBox() {
+    commentBox.classList.remove("open");
+    draft = null;
+    if (canHighlight) CSS.highlights.delete("inplace-comment-draft");
+  }
+
+  // A text field where Enter submits, Shift+Enter adds a line and Escape cancels.
+  function commentField(value, submit) {
+    const field = make("textarea", { value, placeholder: "What should change?", rows: 3 });
+    field.setAttribute("aria-label", "Comment");
+    field.addEventListener("keydown", (e) => {
+      if (composing(e)) return;
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        submit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closeBox();
+      }
+    });
+    return field;
+  }
+
+  function startComment(el = null) {
+    let range = null;
+    if (!el) {
+      const sel = getSelection();
+      if (!sel.rangeCount) return;
+      range = sel.getRangeAt(0);
+      const node = range.commonAncestorContainer;
+      el = (node.nodeType === 1 ? node : node.parentElement)?.closest("[data-id]");
+      if (!el || el.closest("[data-inplace-ui]")) return;
+    }
+    let ctx = { quote: "", prefix: "", suffix: "" };
+    if (range && !range.collapsed && anchoring) {
+      const text = el.textContent;
+      const start = textOffset(el, range.startContainer, range.startOffset);
+      const end = textOffset(el, range.endContainer, range.endOffset);
+      // Leave out spaces at the edges of the selection.
+      const lead = text.slice(start, end).match(/^\s*/)[0].length;
+      const trail = text.slice(start, end).match(/\s*$/)[0].length;
+      if (end - trail > start + lead) ctx = anchoring.buildContext(text, start + lead, end - trail);
+    }
+    const quoteRange = ctx.quote ? range.cloneRange() : null;
+    draft = { id: el.dataset.id, ...ctx };
+    if (canHighlight && quoteRange) CSS.highlights.set("inplace-comment-draft", new Highlight(quoteRange));
+    const field = commentField("", () => addComment(field.value));
+    const heading = ctx.quote
+      ? make("p", { className: "quote", textContent: clipText(ctx.quote, 120) })
+      : make("p", { className: "about", textContent: `Comment on this ${commentNoun(el)}` });
+    openBox(quoteRange ? quoteRange.getBoundingClientRect() : el.getBoundingClientRect(), heading, field,
+      make("div", { className: "actions" },
+        make("button", { type: "button", textContent: "Cancel", onclick: closeBox }),
+        make("button", { type: "button", className: "primary", textContent: "Add comment", onclick: () => addComment(field.value) })));
+    toolbar.style.display = "none";
+    field.focus();
+  }
+
+  async function addComment(text) {
+    if (!draft || !text.trim()) return;
+    const res = await post("comment", { action: "add", ...draft, text });
+    if (!res.ok) return status(res.status === 404 ? "Couldn't add the comment: this part of the page has changed. Reload and try again."
+      : "Couldn't add the comment. Is inplace still running?", "error", 5000);
+    closeBox();
+    getSelection().removeAllRanges();
+    status("Comment added");
+    loadComments();
+  }
+
+  async function changeComment(payload, done) {
+    const res = await post("comment", payload);
+    if (!res.ok) return status("Couldn't change the comment. Is inplace still running?", "error", 5000);
+    if (done) status(done);
+    loadComments();
+  }
+
+  // A comment as shown in the box and in the list of changes, with Edit and Delete while it's open.
+  function commentView(c, { inList = false } = {}) {
+    const place = commentPlaces.get(c.n);
+    const node = make("div", { className: `comment ${c.status}` });
+    if (place?.lost && c.status === "open") {
+      node.append(make("p", { className: "lost", textContent: "The text this was about has changed:" }),
+        make("p", { className: "quote old", textContent: clipText(c.quote || "", 160) }));
+    } else if (c.quote) node.append(make("p", { className: "quote", textContent: clipText(c.quote, 160) }));
+    else if (place?.el) node.append(make("p", { className: "about", textContent: `On this ${commentNoun(place.el)}` }));
+    const text = make("p", { className: "text", textContent: c.text });
+    node.append(text);
+    if (c.reply) node.append(make("p", { className: "reply", textContent: `Your agent: ${c.reply}` }));
+    const meta = make("div", { className: "meta" },
+      make("span", { textContent: `${c.status === "done" ? "Done" : "Not done yet"} · ${ago(c.created)}` }));
+    if (c.status === "open") {
+      meta.append(
+        make("button", { type: "button", textContent: "Edit", onclick: () => {
+          const field = commentField(c.text, () => save());
+          const save = () => field.value.trim() && changeComment({ action: "edit", n: c.n, text: field.value }, "Comment changed");
+          text.replaceWith(field);
+          field.addEventListener("keydown", (e) => { if (e.key === "Escape" && inList) { e.stopPropagation(); field.replaceWith(text); } });
+          meta.replaceChildren(make("button", { type: "button", textContent: "Save", onclick: save }));
+          field.focus();
+        } }),
+        make("button", { type: "button", textContent: "Delete", onclick: () => {
+          if (!inList) closeBox();
+          changeComment({ action: "delete", n: c.n }, "Comment deleted");
+        } }));
+    }
+    if (inList && place?.el) {
+      const show = make("button", { type: "button", textContent: "Show", onclick: () => {
+        closeChanges();
+        place.el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      } });
+      meta.prepend(show);
+    }
+    node.append(meta);
+    return node;
+  }
+
+  function showComments(list, rect) {
+    draft = null;
+    openBox(rect, ...list.map((c) => commentView(c)));
+  }
+
+  // The "Comments" group at the top of the list of changes.
+  function commentsGroup() {
+    if (!comments.length) return null;
+    const group = make("div", { className: "comments" }, make("h3", { textContent: "Comments" }));
+    for (const c of [...comments].reverse()) group.append(commentView(c, { inList: true }));
+    if (comments.some((c) => c.status === "done")) {
+      group.append(make("button", { type: "button", className: "clear", textContent: "Clear done comments",
+        onclick: () => changeComment({ action: "clear" }) }));
+    }
+    return group;
+  }
+
+  // Clicking highlighted text shows its comment; the caret still goes where the user clicked.
+  document.addEventListener("click", (e) => {
+    if (!canHighlight || e.target.closest?.("[data-inplace-ui]") || !getSelection().isCollapsed) return;
+    const at = document.caretPositionFromPoint?.(e.clientX, e.clientY);
+    const point = at ? { node: at.offsetNode, offset: at.offset } : (() => {
+      const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+      return r && { node: r.startContainer, offset: r.startOffset };
+    })();
+    if (!point) return;
+    const hit = comments.filter((c) => {
+      const range = c.status === "open" && commentPlaces.get(c.n)?.range;
+      try { return range && range.isPointInRange(point.node, point.offset); } catch { return false; }
+    });
+    if (hit.length) showComments(hit, commentPlaces.get(hit[0].n).range.getBoundingClientRect());
+  });
+
+  // Elements without text to select (charts, figures, rows, tables) get a Comment button on hover.
+  const WHOLE = new Set(["FIGURE", "TABLE", "TR", "IMG", "PICTURE", "VIDEO", "CANVAS", "UL", "OL", "DL", "BLOCKQUOTE", "PRE"]);
+  let hovered = null;
+  function wholeTarget(node) {
+    for (let el = node?.closest?.("[data-id]"); el; el = el.parentElement?.closest("[data-id]")) {
+      if (el.getAttribute("contenteditable") === "true") continue;
+      if (WHOLE.has(el.tagName) || el.tagName.toLowerCase() === "svg" || !el.querySelector("[contenteditable=true]")) return el;
+    }
+    return null;
+  }
+  document.addEventListener("mousemove", (e) => {
+    if (e.target === elementCommentButton || drag) return;
+    const el = e.target.closest?.("[data-inplace-ui]") ? null : wholeTarget(e.target);
+    if (el === hovered) return;
+    hovered = el;
+    if (!el) return (elementCommentButton.style.display = "none");
+    const r = el.getBoundingClientRect();
+    elementCommentButton.title = `Comment on this ${commentNoun(el)}`;
+    elementCommentButton.style.display = "block";
+    // Just outside the element's right edge, so it doesn't cover anything; inside when there's no room.
+    const w = elementCommentButton.offsetWidth;
+    const outside = r.right + 6 + w <= innerWidth - 4;
+    elementCommentButton.style.left = `${outside ? r.right + 6 : Math.max(4, r.right - w - 4)}px`;
+    elementCommentButton.style.top = `${Math.max(4, r.top + (outside ? 0 : 4))}px`;
+  }, { passive: true });
+  addEventListener("scroll", () => { hovered = null; elementCommentButton.style.display = "none"; }, { passive: true, capture: true });
+  elementCommentButton.addEventListener("click", () => {
+    const el = hovered;
+    elementCommentButton.style.display = "none";
+    if (el) startComment(el);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "KeyM" && e.altKey && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+      e.preventDefault();
+      startComment();
+    } else if (e.key === "Escape" && commentBox.classList.contains("open")) closeBox();
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (commentBox.classList.contains("open") && !commentBox.contains(e.target) && !commentLayer.contains(e.target)) closeBox();
+  });
+
   // --- the list of changes ---
   const HISTORY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7.5V12l3 2"/></svg>';
   const SEEN_KEY = `${STATE_KEY}:seen-changes`;
@@ -1656,7 +2015,7 @@
 
   function updateCorner() {
     corner.classList.toggle("stash", stashCount > 0);
-    corner.classList.toggle("shown", stashCount > 0 || history.length > 0);
+    corner.classList.toggle("shown", stashCount > 0 || history.length > 0 || comments.length > 0);
     if (stashCount) {
       corner.removeAttribute("aria-label");
       corner.removeAttribute("title");
@@ -1665,7 +2024,7 @@
     }
     corner.setAttribute("aria-label", "Changes");
     corner.title = "Changes";
-    corner.innerHTML = history.length ? HISTORY_ICON : "";
+    corner.innerHTML = history.length || comments.length ? HISTORY_ICON : "";
     if (latestByAgent() > (seenChanges ?? 0)) corner.append(make("span", { className: "dot" }));
   }
 
@@ -1784,6 +2143,8 @@
     const list = make("div", { className: "list" });
     const agentLine = agentStatusLine();
     if (agentLine) list.append(agentLine);
+    const commentList = commentsGroup();
+    if (commentList) list.append(commentList);
     if (stashCount) {
       list.append(make("div", { className: "aside" },
         make("span", { textContent: stashCount === 1
@@ -1846,6 +2207,7 @@
   const events = new EventSource("/__inplace/events");
   events.addEventListener("stash", (e) => showStashCount(Number(e.data)));
   events.addEventListener("agent", (e) => showAgentStatus(e.data));
+  events.addEventListener("comments", () => loadComments());
   events.addEventListener("history", (e) => {
     if (Number(e.data) > 0) return loadHistory();
     if (seenChanges === null) markChangesSeen();

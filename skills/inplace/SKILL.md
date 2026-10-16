@@ -9,7 +9,7 @@ inplace serves one HTML file so the user can type into the rendered page and com
 
 ## Read the guide first
 
-The details of working with inplace come with the tool itself, so they always match the version you run: what the `data-id` attributes mean, how to handle a browser comment, the format of the change lines that report the user's edits, what to do after a conflict, and how to pick up edits while you're idle. Read the guide before you start, and again whenever you come back to a document in a new conversation:
+The details of working with inplace come with the tool itself, so they always match the version you run: what the `data-id` attributes mean, how to handle a comment, the format of the change lines that report the user's edits, what to do after a conflict, and how to pick up edits while you're idle. Read the guide before you start, and again whenever you come back to a document in a new conversation:
 
 ```bash
 npx -y github:jonasjancarik/inplace guide

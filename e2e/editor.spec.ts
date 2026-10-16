@@ -745,3 +745,89 @@ test.describe("blocks changed by the page's scripts", () => {
     }
   });
 });
+
+test.describe("comments", () => {
+  /** The text of each comment highlight on the page. */
+  const highlighted = (page: Page) => page.evaluate(() =>
+    [...((CSS as any).highlights.get("inplace-comment") ?? [])].map((r: Range) => r.toString()));
+
+  test("select text, add a comment, and it stays on that text through a reload and the agent's edits", async ({ editor, doc }) => {
+    const para = block(editor, "p", "The roof is already used");
+    const id = await idOf(para);
+    await selectText(para, "drying laundry");
+    await editor.locator("#inplace-toolbar").getByRole("button", { name: "Comment" }).click();
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await box.getByRole("textbox").fill("Which buildings share it?");
+    await box.getByRole("textbox").press("Enter");
+    await expect(box).toBeHidden();
+    await expect.poll(() => highlighted(editor)).toEqual(["drying laundry"]);
+    await expect.poll(() => doc.output).toContain(`comment #1 on ${id} at "drying laundry": "Which buildings share it?"`);
+    expect(doc.read()).not.toContain("Which buildings");
+
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const listed = editor.getByRole("dialog", { name: "Changes" }).locator(".comments .comment");
+    await expect(listed).toHaveCount(1);
+    await expect(listed).toContainText("drying laundry");
+    await expect(listed).toContainText("Which buildings share it?");
+    await expect(listed).toContainText("Not done yet");
+
+    await editor.reload();
+    await expect.poll(() => highlighted(editor)).toEqual(["drying laundry"]);
+    await expect(editor.locator("#inplace-comment-layer .marker")).toHaveCount(1);
+
+    // The agent rewrites the paragraph around the quote: the comment follows it.
+    doc.edit("The roof is already used for drying laundry", "Today the roof is only used for drying laundry");
+    await expect(block(editor, "p", "Today the roof")).toBeVisible();
+    await expect.poll(() => highlighted(editor)).toEqual(["drying laundry"]);
+
+    // Then removes the quoted words: the comment is kept and says the text changed.
+    doc.edit("for drying laundry", "for storage");
+    await expect(block(editor, "p", "for storage")).toBeVisible();
+    await expect.poll(() => highlighted(editor)).toEqual([]);
+    await editor.getByRole("button", { name: "Changes" }).click();
+    await expect(listed).toContainText("The text this was about has changed");
+    await expect(listed).toContainText("drying laundry");
+
+    // The agent marks it done: it's greyed out with the reply, and can be cleared.
+    const { execFileSync } = await import("node:child_process");
+    execFileSync(process.execPath, [new URL("../dist/src/cli.js", import.meta.url).pathname, "resolve", "1",
+      "--reply", "Buildings A and B.", "--port", new URL(doc.url).port]);
+    await expect(listed).toContainText("Done");
+    await expect(listed).toContainText("Your agent: Buildings A and B.");
+    await expect(editor.locator("#inplace-comment-layer .marker")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Clear done comments" }).click();
+    await expect(listed).toHaveCount(0);
+  });
+
+  test("a keyboard selection gets the Comment button too, and the shortcut opens the box", async ({ editor }) => {
+    const para = block(editor, "p", "The roof is already used");
+    await caretAfter(para, "The roof");
+    await editor.keyboard.press("Shift+ArrowLeft");
+    await editor.keyboard.press("Shift+ArrowLeft");
+    await editor.keyboard.press("Shift+ArrowLeft");
+    await editor.keyboard.press("Shift+ArrowLeft");
+    await expect(editor.locator("#inplace-toolbar").getByRole("button", { name: "Comment" })).toBeVisible();
+    await editor.keyboard.press("Control+Alt+KeyM");
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await expect(box).toBeVisible();
+    await expect(box.locator(".quote")).toHaveText("roof");
+    await box.getByRole("textbox").press("Escape");
+    await expect(box).toBeHidden();
+  });
+
+  test("a chart gets a Comment button on hover, for a comment on the whole of it", async ({ editor, doc }) => {
+    const chart = editor.locator("svg[data-id]").first();
+    await chart.scrollIntoViewIfNeeded();
+    await chart.hover();
+    await editor.locator("#inplace-comment-here").click();
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await expect(box).toContainText("Comment on this chart");
+    await box.getByRole("textbox").fill("Same order as the table, please.");
+    await box.getByRole("button", { name: "Add comment" }).click();
+    await expect.poll(() => doc.output).toMatch(/comment #1 on svg-\d+: "Same order as the table, please."/);
+    await editor.locator("#inplace-comment-layer .marker").click();
+    await expect(box).toContainText("Same order as the table, please.");
+    await box.getByRole("button", { name: "Delete" }).click();
+    await expect.poll(() => doc.output).toContain("comment #1 deleted");
+  });
+});

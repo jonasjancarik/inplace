@@ -110,3 +110,30 @@ test("inplace wait gives up when no server is running", async () => {
   const { code } = await run(["wait", "--port", String(await freePort()), "--timeout", "0.5"]);
   assert.equal(code, 1);
 });
+
+test("inplace comments lists the open comments and inplace resolve marks one done", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-resolve-"));
+  const path = join(dir, "doc.html");
+  writeFileSync(path, '<html><body><p data-id="p-1">Ten trees</p></body></html>');
+  const port = await freePort();
+  const server = spawn(process.execPath, [CLI, path, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await new Promise<void>((ok) => server.stdout.on("data", (d) => String(d).includes("localhost") && ok()));
+    await fetch(`http://localhost:${port}/__inplace/comment`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", id: "p-1", text: "Name the trees." }),
+    });
+    const listed = await run(["comments", "--port", String(port)]);
+    assert.equal(listed.code, 0);
+    assert.deepEqual(JSON.parse(listed.out).map((c: { n: number; text: string }) => [c.n, c.text]), [[1, "Name the trees."]]);
+
+    const resolved = await run(["resolve", "1", "--reply", "Oaks and limes.", "--port", String(port)]);
+    assert.equal(resolved.code, 0);
+    assert.equal(resolved.out, "Marked comment #1 as done.\n");
+    assert.deepEqual(JSON.parse((await run(["comments", "--port", String(port)])).out), []);
+    assert.equal(JSON.parse((await run(["comments", "--all", "--port", String(port)])).out)[0].reply, "Oaks and limes.");
+    assert.equal((await run(["resolve", "9", "--port", String(port)])).code, 1);
+  } finally {
+    server.kill();
+  }
+});
