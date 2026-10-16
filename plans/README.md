@@ -17,5 +17,9 @@ The cross-site write fix that came out of the same review is on the branch `clau
 | [Is the agent listening?](agent-status.md) | medium | The page can't tell the user whether anyone is picking up their edits. |
 | [Undo a move](undo-move.md) | medium | A drag to the wrong place can only be undone by dragging back. |
 | [Small fixes for unusual pages](page-quirks.md) | small | New links and lists can be invisible under CSS resets; "Show" can't reach blocks in a closed tab or accordion. |
+| [Old words on hover](old-words-on-hover.md) | small | The page tints the words the agent changed but doesn't say what they replaced. |
+| [Show what changed](review-mode.md) | large | There's no way to read the whole document with every change marked inline, crossed out and added. |
+
+The last two came from the change highlights rather than that review: [Old words on hover](old-words-on-hover.md) answers most of the same need as [Show what changed](review-mode.md) at a fraction of the cost, so try it first.
 
 The order is a suggestion: the small fixes first, then comments, which is the largest piece and the one that matters most. [Wait for the next pause](wait-for-pause.md) and [Is the agent listening?](agent-status.md) share the idea of the server knowing who is waiting for edits, so they're easier together.
