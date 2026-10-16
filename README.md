@@ -235,6 +235,8 @@ The server also watches the file. When it changes on disk, every open page saves
 
 Once anything has changed, a button in the bottom-left corner opens a list of changes since inplace started, newest first: yours and the agent's, with the changed words marked. A dot on the button means the agent has changed something since you last looked. Click a change to scroll to it, opening the section or tab it's in, and see its changed words light up again. The list stays open while the agent keeps working. If you and the agent changed the same words, the button says how many of your edits were set aside instead, and the list starts with a link to review them.
 
+To read the whole document with every change in place, turn on **Show what changed** at the top of the list. The page then shows the agent's changes since inplace started the way a word processor's tracked changes do: removed words crossed out, new words marked, new rows and paragraphs tinted, and removed ones crossed out where they used to be. A small note in the margin points out a block that was moved or turned from a paragraph into a heading. Untick "Only the agent's changes" to see your own edits too. Editing is paused while this view is on, the view stays on when the agent saves again, and it also prints with the marks. Click Done or press Escape to go back to editing; nothing in this view is ever written to the file. For a very long paragraph, only changes in roughly its first 600 characters are marked.
+
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so only share it on your network (`--host 0.0.0.0`) when you trust the people on it.
