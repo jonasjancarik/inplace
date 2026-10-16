@@ -246,6 +246,44 @@ test.describe("working alongside an agent", () => {
     await expect(editor.locator(".inplace-changed, .inplace-changed-fade")).toHaveCount(0, { timeout: 8_000 });
   });
 
+  test("the corner button lists your changes and the agent's, and stays open while the agent works", async ({ editor, doc }) => {
+    const corner = editor.locator("#inplace-corner");
+    await expect(corner).toBeHidden();
+    const mine = block(editor, "p", "The roof is already used");
+    await caretAfter(mine, "drying laundry");
+    await editor.keyboard.type(" daily");
+    await expect.poll(() => doc.read()).toContain("drying laundry daily");
+    await expect(corner).toBeVisible();
+    await expect(corner.locator(".dot")).toHaveCount(0);
+
+    doc.edit(/A garden on the roof(?=<)/, "A garden on the roof of building B");
+    await expect(editor.locator("h1")).toHaveText("A garden on the roof of building B");
+    await expect(corner.locator(".dot")).toHaveCount(1);
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const panel = editor.getByRole("dialog", { name: "Changes" });
+    await expect(corner.locator(".dot")).toHaveCount(0);
+
+    const entries = panel.locator(".entry");
+    await expect(entries).toHaveCount(2);
+    await expect(entries.nth(0)).toContainText("Your agent");
+    await expect(entries.nth(0)).toContainText("Edited heading");
+    await expect(entries.nth(0).locator("ins")).toHaveText("of building B");
+    await expect(entries.nth(1)).toContainText("You");
+    await expect(entries.nth(1).locator("ins")).toHaveText("daily");
+
+    // The agent changes the file again while the list is open.
+    doc.edit(/(<tr[^>]*><td[^>]*>Water<)/, "<tr><td>Tools</td><td>Spades and gloves</td><td>€150</td></tr>\n$1");
+    await expect(block(editor, "tr", "Tools")).toBeVisible();
+    await expect(panel).toBeVisible();
+    await expect(entries.nth(0)).toContainText("New table row");
+    await expect(entries.nth(0)).toContainText("Edited heading");
+
+    await entries.nth(0).getByRole("button", { name: /New table row/ }).click();
+    await expect(block(editor, "tr", "Tools")).toHaveClass(/inplace-changed/);
+    await editor.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+  });
+
   test("your caret block survives the reload", async ({ editor, doc }) => {
     const p = block(editor, "p", "The roof is already used");
     const id = await idOf(p);
@@ -283,6 +321,7 @@ test.describe("working alongside an agent", () => {
     expect(doc.output).toMatch(new RegExp(`conflict on ${id}: .*MINE: hanging washing`));
 
     await editor.getByRole("button", { name: "1 edit set aside" }).click();
+    await editor.getByRole("dialog", { name: "Changes" }).getByRole("button", { name: "Review" }).click();
     const dialog = editor.getByRole("dialog", { name: "Set-aside edits" });
     await expect(dialog).toContainText("MINE: hanging washing");
     await expect(dialog).toContainText("AGENT: The roof is used for laundry");
