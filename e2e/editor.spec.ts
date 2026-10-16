@@ -350,6 +350,25 @@ test.describe("working alongside an agent", () => {
     await expect(editor.getByRole("button", { name: /set aside/ })).toBeHidden();
   });
 
+  test("the list of changes says what is known about the agent picking up your edits", async ({ editor, doc }) => {
+    const mine = block(editor, "p", "The roof is already used");
+    await caretAfter(mine, "drying laundry");
+    await editor.keyboard.type(" daily");
+    await expect.poll(() => doc.read()).toContain("drying laundry daily");
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const line = editor.getByRole("dialog", { name: "Changes" }).locator(".agent-status");
+    // The agent may be reading the terminal output, so nothing is claimed about it.
+    await expect(line).toHaveText("If your agent doesn't react to your edits, ask it to check them.");
+
+    // An agent starts `inplace wait`, then goes away.
+    const port = Number(new URL(doc.url).port);
+    const wait = (await import("node:http")).get({ host: "127.0.0.1", port, path: "/__inplace/wait", headers: { host: `localhost:${port}` } });
+    wait.on("error", () => {});
+    await expect(line).toHaveText("Your agent is waiting for your next pause.");
+    wait.destroy();
+    await expect(line).toHaveText("Your agent last checked your changes just now.");
+  });
+
   test("every change is listed in the server output", async ({ editor, doc }) => {
     const p = block(editor, "p", "The roof is already used");
     const id = await idOf(p);

@@ -4,6 +4,7 @@ import { get } from "node:http";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
+import { AgentStatus } from "./agent.js";
 import { AGENT_GUIDE_PATH } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
@@ -121,8 +122,10 @@ function serve(): void {
     console.log(line);
     if (logPath) appendFileSync(logPath, line + "\n");
   };
+  // stdout and the log file can be read without inplace knowing.
+  const agent = new AgentStatus({ unseenReaders: true });
   const onPause = values["on-pause"]
-    ? new PauseCommand(values["on-pause"], { INPLACE_FILE: path }, print)
+    ? new PauseCommand(values["on-pause"], { INPLACE_FILE: path }, print, (running) => agent.commandRunning(running))
     : undefined;
   // The same lines, numbered, for `inplace wait`.
   const feed = pauseSeconds ? new ChangeFeed() : undefined;
@@ -140,7 +143,7 @@ function serve(): void {
   });
   setInterval(() => doc.poll(), 250);
 
-  const server = createInplaceServer(doc, { feed });
+  const server = createInplaceServer(doc, { feed, agent });
   server.on("error", (e: NodeJS.ErrnoException) => {
     console.error(e.code === "EADDRINUSE" ? `inplace: port ${port} is already in use; try --port` : e.message);
     process.exit(1);

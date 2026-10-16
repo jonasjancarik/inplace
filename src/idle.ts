@@ -51,6 +51,7 @@ export class PauseCommand {
     readonly command: string,
     readonly env: Record<string, string>,
     readonly log: (line: string) => void,
+    readonly onRunning: (running: boolean) => void = () => {},
   ) {}
 
   run(lines: string[]): void {
@@ -59,6 +60,7 @@ export class PauseCommand {
     const input = this.waiting.join("\n") + "\n";
     this.waiting = [];
     this.running = true;
+    this.onRunning(true);
     const child = spawn(this.command, { shell: true, env: { ...process.env, ...this.env }, stdio: ["pipe", "pipe", "pipe"] });
     const forward = (chunk: Buffer) => {
       for (const line of chunk.toString("utf8").split("\n")) if (line.trim()) this.log(`  on-pause: ${line}`);
@@ -76,5 +78,6 @@ export class PauseCommand {
     this.running = false;
     if (message) this.log(message);
     if (this.waiting.length) this.run([]);
+    else this.onRunning(false);
   }
 }
