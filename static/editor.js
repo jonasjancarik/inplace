@@ -929,6 +929,161 @@
     return (h >>> 0).toString(36);
   }
 
+  // --- word-level diff ---
+  // Splits text into words, runs of spaces and punctuation marks, so "laundry,"
+  // and "laundry daily," share the word and the comma.
+  const tokenize = (text) => text.split(/(\s+|[.,;:!?()\[\]"\u201c\u201d])/).filter(Boolean);
+  const isSpace = (t) => /^\s+$/.test(t);
+  // Any two runs of spaces or line breaks count as the same.
+  const same = (x, y) => x === y || (isSpace(x) && isSpace(y));
+
+  // Before \u2192 after as a list of runs: { same: [tokens] } for unchanged text
+  // and { gone: [tokens], added: [tokens] } for each changed stretch.
+  function diffWords(before, after) {
+    const a = tokenize(before), b = tokenize(after);
+    let p = 0;
+    while (p < a.length && p < b.length && same(a[p], b[p])) p++;
+    let q = 0;
+    while (q < a.length - p && q < b.length - p && same(a[a.length - 1 - q], b[b.length - 1 - q])) q++;
+    const A = a.slice(p, a.length - q), B = b.slice(p, b.length - q);
+    const ops = []; // [kind, token], kind is "=", "-" or "+"
+    if (A.length * B.length > 60000) {
+      // Too long to compare word by word quickly: show it as one replacement.
+      for (const t of A) ops.push(["-", t]);
+      for (const t of B) ops.push(["+", t]);
+    } else {
+      // Longest common subsequence of the tokens in the middle.
+      const len = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
+      for (let i = A.length - 1; i >= 0; i--)
+        for (let j = B.length - 1; j >= 0; j--)
+          len[i][j] = same(A[i], B[j]) ? len[i + 1][j + 1] + 1 : Math.max(len[i + 1][j], len[i][j + 1]);
+      let i = 0, j = 0;
+      while (i < A.length || j < B.length) {
+        if (i < A.length && j < B.length && same(A[i], B[j])) { ops.push(["=", B[j++]]); i++; }
+        else if (j < B.length && (i === A.length || len[i][j + 1] >= len[i + 1][j])) ops.push(["+", B[j++]]);
+        else ops.push(["-", A[i++]]);
+      }
+    }
+    const runs = [];
+    const push = (kind, t) => {
+      const last = runs.at(-1);
+      if (kind === "=") {
+        if (last?.same) last.same.push(t);
+        else runs.push({ same: [t] });
+      } else {
+        const run = last && !last.same ? last : (runs.push({ gone: [], added: [] }), runs.at(-1));
+        (kind === "-" ? run.gone : run.added).push(t);
+      }
+    };
+    for (const t of b.slice(0, p)) push("=", t);
+    for (const [kind, t] of ops) push(kind, t);
+    for (const t of b.slice(b.length - q)) push("=", t);
+    // A space, a comma or one short word left between two changes reads
+    // better as part of one larger change: "Two beds" \u2192 "Three cots", not
+    // "Two" \u2192 "Three" + "beds" \u2192 "cots".
+    for (let k = 1; k < runs.length - 1; k++) {
+      const run = runs[k];
+      if (!run.same || runs[k - 1].same || runs[k + 1].same) continue;
+      const words = run.same.filter((t) => !isSpace(t));
+      if (words.length > 1 || (words.length === 1 && words[0].length > 3 && /\w/.test(words[0]))) continue;
+      const prev = runs[k - 1], next = runs[k + 1];
+      prev.gone.push(...run.same, ...next.gone);
+      prev.added.push(...run.same, ...next.added);
+      runs.splice(k, 2);
+      k--;
+    }
+    return runs;
+  }
+
+  // --- changed words inside a paragraph ---
+  // Marked with the CSS Custom Highlight API, which colours text ranges without
+  // touching the page's HTML, so nothing extra ends up in what gets saved.
+  const wordChanges = new WeakMap(); // element -> { before, ranges, name, rule }
+  const wordStyle = document.createElement("style");
+  wordStyle.dataset.inplaceUi = "";
+  document.head.append(wordStyle);
+  const WORD_TINT = [179, 156, 255, 0.42];
+  addEventListener("beforeprint", () => {
+    for (const name of [...(window.CSS?.highlights?.keys() ?? [])]) if (name.startsWith("inplace-words-")) CSS.highlights.delete(name);
+  });
+  let wordCount = 0;
+
+  // Text ranges in `el` that differ from `before`, or null when the change is
+  // better shown on the whole block: nothing added, or most of it rewritten.
+  function changedRanges(el, before) {
+    const text = el.textContent;
+    const spans = [];
+    let at = 0, added = 0;
+    for (const run of diffWords(before, text)) {
+      const piece = (run.same || run.added).join("");
+      if (!run.same && piece.trim()) {
+        const lead = piece.length - piece.trimStart().length, trail = piece.length - piece.trimEnd().length;
+        spans.push([at + lead, at + piece.length - trail]);
+        added += piece.trim().length;
+      }
+      at += piece.length;
+    }
+    if (!spans.length || added > text.trim().length * 0.6) return null;
+    // Turn text offsets into ranges over the element's text nodes.
+    const nodes = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(), pos = 0; n; n = walker.nextNode()) {
+      nodes.push([n, pos]);
+      pos += n.data.length;
+    }
+    const point = (offset, end) => {
+      for (let k = nodes.length - 1; k >= 0; k--) {
+        const [n, pos] = nodes[k];
+        if (end ? offset > pos : offset >= pos) return [n, Math.min(offset - pos, n.data.length)];
+      }
+      return null;
+    };
+    return spans.map(([from, to]) => {
+      const range = document.createRange();
+      const start = point(from, false), end = point(to, true);
+      if (!start || !end) return null;
+      range.setStart(...start);
+      range.setEnd(...end);
+      return range;
+    }).filter(Boolean);
+  }
+
+  function tintWords(el, before) {
+    if (!window.CSS?.highlights || !window.Highlight || !editable.has(el.dataset.id)) return false;
+    const ranges = changedRanges(el, before);
+    if (!ranges?.length) return false;
+    const name = `inplace-words-${++wordCount}`;
+    CSS.highlights.set(name, new Highlight(...ranges));
+    const sheet = wordStyle.sheet;
+    const rule = sheet.cssRules[sheet.insertRule(`::highlight(${name}){background-color:rgba(${WORD_TINT.join(",")})}`, sheet.cssRules.length)];
+    wordChanges.set(el, { before, ranges, name, rule });
+    el.classList.add("inplace-changed-words");
+    return true;
+  }
+
+  // Keep the tint a moment, then fade it out, as the block tint does.
+  function fadeWords(words) {
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const hold = reduced ? 4400 : 1800, fade = reduced ? 0 : 2600;
+    const start = performance.now() + hold;
+    const step = (now) => {
+      if (words.done) return;
+      const t = Math.min(1, Math.max(0, (now - start) / (fade || 1)));
+      const alpha = WORD_TINT[3] * (1 - t * t);
+      words.rule.style.backgroundColor = `rgba(${WORD_TINT.slice(0, 3).join(",")},${alpha.toFixed(3)})`;
+      if (t < 1) requestAnimationFrame(step);
+      else CSS.highlights.delete(words.name);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function clearWords(el, words) {
+    words.done = true;
+    CSS.highlights.delete(words.name);
+    wordChanges.delete(el);
+  }
+
+
   // `skip` lists blocks the user changed themselves, so they aren't shown as
   // the agent's changes after the reload.
   async function reload(skip = []) {
@@ -940,10 +1095,16 @@
     const blocks = [...document.querySelectorAll("[data-id]")].map((el) =>
       [el.dataset.id, fingerprint(el), el.parentElement?.closest("[data-id]")?.dataset.id]);
     // Changes the user hasn't seen yet stay marked after the next reload.
-    const unseen = [...document.querySelectorAll("[data-id].inplace-changed")].map((el) => el.dataset.id);
+    const unseen = [...document.querySelectorAll("[data-id].inplace-changed, [data-id].inplace-changed-words")]
+      .map((el) => el.dataset.id);
+    // The text of each paragraph, so the changed words can be found after the
+    // reload. For changes not seen yet, the text from before those changes.
+    const texts = {};
+    for (const el of document.querySelectorAll("[data-id][contenteditable]"))
+      texts[el.dataset.id] = el.classList.contains("inplace-changed-words") ? wordChanges.get(el).before : el.textContent;
     try {
       sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: scrollY, focus: active?.dataset.id, blocks, skip, unseen,
-        changes: changesPanel.classList.contains("open") }));
+        texts, changes: changesPanel.classList.contains("open") }));
     } catch {}
     location.reload();
   }
@@ -972,14 +1133,14 @@
       el?.classList.add("inplace-conflict");
       status("The highlighted paragraph shows your agent\u2019s version. Yours is under \u201cSet aside\u201d at the bottom left.", "error", true);
     }
-    if (state?.blocks) showChanges(state.blocks, new Set([...(state.skip || []), ...(conflict ? [conflict.id] : [])]), !!conflict, state.unseen || []);
+    if (state?.blocks) showChanges(state.blocks, new Set([...(state.skip || []), ...(conflict ? [conflict.id] : [])]), !!conflict, state.unseen || [], state.texts || {});
   }
   restore();
 
   // --- what the agent changed since the page last loaded ---
   // Changed and new blocks are tinted, and the tint fades once the block has
   // been on screen for a moment. `quiet` leaves the status message to a conflict.
-  function showChanges(before, skip, quiet, earlier) {
+  function showChanges(before, skip, quiet, earlier, texts) {
     const old = new Map(before.map(([id, hash, parent]) => [id, { hash, parent }]));
     const now = new Map([...document.querySelectorAll("[data-id]")].map((el) => [el.dataset.id, el]));
     const added = [], changed = [];
@@ -1040,7 +1201,8 @@
       if (!document.hidden) for (const el of [...unseen]) if (inView(el)) seen(el);
     });
     for (const el of marks) {
-      el.classList.add("inplace-changed");
+      const id = el.dataset.id;
+      if (!(old.has(id) && texts[id] !== undefined && tintWords(el, texts[id]))) el.classList.add("inplace-changed");
       if (inView(el) && !document.hidden) {
         unseen.delete(el);
         reveal(el);
@@ -1051,12 +1213,25 @@
 
   // The text settles in from a soft blur while a shimmer sweeps across the
   // block, and sparkles rise from its edges, following the shimmer.
+  // When only some words changed, those words fade instead and the sparkles
+  // rise from them.
   function reveal(el) {
-    el.classList.replace("inplace-changed", "inplace-changed-fade");
+    const words = wordChanges.get(el);
+    if (words) {
+      el.classList.remove("inplace-changed-words");
+      fadeWords(words);
+    } else el.classList.replace("inplace-changed", "inplace-changed-fade");
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const r = el.getBoundingClientRect();
-    const count = Math.round(Math.min(16, 7 + r.width / 90));
+    const boxes = words
+      ? words.ranges.flatMap((range) => [...range.getClientRects()]).filter((b) => b.width > 0)
+      : [el.getBoundingClientRect()];
+    if (!boxes.length) return;
+    const width = boxes.reduce((sum, b) => sum + b.width, 0);
+    const count = Math.round(Math.min(16, (words ? 4 : 7) + width / 90));
     for (let i = 0; i < count; i++) {
+      // Pick a box in proportion to its width, then a point along it.
+      let pick = Math.random() * width, r = boxes[0];
+      for (const b of boxes) { r = b; if ((pick -= b.width) <= 0) break; }
       const along = Math.random();
       const dot = i % 3 === 2;
       const size = dot ? 2 + Math.random() * 2.5 : 7 + Math.random() * 9;
@@ -1085,11 +1260,14 @@
     if (e.animationName === "inplace-fade") e.target.classList?.remove("inplace-changed-fade");
   });
 
-  // Show a block's change again, as when it first appeared.
-  function replay(el) {
-    el.classList.remove("inplace-changed", "inplace-changed-fade");
+  // Show a block's change again, as when it first appeared. With the text from
+  // before the change, only the changed words light up.
+  function replay(el, before) {
+    el.classList.remove("inplace-changed", "inplace-changed-fade", "inplace-changed-words");
+    const words = wordChanges.get(el);
+    if (words) clearWords(el, words);
     void el.offsetWidth;
-    el.classList.add("inplace-changed");
+    if (before === undefined || !tintWords(el, before)) el.classList.add("inplace-changed");
     reveal(el);
   }
 
@@ -1255,70 +1433,6 @@
     return `Edited ${noun(change.tag)}`;
   }
 
-  // --- word-level diff ---
-  // Splits text into words, runs of spaces and punctuation marks, so "laundry,"
-  // and "laundry daily," share the word and the comma.
-  const tokenize = (text) => text.split(/(\s+|[.,;:!?()\[\]"\u201c\u201d])/).filter(Boolean);
-  const isSpace = (t) => /^\s+$/.test(t);
-
-  // Before \u2192 after as a list of runs: { same: [tokens] } for unchanged text
-  // and { gone: [tokens], added: [tokens] } for each changed stretch.
-  function diffWords(before, after) {
-    const a = tokenize(before), b = tokenize(after);
-    let p = 0;
-    while (p < a.length && p < b.length && a[p] === b[p]) p++;
-    let q = 0;
-    while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
-    const A = a.slice(p, a.length - q), B = b.slice(p, b.length - q);
-    const ops = []; // [kind, token], kind is "=", "-" or "+"
-    if (A.length * B.length > 60000) {
-      // Too long to compare word by word quickly: show it as one replacement.
-      for (const t of A) ops.push(["-", t]);
-      for (const t of B) ops.push(["+", t]);
-    } else {
-      // Longest common subsequence of the tokens in the middle.
-      const len = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
-      for (let i = A.length - 1; i >= 0; i--)
-        for (let j = B.length - 1; j >= 0; j--)
-          len[i][j] = A[i] === B[j] ? len[i + 1][j + 1] + 1 : Math.max(len[i + 1][j], len[i][j + 1]);
-      let i = 0, j = 0;
-      while (i < A.length || j < B.length) {
-        if (i < A.length && j < B.length && A[i] === B[j]) { ops.push(["=", A[i++]]); j++; }
-        else if (j < B.length && (i === A.length || len[i][j + 1] >= len[i + 1][j])) ops.push(["+", B[j++]]);
-        else ops.push(["-", A[i++]]);
-      }
-    }
-    const runs = [];
-    const push = (kind, t) => {
-      const last = runs.at(-1);
-      if (kind === "=") {
-        if (last?.same) last.same.push(t);
-        else runs.push({ same: [t] });
-      } else {
-        const run = last && !last.same ? last : (runs.push({ gone: [], added: [] }), runs.at(-1));
-        (kind === "-" ? run.gone : run.added).push(t);
-      }
-    };
-    for (const t of a.slice(0, p)) push("=", t);
-    for (const [kind, t] of ops) push(kind, t);
-    for (const t of a.slice(a.length - q)) push("=", t);
-    // A space, a comma or one short word left between two changes reads
-    // better as part of one larger change: "Two beds" \u2192 "Three cots", not
-    // "Two" \u2192 "Three" + "beds" \u2192 "cots".
-    for (let k = 1; k < runs.length - 1; k++) {
-      const run = runs[k];
-      if (!run.same || runs[k - 1].same || runs[k + 1].same) continue;
-      const words = run.same.filter((t) => !isSpace(t));
-      if (words.length > 1 || (words.length === 1 && words[0].length > 3 && /\w/.test(words[0]))) continue;
-      const prev = runs[k - 1], next = runs[k + 1];
-      prev.gone.push(...run.same, ...next.gone);
-      prev.added.push(...run.same, ...next.added);
-      runs.splice(k, 2);
-      k--;
-    }
-    return runs;
-  }
-
   const clipText = (s, max = 220) => (s.length > max ? s.slice(0, max) + "\u2026" : s);
   // The changed words with a few words around them, so a one-word edit in a
   // long paragraph is easy to spot. Long unchanged stretches are shortened.
@@ -1361,13 +1475,14 @@
     return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  function goTo(el) {
+  function goTo(el, change) {
     if (matchMedia("(max-width: 600px)").matches) closeChanges();
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const r = el.getBoundingClientRect();
-    if (r.top >= 0 && r.bottom <= innerHeight) return replay(el);
+    const before = change.kind === "changed" ? change.before : undefined;
+    if (r.top >= 0 && r.bottom <= innerHeight) return replay(el, before);
     let done = false;
-    const then = () => { if (!done) { done = true; replay(el); } };
+    const then = () => { if (!done) { done = true; replay(el, before); } };
     addEventListener("scrollend", then, { once: true });
     setTimeout(then, reduced ? 0 : 700);
     el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
@@ -1397,7 +1512,7 @@
         const body = [make("span", { className: "kind", textContent: describe(change) }),
           make("span", { className: "text" }, ...snippet(change))];
         items.append(make("li", {}, el
-          ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el) }, ...body)
+          ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change) }, ...body)
           : make("div", { className: "change" }, ...body)));
       }
       const node = make("div", { className: "entry" }, who, items);
