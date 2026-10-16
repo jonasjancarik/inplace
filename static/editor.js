@@ -89,6 +89,7 @@
     #inplace-changes .x{all:unset;cursor:pointer;color:#7a8580;font-size:20px;line-height:1;padding:2px 7px 4px;border-radius:6px}
     #inplace-changes .x:hover{background:#eef1ef;color:#1f2a24}
     #inplace-changes .list{overflow:auto;padding:0 8px 8px}
+    #inplace-changes .agent-status{margin:0 8px 8px;color:#56615b}
     #inplace-changes .aside{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;padding:9px 11px;
       border-radius:8px;background:#fbefe9;color:#7a2e14}
     #inplace-changes .aside button{all:unset;cursor:pointer;font-weight:600;text-decoration:underline;white-space:nowrap}
@@ -1380,6 +1381,31 @@
   function closeStash() {
     overlay.classList.remove("open");
   }
+  // --- whether an agent is picking up your edits, as far as the server can tell ---
+  // The server sends { state, ago } on the "agent" event; ago is in seconds, as of when it arrived.
+  let agentStatus = null;
+  let agentStatusAt = 0;
+  function agentStatusLine() {
+    if (!agentStatus) return null;
+    let text;
+    if (agentStatus.state === "waiting") text = "Your agent is waiting for your next pause.";
+    else if (agentStatus.state === "working") text = "Your agent picked up your last changes.";
+    else if (agentStatus.state === "checked") {
+      const s = agentStatus.ago + (Date.now() - agentStatusAt) / 1000;
+      const when = s < 45 ? "just now" : s < 90 ? "a minute ago" : s < 3600 ? `${Math.round(s / 60)} minutes ago`
+        : `at ${new Date(Date.now() - s * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      text = `Your agent last checked your changes ${when}.`;
+    } else if (agentStatus.state === "none") text = "No agent has checked your changes yet. Ask your agent to pick up your edits.";
+    // Agents reading the terminal output or a log file can't be seen, so don't say anything about them.
+    else text = "If your agent doesn't react to your edits, ask it to check them.";
+    return make("p", { className: "agent-status", textContent: text });
+  }
+  function showAgentStatus(data) {
+    try { agentStatus = JSON.parse(data); } catch { return; }
+    agentStatusAt = Date.now();
+    if (changesPanel.classList.contains("open")) renderChanges();
+  }
+
   // --- the list of changes ---
   const HISTORY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7.5V12l3 2"/></svg>';
   const SEEN_KEY = `${STATE_KEY}:seen-changes`;
@@ -1490,6 +1516,8 @@
 
   function renderChanges() {
     const list = make("div", { className: "list" });
+    const agentLine = agentStatusLine();
+    if (agentLine) list.append(agentLine);
     if (stashCount) {
       list.append(make("div", { className: "aside" },
         make("span", { textContent: stashCount === 1
@@ -1551,6 +1579,7 @@
 
   const events = new EventSource("/__inplace/events");
   events.addEventListener("stash", (e) => showStashCount(Number(e.data)));
+  events.addEventListener("agent", (e) => showAgentStatus(e.data));
   events.addEventListener("history", (e) => {
     if (Number(e.data) > 0) return loadHistory();
     if (seenChanges === null) markChangesSeen();

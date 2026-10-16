@@ -11,6 +11,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createInterface } from "node:readline";
 import { extname, resolve } from "node:path";
 
+import { AgentStatus } from "./agent.js";
 import { AGENT_GUIDE_PATH } from "./guide.js";
 import { BlockConflict, BlockNotFound } from "./htmldoc.js";
 import { PauseWatcher } from "./idle.js";
@@ -157,9 +158,15 @@ class Session {
   private feed: ChangeFeed | undefined;
   private seen = 0;
   private closed = new AbortController();
+  private agent: AgentStatus | undefined;
+  /** The client said it takes Claude Code channel events (set at initialize, stdio only). */
+  channel = false;
   private guideSent = false;
 
-  constructor(readonly pauseMs: number, readonly log: (line: string) => void, readonly notify: Notify) {}
+  /** `notify` is left out when the transport can't send notifications; `logFile` is whether there's a --log file. */
+  constructor(
+    readonly pauseMs: number, readonly log: (line: string) => void, readonly notify?: Notify, readonly logFile = false,
+  ) {}
 
   async open(args: Record<string, unknown>): Promise<string> {
     const path = resolve(str(args, "path"));
@@ -170,6 +177,10 @@ class Session {
     await this.close();
 
     const feed = this.pauseMs ? new ChangeFeed() : undefined;
+    // A log file, or channel events sent to a client that didn't say it takes them, may still be read.
+    const agent = new AgentStatus({
+      channel: this.channel, unseenReaders: this.logFile || (this.notify !== undefined && !this.channel),
+    });
     const record = (line: string, pause = false) => {
       this.log(line);
       this.unread.push(line);
@@ -179,14 +190,17 @@ class Session {
       ? new PauseWatcher(this.pauseMs, (summary, lines) => {
         record(summary, true);
         const { content, meta } = pauseEvent(path, summary, lines);
-        this.notify("notifications/claude/channel", { content, meta });
+        if (this.notify) {
+          this.notify("notifications/claude/channel", { content, meta });
+          agent.sentToChannel();
+        }
       })
       : undefined;
     const doc = new Document(path, true, (line, byUser) => {
       record(line);
       if (byUser) pauses?.record(line);
     });
-    const http = createInplaceServer(doc, { feed });
+    const http = createInplaceServer(doc, { feed, agent });
     await new Promise<void>((ok, fail) => {
       http.once("error", (e: NodeJS.ErrnoException) =>
         fail(new Error(e.code === "EADDRINUSE" ? `port ${port} is already in use; pass another port, or 0` : e.message)));
@@ -196,6 +210,7 @@ class Session {
     this.http = http;
     this.pauses = pauses;
     this.feed = feed;
+    this.agent = agent;
     this.seen = 0;
     this.closed = new AbortController();
     this.poll = setInterval(() => doc.poll(), 250);
@@ -216,6 +231,7 @@ class Session {
     const lines = this.unread;
     this.unread = [];
     this.seen = this.feed?.latest ?? 0;
+    this.agent?.checked();
     if (lines.length) return lines.join("\n");
     return this.doc ? "No changes since the last call." : "No document is open.";
   }
@@ -226,7 +242,10 @@ class Session {
     if (!feed) throw new Error("Pauses are turned off (--pause 0), so there are none to wait for. Use get_edits.");
     const seconds = args.timeout_seconds === undefined ? 50 : Number(args.timeout_seconds);
     if (!(seconds >= 0)) throw new Error("timeout_seconds must be a number of seconds");
+    const agent = this.agent!;
+    agent.waitStarted();
     const batch = await feed.wait(this.seen, seconds * 1000, this.closed.signal);
+    agent.waitEnded(batch !== null);
     if (this.closed.signal.aborted) return "The document was closed.";
     if (!batch) return "timeout: the user hasn't paused since the last call. Call wait_for_edits again to keep waiting.";
     this.seen = batch.next;
@@ -236,6 +255,7 @@ class Session {
   }
 
   read(args: Record<string, unknown>): string {
+    this.agent?.checked();
     return this.current().source(args.id === undefined ? undefined : str(args, "id"));
   }
 
@@ -269,7 +289,7 @@ class Session {
     this.closed.abort();
     this.http?.closeAllConnections();
     await new Promise((ok) => this.http?.close(ok));
-    this.doc = this.http = this.pauses = this.feed = undefined;
+    this.doc = this.http = this.pauses = this.feed = this.agent = undefined;
     this.log(`Stopped serving ${path}`);
     return `Stopped serving ${path}.`;
   }
@@ -298,6 +318,8 @@ function mcpHandler(session: Session) {
     switch (msg.method) {
       case "initialize": {
         const asked = String(params.protocolVersion);
+        const experimental = (params.capabilities as { experimental?: Record<string, unknown> } | undefined)?.experimental;
+        session.channel = session.notify !== undefined && experimental?.["claude/channel"] !== undefined;
         return {
           protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0],
           capabilities: { tools: {}, experimental: { "claude/channel": {} } },
@@ -348,7 +370,7 @@ const logger = (logPath?: string) => (line: string) => {
 export function runMcpServer(options: McpOptions): void {
   const write = (message: Record<string, unknown>) => process.stdout.write(JSON.stringify(message) + "\n");
   const session = new Session(options.pauseSeconds * 1000, logger(options.logPath),
-    (method, params) => write({ jsonrpc: "2.0", method, params }));
+    (method, params) => write({ jsonrpc: "2.0", method, params }), options.logPath !== undefined);
   const handle = mcpHandler(session);
 
   const lines = createInterface({ input: process.stdin });
@@ -391,7 +413,7 @@ export function runMcpHttpServer(
   options: McpOptions & { port: number; host: string; token: string },
 ): Promise<Server> {
   const log = logger(options.logPath);
-  const session = new Session(options.pauseSeconds * 1000, log, () => {});
+  const session = new Session(options.pauseSeconds * 1000, log, undefined, options.logPath !== undefined);
   const handle = mcpHandler(session);
   const localOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 

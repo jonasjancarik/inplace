@@ -106,6 +106,8 @@ While it runs, inplace prints one line for every change made on the page:
 
 Only the changed part of a block is shown, with a little context. Once you've stopped making changes for a few seconds, a `paused after` line sums up what you did since the last one. The skill tells the agent to start inplace in the background and to read this output before it handles a comment or edits the file, so it notices a changed number and fixes the totals and charts that depend on it, or a moved section and the references that point to it. You can also just tell the agent to check your edits.
 
+The list of changes behind the button in the bottom-left corner starts with one line about the agent: that it's waiting for your next pause (an `inplace wait`, `wait_for_edits` or Claude Code channel is attached), that it picked up your last changes, or when it last checked them. An agent that reads the terminal output or the `--log` file can't be seen from the page, so in that case the line says nothing about it and only suggests asking it to check your edits if it doesn't react.
+
 ### Letting the agent react while you work
 
 An agent normally reads these lines only when it next does something: when you leave a comment or send it a message. How soon it can react on its own depends on the agent:

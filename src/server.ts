@@ -11,6 +11,7 @@ import {
   assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
   removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
+import { AgentStatus } from "./agent.js";
 import { type Author, diffBlocks, History } from "./history.js";
 import { mergeInner } from "./merge.js";
 import { type ChangeFeed } from "./wait.js";
@@ -417,13 +418,18 @@ function refusal(req: IncomingMessage): string | null {
 export interface ServerOptions {
   /** The change lines and pauses, for `/__inplace/wait`. Leave it out when pauses are turned off. */
   feed?: ChangeFeed;
+  /** What is known about the agent, for the line in the page's list of changes. */
+  agent?: AgentStatus;
 }
 
-export function createInplaceServer(doc: Document, { feed }: ServerOptions = {}): Server {
+export function createInplaceServer(doc: Document, { feed, agent = new AgentStatus() }: ServerOptions = {}): Server {
   const rootDir = dirname(resolve(doc.path));
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
   const editorScript = readFileSync(join(STATIC_DIR, "editor.js"));
+  doc.onHistoryChange(() => {
+    if (doc.history.entries.at(-1)?.by === "agent") agent.agentWrote();
+  });
 
   const page = (res: ServerResponse) => {
     const { text, version } = doc.load();
@@ -440,18 +446,25 @@ export function createInplaceServer(doc: Document, { feed }: ServerOptions = {})
     const push = (version: string) => res.write(`event: version\ndata: ${version}\n\n`);
     const pushStash = () => res.write(`event: stash\ndata: ${doc.stashCount}\n\n`);
     const pushHistory = () => res.write(`event: history\ndata: ${doc.history.revision}\n\n`);
+    const pushAgent = () => res.write(`event: agent\ndata: ${JSON.stringify(agent.summary())}\n\n`);
     push(doc.version);
     pushStash();
     pushHistory();
+    pushAgent();
     const off = doc.onChange(push);
     const offStash = doc.onStashChange(pushStash);
     const offHistory = doc.onHistoryChange(pushHistory);
+    const offAgent = agent.onChange(pushAgent);
     const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
+    // Keeps "checked 3 minutes ago" current, and lets "working" run out.
+    const refreshAgent = setInterval(pushAgent, 60_000);
     req.on("close", () => {
       off();
       offStash();
       offHistory();
+      offAgent();
       clearInterval(ping);
+      clearInterval(refreshAgent);
     });
   };
 
@@ -516,8 +529,10 @@ export function createInplaceServer(doc: Document, { feed }: ServerOptions = {})
     const beat = setInterval(() => res.write(" "), 30_000);
     const gone = new AbortController();
     res.on("close", () => gone.abort());
+    agent.waitStarted();
     feed.wait(after, timeout, gone.signal).then((batch) => {
       clearInterval(beat);
+      agent.waitEnded(batch !== null);
       if (gone.signal.aborted) return;
       res.end(JSON.stringify(batch ? { status: "pause", ...batch } : { status: "timeout", next: after }));
     });
