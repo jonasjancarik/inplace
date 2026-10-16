@@ -69,10 +69,49 @@
       background:#fff;color:#1f2a24;font:inherit}
     #inplace-toolbar.linking > :not(form){display:none}
     #inplace-toolbar.linking form{display:flex}
-    #inplace-stash-badge{all:unset;position:fixed;left:14px;bottom:14px;z-index:2147483647;display:none;padding:7px 12px;
-      border-radius:7px;background:#9c3b1c;color:#fff;font:12px/1.3 -apple-system,system-ui,sans-serif;cursor:pointer;
-      box-shadow:0 3px 12px #0003}
-    #inplace-stash-badge:hover{background:#b4461f}
+    #inplace-corner{all:unset;box-sizing:border-box;position:fixed;left:14px;bottom:14px;z-index:2147483647;display:none;
+      align-items:center;justify-content:center;width:36px;height:36px;border-radius:18px;background:#1f2a24;color:#e8ece9;
+      font:12px/1.3 -apple-system,system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 12px #0003}
+    #inplace-corner.shown{display:flex}
+    #inplace-corner:hover{background:#34433a}
+    #inplace-corner:focus-visible{outline:2px solid #4a7bd4;outline-offset:2px}
+    #inplace-corner svg{width:18px;height:18px}
+    #inplace-corner .dot{position:absolute;top:0;right:0;width:9px;height:9px;border-radius:50%;background:#b39cff;
+      box-shadow:0 0 0 2px #fff,0 0 8px #9b7bff}
+    #inplace-corner.stash{width:auto;height:auto;padding:7px 12px;border-radius:7px;background:#9c3b1c;color:#fff}
+    #inplace-corner.stash:hover{background:#b4461f}
+    #inplace-changes{position:fixed;left:14px;bottom:60px;z-index:2147483647;display:none;flex-direction:column;box-sizing:border-box;
+      width:min(380px,calc(100vw - 28px));max-height:min(70vh,560px);overflow:hidden;border-radius:12px;background:#fff;color:#1f2a24;
+      box-shadow:0 12px 40px #0003,0 0 0 1px #0000000f;font:13px/1.45 -apple-system,system-ui,sans-serif;text-align:left}
+    #inplace-changes.open{display:flex}
+    #inplace-changes header{display:flex;align-items:center;justify-content:space-between;padding:12px 10px 6px 16px}
+    #inplace-changes h2{all:unset;font-size:14px;font-weight:600}
+    #inplace-changes .x{all:unset;cursor:pointer;color:#7a8580;font-size:20px;line-height:1;padding:2px 7px 4px;border-radius:6px}
+    #inplace-changes .x:hover{background:#eef1ef;color:#1f2a24}
+    #inplace-changes .list{overflow:auto;padding:0 8px 8px}
+    #inplace-changes .aside{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;padding:9px 11px;
+      border-radius:8px;background:#fbefe9;color:#7a2e14}
+    #inplace-changes .aside button{all:unset;cursor:pointer;font-weight:600;text-decoration:underline;white-space:nowrap}
+    #inplace-changes .entry{padding:9px 0 5px;border-top:1px solid #eef1ef}
+    #inplace-changes .entry:first-child{border-top:0}
+    #inplace-changes .who{display:flex;align-items:center;gap:6px;padding:0 8px 2px;font-size:12px;font-weight:600}
+    #inplace-changes .who .when{margin-left:auto;font-weight:400;color:#7a8580}
+    #inplace-changes .who .star{display:block;width:12px;height:12px;color:#9b7bff;filter:drop-shadow(0 0 3px #b39cff88)}
+    #inplace-changes .who .star svg{display:block;width:100%;height:100%}
+    #inplace-changes ul{all:unset;display:block;list-style:none}
+    #inplace-changes li{display:block}
+    #inplace-changes .change{all:unset;box-sizing:border-box;display:block;width:100%;padding:5px 8px;border-radius:7px}
+    #inplace-changes button.change{cursor:pointer}
+    #inplace-changes button.change:hover{background:#f4f1ff}
+    #inplace-changes button.change:focus-visible{outline:2px solid #4a7bd4}
+    #inplace-changes .kind{display:block;margin-bottom:1px;font-size:11px;color:#7a8580}
+    #inplace-changes .text{display:block;overflow-wrap:anywhere}
+    #inplace-changes del{padding:0 2px;border-radius:3px;background:#fbe9e3;color:#a1452a;text-decoration:line-through;
+      text-decoration-color:#a1452a88}
+    #inplace-changes ins{padding:0 2px;border-radius:3px;background:#ece5ff;color:#3d2a85;text-decoration:none}
+    #inplace-changes .entry[data-by=you] .who,#inplace-changes .entry[data-by=you] .text{color:#5b6660}
+    #inplace-changes .entry[data-by=you] ins{background:#e9eeeb;color:#1f2a24}
+    #inplace-changes .empty{margin:0;padding:4px 8px 10px;color:#7a8580}
     #inplace-stash{position:fixed;inset:0;z-index:2147483647;display:none;align-items:flex-start;justify-content:center;
       padding:48px 16px;background:#1f2a2466;overflow:auto;font:14px/1.45 -apple-system,system-ui,sans-serif;color:#1f2a24}
     #inplace-stash.open{display:flex}
@@ -95,7 +134,7 @@
     #inplace-stash button.primary{background:#1f2a24;color:#fff}
     #inplace-stash button.primary:hover{background:#34433a}
     #inplace-stash .close{float:right}
-    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-stash-badge{display:none!important}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
+    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes{display:none!important}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
       [data-id].inplace-changed,[data-id].inplace-changed-fade{background-color:transparent!important;animation:none!important}}`;
   document.head.append(style);
 
@@ -900,16 +939,21 @@
     const active = document.activeElement?.closest?.("[data-id]");
     const blocks = [...document.querySelectorAll("[data-id]")].map((el) =>
       [el.dataset.id, fingerprint(el), el.parentElement?.closest("[data-id]")?.dataset.id]);
+    // Changes the user hasn't seen yet stay marked after the next reload.
+    const unseen = [...document.querySelectorAll("[data-id].inplace-changed")].map((el) => el.dataset.id);
     try {
-      sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: scrollY, focus: active?.dataset.id, blocks, skip }));
+      sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: scrollY, focus: active?.dataset.id, blocks, skip, unseen,
+        changes: changesPanel.classList.contains("open") }));
     } catch {}
     location.reload();
   }
 
+  let reopenChanges = false; // the list of changes was open before the reload
   function restore() {
     let state;
     try { state = JSON.parse(sessionStorage.getItem(STATE_KEY) || "null"); sessionStorage.removeItem(STATE_KEY); } catch {}
     if (state) {
+      reopenChanges = !!state.changes;
       scrollTo(state.x, state.y);
       const el = state.focus && document.querySelector(`[data-id="${CSS.escape(state.focus)}"]`);
       if (el) {
@@ -928,21 +972,21 @@
       el?.classList.add("inplace-conflict");
       status("The highlighted paragraph shows your agent\u2019s version. Yours is under \u201cSet aside\u201d at the bottom left.", "error", true);
     }
-    if (state?.blocks) showChanges(state.blocks, new Set([...(state.skip || []), ...(conflict ? [conflict.id] : [])]), !!conflict);
+    if (state?.blocks) showChanges(state.blocks, new Set([...(state.skip || []), ...(conflict ? [conflict.id] : [])]), !!conflict, state.unseen || []);
   }
   restore();
 
   // --- what the agent changed since the page last loaded ---
   // Changed and new blocks are tinted, and the tint fades once the block has
   // been on screen for a moment. `quiet` leaves the status message to a conflict.
-  function showChanges(before, skip, quiet) {
+  function showChanges(before, skip, quiet, earlier) {
     const old = new Map(before.map(([id, hash, parent]) => [id, { hash, parent }]));
     const now = new Map([...document.querySelectorAll("[data-id]")].map((el) => [el.dataset.id, el]));
     const added = [], changed = [];
     for (const [id, el] of now) {
       if (skip.has(id)) continue;
       if (!old.has(id)) added.push(el);
-      else if (old.get(id).hash !== fingerprint(el)) changed.push(el);
+      else if (old.get(id).hash !== fingerprint(el) || earlier.includes(id)) changed.push(el);
     }
     // A new table counts as one change, not one per cell; a changed container
     // is shown only when no change inside it explains it.
@@ -987,48 +1031,17 @@
       reveal(el);
       if (pill.dataset.owner === "changes") render();
     }
-    // The text settles in from a soft blur while a shimmer sweeps across the
-    // block, and sparkles rise from its edges, following the shimmer.
-    function reveal(el) {
-      el.classList.replace("inplace-changed", "inplace-changed-fade");
-      if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const r = el.getBoundingClientRect();
-      const count = Math.round(Math.min(16, 7 + r.width / 90));
-      for (let i = 0; i < count; i++) {
-        const along = Math.random();
-        const dot = i % 3 === 2;
-        const size = dot ? 2 + Math.random() * 2.5 : 7 + Math.random() * 9;
-        const spark = make("span", { className: dot ? "inplace-sparkle dot" : "inplace-sparkle" });
-        if (!dot) spark.innerHTML = STAR;
-        spark.dataset.inplaceUi = "";
-        const edge = Math.random();
-        const y = edge < 0.45 ? r.top : edge < 0.9 ? r.bottom : r.top + Math.random() * r.height;
-        Object.assign(spark.style, {
-          left: `${r.left + along * r.width - size / 2}px`,
-          top: `${y - size / 2 + (Math.random() - 0.5) * 10}px`,
-          width: `${size}px`, height: `${size}px`,
-          color: SPARKLE_COLORS[i % SPARKLE_COLORS.length],
-          animationDelay: `${120 + along * 900 + Math.random() * 180}ms`,
-        });
-        spark.style.setProperty("--t", `${900 + Math.random() * 700}ms`);
-        spark.style.setProperty("--dx", `${(Math.random() - 0.5) * 30}px`);
-        spark.style.setProperty("--dy", `${-12 - Math.random() * 26}px`);
-        spark.style.setProperty("--rot", `${(Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 120)}deg`);
-        spark.addEventListener("animationend", () => spark.remove());
-        document.body.append(spark);
-      }
-    }
+    // In a background tab nothing counts as seen until the tab is shown.
     const observer = new IntersectionObserver((entries) => {
+      if (document.hidden) return;
       for (const e of entries) if (e.isIntersecting) seen(e.target);
     }, { rootMargin: "-10% 0px -10% 0px" });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) for (const el of [...unseen]) if (inView(el)) seen(el);
+    });
     for (const el of marks) {
       el.classList.add("inplace-changed");
-      el.addEventListener("animationend", function done(e) {
-        if (e.target !== el || e.animationName !== "inplace-fade") return;
-        el.classList.remove("inplace-changed-fade");
-        el.removeEventListener("animationend", done);
-      });
-      if (inView(el)) {
+      if (inView(el) && !document.hidden) {
         unseen.delete(el);
         reveal(el);
       } else observer.observe(el);
@@ -1036,23 +1049,76 @@
     render();
   }
 
+  // The text settles in from a soft blur while a shimmer sweeps across the
+  // block, and sparkles rise from its edges, following the shimmer.
+  function reveal(el) {
+    el.classList.replace("inplace-changed", "inplace-changed-fade");
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = el.getBoundingClientRect();
+    const count = Math.round(Math.min(16, 7 + r.width / 90));
+    for (let i = 0; i < count; i++) {
+      const along = Math.random();
+      const dot = i % 3 === 2;
+      const size = dot ? 2 + Math.random() * 2.5 : 7 + Math.random() * 9;
+      const spark = make("span", { className: dot ? "inplace-sparkle dot" : "inplace-sparkle" });
+      if (!dot) spark.innerHTML = STAR;
+      spark.dataset.inplaceUi = "";
+      const edge = Math.random();
+      const y = edge < 0.45 ? r.top : edge < 0.9 ? r.bottom : r.top + Math.random() * r.height;
+      Object.assign(spark.style, {
+        left: `${r.left + along * r.width - size / 2}px`,
+        top: `${y - size / 2 + (Math.random() - 0.5) * 10}px`,
+        width: `${size}px`, height: `${size}px`,
+        color: SPARKLE_COLORS[i % SPARKLE_COLORS.length],
+        animationDelay: `${120 + along * 900 + Math.random() * 180}ms`,
+      });
+      spark.style.setProperty("--t", `${900 + Math.random() * 700}ms`);
+      spark.style.setProperty("--dx", `${(Math.random() - 0.5) * 30}px`);
+      spark.style.setProperty("--dy", `${-12 - Math.random() * 26}px`);
+      spark.style.setProperty("--rot", `${(Math.random() < 0.5 ? -1 : 1) * (60 + Math.random() * 120)}deg`);
+      spark.addEventListener("animationend", () => spark.remove());
+      document.body.append(spark);
+    }
+  }
+  // Once the fade has run, the block goes back to how the document styles it.
+  document.addEventListener("animationend", (e) => {
+    if (e.animationName === "inplace-fade") e.target.classList?.remove("inplace-changed-fade");
+  });
+
+  // Show a block's change again, as when it first appeared.
+  function replay(el) {
+    el.classList.remove("inplace-changed", "inplace-changed-fade");
+    void el.offsetWidth;
+    el.classList.add("inplace-changed");
+    reveal(el);
+  }
+
   // --- edits set aside: the user's versions the server couldn't save or merge ---
-  const badge = document.createElement("button");
-  badge.id = "inplace-stash-badge";
-  badge.dataset.inplaceUi = "";
-  badge.type = "button";
+  // One button in the corner opens the list of changes. While edits are set
+  // aside it says so instead, since those need the user's attention.
+  const corner = document.createElement("button");
+  corner.id = "inplace-corner";
+  corner.dataset.inplaceUi = "";
+  corner.type = "button";
   const overlay = document.createElement("div");
   overlay.id = "inplace-stash";
   overlay.dataset.inplaceUi = "";
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
   overlay.setAttribute("aria-label", "Set-aside edits");
-  document.body.append(badge, overlay);
+  const changesPanel = document.createElement("div");
+  changesPanel.id = "inplace-changes";
+  changesPanel.dataset.inplaceUi = "";
+  changesPanel.setAttribute("role", "dialog");
+  changesPanel.setAttribute("aria-label", "Changes");
+  document.body.append(corner, overlay, changesPanel);
 
+  let stashCount = 0;
   function showStashCount(count) {
     if (typeof count !== "number") return;
-    badge.textContent = count === 1 ? "1 edit set aside" : `${count} edits set aside`;
-    badge.style.display = count ? "block" : "none";
+    stashCount = count;
+    updateCorner();
+    if (changesPanel.classList.contains("open")) renderChanges();
     if (!count) overlay.classList.remove("open");
     else if (overlay.classList.contains("open")) renderStash();
   }
@@ -1136,12 +1202,171 @@
   function closeStash() {
     overlay.classList.remove("open");
   }
-  badge.addEventListener("click", openStash);
+  // --- the list of changes ---
+  const HISTORY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7.5V12l3 2"/></svg>';
+  const SEEN_KEY = `${STATE_KEY}:seen-changes`;
+  let history = [];
+  let seenChanges = null;
+  try { seenChanges = JSON.parse(sessionStorage.getItem(SEEN_KEY) || "null"); } catch {}
+  const latestByAgent = () => history.reduce((n, e) => (e.by === "agent" ? Math.max(n, e.n) : n), 0);
+
+  function updateCorner() {
+    corner.classList.toggle("stash", stashCount > 0);
+    corner.classList.toggle("shown", stashCount > 0 || history.length > 0);
+    if (stashCount) {
+      corner.removeAttribute("aria-label");
+      corner.removeAttribute("title");
+      corner.textContent = stashCount === 1 ? "1 edit set aside" : `${stashCount} edits set aside`;
+      return;
+    }
+    corner.setAttribute("aria-label", "Changes");
+    corner.title = "Changes";
+    corner.innerHTML = history.length ? HISTORY_ICON : "";
+    if (latestByAgent() > (seenChanges ?? 0)) corner.append(make("span", { className: "dot" }));
+  }
+
+  async function loadHistory() {
+    try {
+      history = (await (await fetch("/__inplace/history")).json()).entries;
+    } catch {
+      return;
+    }
+    // A newly opened page starts with nothing new to point out.
+    if (seenChanges === null) markChangesSeen();
+    updateCorner();
+    if (changesPanel.classList.contains("open")) renderChanges();
+  }
+
+  function markChangesSeen() {
+    seenChanges = latestByAgent();
+    try { sessionStorage.setItem(SEEN_KEY, JSON.stringify(seenChanges)); } catch {}
+  }
+
+  const NOUNS = { P: "paragraph", LI: "list item", TR: "table row", TD: "table cell", TH: "table cell", TABLE: "table",
+    UL: "list", OL: "list", DT: "term", DD: "description", FIGURE: "figure", FIGCAPTION: "caption", CAPTION: "caption",
+    BLOCKQUOTE: "quote" };
+  const noun = (tag) => (/^h\d$/i.test(tag) ? "heading" : NOUNS[tag.toUpperCase()] || "text");
+  const capital = (s) => s[0].toUpperCase() + s.slice(1);
+  function describe(change) {
+    if (change.kind === "added") return `New ${noun(change.tag)}`;
+    if (change.kind === "removed") return `Removed ${noun(change.tag)}`;
+    if (change.kind === "moved") return `Moved ${noun(change.tag)}`;
+    if (change.fromTag && noun(change.fromTag) !== noun(change.tag)) return `${capital(noun(change.fromTag))} \u2192 ${noun(change.tag)}`;
+    return `Edited ${noun(change.tag)}`;
+  }
+
+  const clipText = (s, max = 220) => (s.length > max ? s.slice(0, max) + "\u2026" : s);
+  // The changed words with a few words around them, so a one-word edit in a
+  // long paragraph is easy to spot.
+  function snippet(change) {
+    const before = change.before ?? "", after = change.after ?? "";
+    if (change.kind === "added") return [make("ins", { textContent: clipText(after) })];
+    if (change.kind === "removed") return [make("del", { textContent: clipText(before) })];
+    if (change.kind === "moved" || before === after) return [clipText(after)];
+    const words = /(\s+|[.,;:!?()\[\]"\u201c\u201d])/;
+    const a = before.split(words), b = after.split(words);
+    let p = 0;
+    while (p < a.length && p < b.length && a[p] === b[p]) p++;
+    let q = 0;
+    while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+    const CONTEXT = 8; // words and the spaces between them
+    const out = [];
+    out.push((p > CONTEXT ? "\u2026" : "") + a.slice(Math.max(0, p - CONTEXT), p).join(""));
+    const gone = a.slice(p, a.length - q).join(""), added = b.slice(p, b.length - q).join("");
+    if (gone.trim()) out.push(make("del", { textContent: clipText(gone, 160) }));
+    if (gone.trim() && added.trim()) out.push(" ");
+    if (added.trim()) out.push(make("ins", { textContent: clipText(added, 160) }));
+    out.push(a.slice(a.length - q, a.length - q + CONTEXT).join("") + (q > CONTEXT ? "\u2026" : ""));
+    return out;
+  }
+
+  function ago(iso) {
+    const s = (Date.now() - Date.parse(iso)) / 1000;
+    if (s < 45) return "just now";
+    if (s < 90) return "a minute ago";
+    if (s < 3600) return `${Math.round(s / 60)} minutes ago`;
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function goTo(el) {
+    if (matchMedia("(max-width: 600px)").matches) closeChanges();
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const r = el.getBoundingClientRect();
+    if (r.top >= 0 && r.bottom <= innerHeight) return replay(el);
+    let done = false;
+    const then = () => { if (!done) { done = true; replay(el); } };
+    addEventListener("scrollend", then, { once: true });
+    setTimeout(then, reduced ? 0 : 700);
+    el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  }
+
+  function renderChanges() {
+    const list = make("div", { className: "list" });
+    if (stashCount) {
+      list.append(make("div", { className: "aside" },
+        make("span", { textContent: stashCount === 1
+          ? "You and your agent changed the same words, so your version was set aside."
+          : `You and your agent changed the same words in ${stashCount} places, so your versions were set aside.` }),
+        make("button", { type: "button", textContent: "Review", onclick: () => { closeChanges(); openStash(); } })));
+    }
+    if (!history.length) list.append(make("p", { className: "empty", textContent: "Nothing has changed yet." }));
+    for (const entry of [...history].reverse()) {
+      const who = make("div", { className: "who" });
+      if (entry.by === "agent") {
+        const icon = make("span", { className: "star" });
+        icon.innerHTML = STAR;
+        who.append(icon, "Your agent");
+      } else who.append("You");
+      who.append(make("span", { className: "when", textContent: ago(entry.at) }));
+      const items = make("ul");
+      for (const change of entry.changes) {
+        const el = change.kind !== "removed" && document.querySelector(`[data-id="${CSS.escape(change.id)}"]`);
+        const body = [make("span", { className: "kind", textContent: describe(change) }),
+          make("span", { className: "text" }, ...snippet(change))];
+        items.append(make("li", {}, el
+          ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el) }, ...body)
+          : make("div", { className: "change" }, ...body)));
+      }
+      const node = make("div", { className: "entry" }, who, items);
+      node.dataset.by = entry.by;
+      list.append(node);
+    }
+    changesPanel.replaceChildren(
+      make("header", {}, make("h2", { textContent: "Changes" }),
+        make("button", { type: "button", className: "x", textContent: "\u00d7", ariaLabel: "Close", onclick: closeChanges })),
+      list);
+  }
+
+  function openChanges() {
+    renderChanges();
+    changesPanel.classList.add("open");
+    corner.setAttribute("aria-expanded", "true");
+    markChangesSeen();
+    updateCorner();
+  }
+  function closeChanges() {
+    changesPanel.classList.remove("open");
+    corner.setAttribute("aria-expanded", "false");
+  }
+  corner.addEventListener("click", () => (changesPanel.classList.contains("open") ? closeChanges() : openChanges()));
+  document.addEventListener("pointerdown", (e) => {
+    if (changesPanel.classList.contains("open") && !changesPanel.contains(e.target) && !corner.contains(e.target)) closeChanges();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && changesPanel.classList.contains("open") && !overlay.classList.contains("open")) closeChanges();
+  });
+  // Times like "2 minutes ago" stay current while the list is open.
+  setInterval(() => { if (changesPanel.classList.contains("open")) renderChanges(); }, 30_000);
+  if (reopenChanges) openChanges();
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeStash(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && overlay.classList.contains("open")) closeStash(); });
 
   const events = new EventSource("/__inplace/events");
   events.addEventListener("stash", (e) => showStashCount(Number(e.data)));
+  events.addEventListener("history", (e) => {
+    if (Number(e.data) > 0) return loadHistory();
+    if (seenChanges === null) markChangesSeen();
+  });
   events.addEventListener("version", (e) => {
     if (busy) announced = e.data;
     else if (e.data !== version) reload();

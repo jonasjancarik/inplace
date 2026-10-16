@@ -11,6 +11,7 @@ import {
   assignIds, BlockConflict, BlockNotFound, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse, patchBlock,
   removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
+import { type Author, diffBlocks, History } from "./history.js";
 import { mergeInner } from "./merge.js";
 
 const EDITOR_PREFIX = "/__inplace/";
@@ -72,6 +73,11 @@ export class Document {
   private listeners = new Set<(version: string) => void>();
   private stashListeners = new Set<() => void>();
   private stashed: StashEntry[] = [];
+  private historyListeners = new Set<() => void>();
+  /** What changed while inplace has been running, for the page's change list. */
+  readonly history = new History();
+  /** The file as inplace last saw it, with ids, to work out what each change did. */
+  private last: string | null = null;
   /** Where set-aside edits are kept, so they survive a restart. Outside the document's folder on purpose. */
   readonly stashPath: string;
 
@@ -98,12 +104,26 @@ export class Document {
     return readFileSync(this.path, "utf8");
   }
 
-  private write(text: string): void {
+  /** `by` is who made the change; leave it out for changes inplace makes on its own, such as adding ids. */
+  private write(text: string, by?: Author): void {
     const tmp = join(dirname(this.path), `.${basename(this.path)}.inplace-tmp`);
     writeFileSync(tmp, text, "utf8");
     renameSync(tmp, this.path);
     this.stamp = this.statStamp();
+    if (by) this.remember(text, by);
+    else this.last = text;
     this.announce(digest(text));
+  }
+
+  private remember(text: string, by: Author): void {
+    if (this.last !== null && this.last !== text && this.history.add(by, diffBlocks(this.last, text)))
+      for (const listener of this.historyListeners) listener();
+    this.last = text;
+  }
+
+  onHistoryChange(listener: () => void): () => void {
+    this.historyListeners.add(listener);
+    return () => this.historyListeners.delete(listener);
   }
 
   private announce(version: string): void {
@@ -120,6 +140,11 @@ export class Document {
   private refresh(): string {
     const text = this.read();
     this.stamp = this.statStamp();
+    // A change inplace didn't write came from the agent (or another editor).
+    // New elements get their ids as soon as the page loads, so compare with
+    // ids already in place to see them as added blocks.
+    if (this.last === null) this.last = text;
+    else if (text !== this.last) this.remember(this.writeIds ? assignIds(text).source : text, "agent");
     this.announce(digest(text));
     return text;
   }
@@ -161,12 +186,12 @@ export class Document {
         );
         throw e;
       }
-      this.write(patchBlock(text, id, e.current, merged));
+      this.write(patchBlock(text, id, e.current, merged), "you");
       this.log(`${time()} edited ${id}, merged with the file's newer version: ${describeEdit(e.current, merged)}`, true);
       return { version: this.version, merged: true };
     }
     if (patched !== text) {
-      this.write(patched);
+      this.write(patched, "you");
       this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`, true);
     }
     return { version: this.version };
@@ -218,11 +243,11 @@ export class Document {
       const current = text.slice(node.openEnd, node.innerEnd);
       if (action === "mine") {
         const patched = patchBlock(text, entry.id, current, entry.mine);
-        if (patched !== text) this.write(patched);
+        if (patched !== text) this.write(patched, "you");
         this.log(`${time()} edited ${entry.id}, using the user's set-aside version: ${describeEdit(current, entry.mine)}`, true);
       } else {
         const inserted = insertBlock(text, entry.id, "after", node.tag, entry.mine);
-        this.write(inserted.source);
+        this.write(inserted.source, "you");
         this.log(`${time()} added ${inserted.id} <${node.tag}> after ${entry.id}, with the user's set-aside version: ` +
           JSON.stringify(clip(plain(entry.mine), 200)), true);
       }
@@ -240,7 +265,7 @@ export class Document {
     const text = this.refresh();
     const moved = moveBlock(text, id, target, position);
     if (moved !== text) {
-      this.write(moved);
+      this.write(moved, "you");
       const parent = findBlock(parse(moved), id)?.parent?.attrs.get("data-id");
       this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true);
     }
@@ -252,7 +277,7 @@ export class Document {
   ): { id: string; html: string } {
     const text = this.refresh();
     const inserted = insertBlock(text, id, position, tag, content, split);
-    this.write(inserted.source);
+    this.write(inserted.source, "you");
     if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`, true);
     const what = squash(content) ? `: ${JSON.stringify(clip(squash(content), 200))}` : " (empty)";
     this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`, true);
@@ -261,7 +286,7 @@ export class Document {
 
   removeBlock(id: string): void {
     const text = this.refresh();
-    this.write(removeBlock(text, id));
+    this.write(removeBlock(text, id), "you");
     this.log(`${time()} removed ${id}, which the user had emptied`, true);
   }
 
@@ -269,7 +294,7 @@ export class Document {
     const text = this.refresh();
     const retagged = retagBlock(text, id, from, to);
     if (retagged !== text) {
-      this.write(retagged);
+      this.write(retagged, "you");
       this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true);
     }
     return this.version;
@@ -289,7 +314,7 @@ export class Document {
     const text = this.load().text;
     const replaced = replaceElement(text, id, part, expected, html);
     if (replaced === text) return;
-    this.write(replaced);
+    this.write(replaced, "agent");
     this.log(`${time()} the agent replaced ${part === "inner" ? "the inside of " : ""}${id}`, false);
   }
 
@@ -302,7 +327,7 @@ export class Document {
     if (count > 1 && !all) throw new Error(`found ${count} times; make find longer so it's unique, or pass all: true`);
     const replaced = all ? text.split(find).join(replace) : text.replace(find, () => replace);
     if (replaced === text) return 0;
-    this.write(replaced);
+    this.write(replaced, "agent");
     this.log(`${time()} the agent replaced ${count} occurrence${count === 1 ? "" : "s"} of ${JSON.stringify(clip(find, 60))}`, false);
     return count;
   }
@@ -365,14 +390,18 @@ export function createInplaceServer(doc: Document): Server {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
     const push = (version: string) => res.write(`event: version\ndata: ${version}\n\n`);
     const pushStash = () => res.write(`event: stash\ndata: ${doc.stashCount}\n\n`);
+    const pushHistory = () => res.write(`event: history\ndata: ${doc.history.revision}\n\n`);
     push(doc.version);
     pushStash();
+    pushHistory();
     const off = doc.onChange(push);
     const offStash = doc.onStashChange(pushStash);
+    const offHistory = doc.onHistoryChange(pushHistory);
     const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
     req.on("close", () => {
       off();
       offStash();
+      offHistory();
       clearInterval(ping);
     });
   };
@@ -452,6 +481,10 @@ export function createInplaceServer(doc: Document): Server {
         }
         if (path === EDITOR_PREFIX + "events") return events(req, res);
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
+        if (path === EDITOR_PREFIX + "history") {
+          doc.poll();
+          return json(res, 200, { entries: doc.history.entries, revision: doc.history.revision });
+        }
         return staticFile(path, res);
       })
       .catch((e: unknown) => {
