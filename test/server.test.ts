@@ -93,3 +93,29 @@ test("isLocalHost accepts this computer's names and IP addresses only", () => {
     assert.ok(!isLocalHost(bad), String(bad));
   }
 });
+
+test("comments are added from the page, listed, and resolved by the agent", async () => {
+  const s = await start();
+  try {
+    const host = `localhost:${s.port}`;
+    const page = { host, origin: `http://${host}`, "content-type": "application/json" };
+    const add = await s.send("POST", "/__inplace/comment", page,
+      JSON.stringify({ action: "add", id: "p-1", text: "Say hello to whom?", quote: "Hello", prefix: "", suffix: "" }));
+    assert.equal(add.status, 200, add.body);
+    assert.equal((await s.send("POST", "/__inplace/comment", page, JSON.stringify({ action: "add", id: "p-9", text: "x" }))).status, 404);
+    // The agent resolves from the command line: no Origin header.
+    const resolved = await s.send("POST", "/__inplace/comment", { host, "content-type": "application/json" },
+      JSON.stringify({ action: "resolve", n: 1, reply: "Added a name." }));
+    assert.equal(resolved.status, 200, resolved.body);
+    const listed = JSON.parse((await s.send("GET", "/__inplace/comments", { host })).body);
+    assert.deepEqual(listed.comments.map((c: { n: number; status: string; reply: string }) => [c.n, c.status, c.reply]),
+      [[1, "done", "Added a name."]]);
+    assert.equal(JSON.parse((await s.send("GET", "/__inplace/comments?open=1", { host })).body).comments.length, 0);
+    const other = await s.send("POST", "/__inplace/comment",
+      { host, origin: "https://evil.example", "content-type": "application/json" }, JSON.stringify({ action: "clear" }));
+    assert.equal(other.status, 403);
+    assert.match((await s.send("GET", "/__inplace/anchor.js", { host })).body, /export function findQuote/);
+  } finally {
+    s.close();
+  }
+});
