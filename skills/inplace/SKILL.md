@@ -29,7 +29,7 @@ If the user has installed it (`npm install -g github:jonasjancarik/inplace`), `i
 
 - Run it in the background; it keeps running until stopped. Check the port is free first and pick another if not. Keep hold of its output: that's where the user's edits are reported.
 - `--log` writes the same lines to a file, so you can still read and watch them after the background process's output is out of reach. Put the log in a temp or scratch directory, not next to the document.
-- It listens only on this computer by default and prints the URL it can be reached at. Open the localhost URL in your built-in browser if you have one, so the user can type and comment there. Otherwise give the user the URL.
+- It listens only on this computer by default and prints the URL it can be reached at. Open the localhost URL in your built-in browser if you have one, so the user can type and comment there. Otherwise tell the user to open the URL in their own browser, and say that they can type into the page and comment on it there.
 - Start picking up the user's edits as soon as the page is open, as the guide describes. Don't ask first.
 - One server per document. Stop it when the user is done with the document.
 
