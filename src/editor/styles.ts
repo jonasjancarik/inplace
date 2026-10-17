@@ -114,9 +114,9 @@ style.textContent = `
   #inplace-comment-box .about,#inplace-changes .comment .about,#inplace-changes .comment .lost{color:#7a8580;font-size:12px}
   #inplace-comment-box .quote.old,#inplace-changes .comment .quote.old{border-left-color:#cfd6d2;text-decoration:line-through}
   #inplace-comment-box .text,#inplace-changes .comment .text{white-space:pre-wrap;overflow-wrap:anywhere}
-  #inplace-comment-box .choices,#inplace-changes .comment .choices{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:6px 0}
-  #inplace-comment-box .choices button,#inplace-changes .comment .choices button{all:unset;box-sizing:border-box;max-width:100%;padding:4px 10px;
-    border:1px solid #4a7bd4;border-radius:6px;color:#1f3f7a;cursor:pointer;overflow-wrap:anywhere}
+  #inplace-comment-box .choices,#inplace-changes .comment .choices{display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin:5px 0}
+  #inplace-comment-box .choices button,#inplace-changes .comment .choices button{all:unset;box-sizing:border-box;max-width:100%;padding:2px 8px;font-size:12px;
+    border:1px solid #b9cbec;border-radius:5px;color:#2d4f8f;cursor:pointer;overflow-wrap:anywhere}
   #inplace-comment-box .choices button:hover,#inplace-changes .comment .choices button:hover{background:#eaf0fb}
   #inplace-comment-box .choices button:focus-visible,#inplace-changes .comment .choices button:focus-visible{outline:2px solid #4a7bd4;outline-offset:1px}
   #inplace-comment-box .reply,#inplace-changes .comment .reply{color:#56615b}
