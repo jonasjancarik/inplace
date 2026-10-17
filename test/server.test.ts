@@ -257,11 +257,14 @@ function twoParagraphs() {
   doc.load();
   const read = () => readFileSync(path, "utf8");
   // Change the file, then give it back the size and modification time it had, as a quick
-  // second write can on a file system that keeps times coarsely.
+  // second write can on a file system that keeps times coarsely. The time is first set to a
+  // whole second, which every file system keeps exactly, and inplace is shown it unchanged.
   const agent = (from: string, to: string) => {
+    utimesSync(path, 1_700_000_000, 1_700_000_000);
+    doc.poll();
     const before = statSync(path);
     writeFileSync(path, read().replace(from, to));
-    utimesSync(path, before.atimeMs / 1000, before.mtimeMs / 1000);
+    utimesSync(path, 1_700_000_000, 1_700_000_000);
     const after = statSync(path);
     assert.equal(after.size, before.size);
     assert.equal(after.mtimeMs, before.mtimeMs);

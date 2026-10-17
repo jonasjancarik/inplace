@@ -481,9 +481,16 @@ test.describe("showing what changed", () => {
   });
 });
 
-/** The text the page currently marks as changed words, in document order. */
+/**
+ * The text the page currently marks as changed words, in document order. While the page is
+ * reloading after the agent's write there's nothing to read yet, so that counts as none.
+ */
 const highlighted = (page: Page) => page.evaluate(() =>
-  [...CSS.highlights.values()].flatMap((h) => [...h]).map((r) => r.toString()));
+  [...CSS.highlights.values()].flatMap((h) => [...h]).map((r) => r.toString()))
+  .catch((error: Error) => {
+    if (/context was destroyed|navigat/i.test(error.message)) return [];
+    throw error;
+  });
 
 /** Move the mouse onto the first occurrence of a word on the page. */
 async function hoverWord(page: Page, word: string): Promise<void> {
