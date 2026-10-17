@@ -520,18 +520,28 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
-/** The URLs a server listening on `host`:`port` can be opened at. */
-export function serverUrls(port: number, host: string): string[] {
+/** The URLs a server listening on `host`:`port` can be opened at, including the extra names it answers to. */
+export function serverUrls(port: number, host: string, allowHosts: readonly string[] = []): string[] {
   const urls = [`http://localhost:${port}/`];
-  if (host === "0.0.0.0") urls.push(`http://${hostname().replace(/\.local$/, "")}.local:${port}/`);
+  if (host === "0.0.0.0") {
+    urls.push(`http://${hostname().replace(/\.local$/, "")}.local:${port}/`);
+    for (const name of allowHosts) urls.push(`http://${name}:${port}/`);
+  }
   return urls;
 }
 
+/** A name given to --allow-host, in the form isLocalHost compares, or null if it isn't a host name. */
+export function allowedHostName(value: string): string | null {
+  const name = value.trim().toLowerCase().replace(/\.$/, "");
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(name) ? name : null;
+}
+
 /**
- * Whether a Host header names this computer: localhost, its own name, or an IP address.
- * Any other name could be a domain an attacker has pointed at 127.0.0.1 (DNS rebinding).
+ * Whether a Host header names this computer: localhost, its own name, an IP address, or one of
+ * `allowHosts` (exact names from --allow-host, such as a Tailscale MagicDNS name). Any other name
+ * could be a domain an attacker has pointed at 127.0.0.1 (DNS rebinding).
  */
-export function isLocalHost(host: string | undefined): boolean {
+export function isLocalHost(host: string | undefined, allowHosts: readonly string[] = []): boolean {
   if (!host) return false;
   let name: string;
   try {
@@ -542,7 +552,7 @@ export function isLocalHost(host: string | undefined): boolean {
   if (name.endsWith(".")) name = name.slice(0, -1);
   const own = hostname().toLowerCase().replace(/\.local$/, "");
   return name === "localhost" || name.endsWith(".localhost") || name === own || name === `${own}.local` ||
-    /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.startsWith("[");
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.startsWith("[") || allowHosts.includes(name);
 }
 
 /**
@@ -550,9 +560,9 @@ export function isLocalHost(host: string | undefined): boolean {
  * this computer. Changes also need a JSON body, which browsers only send cross-origin after
  * asking first, and, when the browser says where they come from, the page's own origin.
  */
-function refusal(req: IncomingMessage): string | null {
+function refusal(req: IncomingMessage, allowHosts: readonly string[]): string | null {
   const host = req.headers.host;
-  if (!isLocalHost(host)) return "unknown host";
+  if (!isLocalHost(host, allowHosts)) return "unknown host";
   if (req.method !== "POST") return null;
   const origin = req.headers.origin;
   if (origin !== undefined) {
@@ -575,9 +585,13 @@ export interface ServerOptions {
   feed?: ChangeFeed;
   /** What is known about the agent, for the line in the page's list of changes. */
   agent?: AgentStatus;
+  /** More host names the page may be opened by, from --allow-host (see allowedHostName). */
+  allowHosts?: readonly string[];
 }
 
-export function createInplaceServer(doc: Document, { feed, agent = new AgentStatus() }: ServerOptions = {}): Server {
+export function createInplaceServer(
+  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [] }: ServerOptions = {},
+): Server {
   // Where the real file is, with the images and stylesheets it loads, even when it was opened through a link.
   const rootDir = dirname(doc.file);
   // Read once, so a running server always serves the editor that matches its
@@ -780,7 +794,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     const path = decodeURIComponent(url.pathname);
     Promise.resolve()
       .then(() => {
-        const refused = refusal(req);
+        const refused = refusal(req, allowHosts);
         if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);

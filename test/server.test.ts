@@ -8,14 +8,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 
-import { createInplaceServer, Document, isLocalHost } from "../src/server.js";
+import { allowedHostName, createInplaceServer, Document, isLocalHost, type ServerOptions } from "../src/server.js";
 
 /** A server for a one-paragraph document, and a raw request helper that sets every header itself. */
-async function start() {
+async function start(options: ServerOptions = {}) {
   const dir = mkdtempSync(join(tmpdir(), "inplace-server-"));
   const path = join(dir, "doc.html");
   writeFileSync(path, '<html><body><p data-id="p-1">Hello</p></body></html>');
-  const server = createInplaceServer(new Document(path, true, () => {}, dir));
+  const server = createInplaceServer(new Document(path, true, () => {}, dir), options);
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   const port = (server.address() as AddressInfo).port;
   const send = (method: string, path: string, headers: Record<string, string>, body?: string) =>
@@ -93,6 +93,34 @@ test("isLocalHost accepts this computer's names and IP addresses only", () => {
   }
   for (const bad of [undefined, "", "attacker.example:8765", "localhost.attacker.example", "127.0.0.1.nip.io"]) {
     assert.ok(!isLocalHost(bad), String(bad));
+  }
+});
+
+test("--allow-host adds exact names, such as a Tailscale MagicDNS name, and nothing else", async () => {
+  const allow = ["mymac.tail1234.ts.net"];
+  assert.ok(isLocalHost("mymac.tail1234.ts.net:8765", allow));
+  assert.ok(isLocalHost("MyMac.Tail1234.ts.net.", allow));
+  for (const bad of ["mymac.tail1234.ts.net.attacker.example", "other.tail1234.ts.net", "tail1234.ts.net"]) {
+    assert.ok(!isLocalHost(bad, allow), bad);
+  }
+  assert.ok(!isLocalHost("mymac.tail1234.ts.net"), "not without --allow-host");
+
+  assert.equal(allowedHostName(" MyMac.Tail1234.ts.net. "), "mymac.tail1234.ts.net");
+  for (const bad of ["", "mymac.ts.net:8765", "http://mymac.ts.net", "*.ts.net", "my mac", "a..b"]) {
+    assert.equal(allowedHostName(bad), null, bad);
+  }
+
+  const s = await start({ allowHosts: allow });
+  try {
+    const host = `mymac.tail1234.ts.net:${s.port}`;
+    assert.equal((await s.send("GET", "/", { host })).status, 200);
+    const res = await s.send("POST", "/__inplace/insert",
+      { host, origin: `http://${host}`, "content-type": "application/json" },
+      JSON.stringify({ id: "p-1", position: "after", tag: "p", content: "World" }));
+    assert.equal(res.status, 200, res.body);
+    assert.equal((await s.send("GET", "/", { host: `attacker.example:${s.port}` })).status, 403);
+  } finally {
+    s.close();
   }
 });
 

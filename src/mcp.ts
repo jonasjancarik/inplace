@@ -219,9 +219,13 @@ class Session {
   channel = false;
   private guideSent = false;
 
-  /** `notify` is left out when the transport can't send notifications; `logFile` is whether there's a --log file. */
+  /**
+   * `notify` is left out when the transport can't send notifications; `logFile` is whether there's a --log file;
+   * `allowHosts` are the extra names the page answers to.
+   */
   constructor(
     readonly pauseMs: number, readonly log: (line: string) => void, readonly notify?: Notify, readonly logFile = false,
+    readonly allowHosts: readonly string[] = [],
   ) {}
 
   async open(args: Record<string, unknown>): Promise<string> {
@@ -256,7 +260,7 @@ class Session {
       record(line);
       if (byUser) pauses?.record(line);
     });
-    const http = createInplaceServer(doc, { feed, agent });
+    const http = createInplaceServer(doc, { feed, agent, allowHosts: this.allowHosts });
     await new Promise<void>((ok, fail) => {
       http.once("error", (e: NodeJS.ErrnoException) =>
         fail(new Error(e.code === "EADDRINUSE" ? `port ${port} is already in use; pass another port, or 0` : e.message)));
@@ -270,7 +274,7 @@ class Session {
     this.seen = 0;
     this.closed = new AbortController();
     this.poll = setInterval(() => doc.poll(), 250);
-    const urls = serverUrls((http.address() as { port: number }).port, host);
+    const urls = serverUrls((http.address() as { port: number }).port, host, this.allowHosts);
     this.log(`Editing ${path} at ${urls.join(" ")}`);
     // The guide comes with the first open, so agents get the instructions that match this version.
     const guide = this.guideSent ? [] : ["", "How to work on the document with the user:", "", readFileSync(AGENT_GUIDE_PATH, "utf8")];
@@ -450,6 +454,8 @@ const parseError = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "
 export interface McpOptions {
   pauseSeconds: number;
   logPath?: string;
+  /** More host names the document's page may be opened by (--allow-host). */
+  allowHosts?: readonly string[];
 }
 
 const logger = (logPath?: string) => (line: string) => {
@@ -461,7 +467,7 @@ const logger = (logPath?: string) => (line: string) => {
 export function runMcpServer(options: McpOptions): void {
   const write = (message: Record<string, unknown>) => process.stdout.write(JSON.stringify(message) + "\n");
   const session = new Session(options.pauseSeconds * 1000, logger(options.logPath),
-    (method, params) => write({ jsonrpc: "2.0", method, params }), options.logPath !== undefined);
+    (method, params) => write({ jsonrpc: "2.0", method, params }), options.logPath !== undefined, options.allowHosts);
   const handle = mcpHandler(session);
 
   const lines = createInterface({ input: process.stdin });
@@ -504,7 +510,7 @@ export function runMcpHttpServer(
   options: McpOptions & { port: number; host: string; token: string },
 ): Promise<Server> {
   const log = logger(options.logPath);
-  const session = new Session(options.pauseSeconds * 1000, log, undefined, options.logPath !== undefined);
+  const session = new Session(options.pauseSeconds * 1000, log, undefined, options.logPath !== undefined, options.allowHosts);
   const handle = mcpHandler(session);
   const localOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
