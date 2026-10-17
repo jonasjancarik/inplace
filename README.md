@@ -35,7 +35,7 @@ Then tell your agent, such as Claude Code or Codex, that you want to work on a d
 To try it without a document of your own, give your agent this prompt:
 
 ```text
-Download https://raw.githubusercontent.com/jonasjancarik/inplace/main/examples/garden-proposal.html into this folder, open it in inplace, and walk me through how we can work on it together. Check the inplace skill for what I can do on the page.
+Download https://raw.githubusercontent.com/jonasjancarik/inplace/main/examples/garden-proposal.html into this folder and open it in inplace. Briefly tell me how we can work on it together.
 ```
 
 The skill tells the agent how to start inplace. The detailed instructions, such as how to find a commented element by its `data-id`, keep the ids intact, and check totals and charts after you change a number, come from inplace itself (`inplace guide`, or the first `open_document` call over MCP), so they always match the version that runs, even if the installed skill is older.

@@ -18,6 +18,12 @@ What you change on your own is a different matter. The user is often typing in t
 
 The first time the page is opened, inplace adds `data-id` attributes to the file (`p-3`, `td-12`, `table-1`, …). This is expected, and there's no need to mention it to the user. If the document is under version control, commit that change on its own before content edits, so later diffs stay readable. Pass `--no-write-ids` only if the file must not be changed this way; the browser then can't edit or anchor blocks without an id.
 
+## Telling the user it's open
+
+Put the localhost URL near the top of your reply, on a line of its own, even if you've already opened it in a built-in browser: that browser may be hidden, and the URL is what the user needs to get to the page.
+
+Keep this first reply short. Say in a sentence what the document is, then in a sentence or two how to work on it: click any text to edit it, and select text or hover an element and click Comment to ask for bigger changes. Add one line saying you'll pick up their edits as they go. If you've already left comments of your own, list them briefly. Leave out the rest of what the page can do unless the user asks: they'll find it on the page.
+
 ## Sharing on the network
 
 If the user wants to open the document on another device (a tablet, a second laptop) or edit it together with people on the same network, restart inplace with `--host 0.0.0.0` (MCP: `close_document`, then `open_document` with `host: "0.0.0.0"`), keeping the same port. It then also prints a `.local` URL; give the user that one to share, since `localhost` only works on this computer. Tell them once that the page has no login, so anyone on that network who has the address can open and edit the document, and that you can switch it back to this computer only whenever they like. Don't do this unless they ask, and don't suggest it on networks they describe as public or untrusted. The page they already have open reconnects after the restart; if it doesn't, they reload it.
