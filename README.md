@@ -1,5 +1,7 @@
 # inplace
 
+[![CI](https://github.com/jonasjancarik/inplace/actions/workflows/ci.yml/badge.svg)](https://github.com/jonasjancarik/inplace/actions/workflows/ci.yml)
+
 **Write with your coding agent without breaking your flow.**
 
 ![Formatting a word, typing a sentence and adding a table row on the page; then the agent updates the total in the file and the page reloads](docs/demo.gif)
