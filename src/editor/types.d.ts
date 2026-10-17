@@ -32,6 +32,7 @@ interface PageComment {
   suffix?: string;
   text: string;
   by?: "agent";
+  options?: string[];
   answer?: string;
   dismissed?: boolean;
   status: "open" | "done";

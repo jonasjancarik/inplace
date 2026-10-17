@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const CLI = join(ROOT, "dist", "src", "cli.js");
+export const CLI = join(ROOT, "dist", "src", "cli.js");
 export const EXAMPLE = join(ROOT, "examples", "garden-proposal.html");
 
 function freePort(): Promise<number> {

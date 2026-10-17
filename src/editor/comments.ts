@@ -255,18 +255,25 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
     : c.by && !c.answer ? "Waiting for your answer" : "Not done yet";
   const meta = make("div", { className: "meta" }, make("span", { textContent: `${state} · ${ago(c.created)}` }));
   if (c.status === "open" && c.by) {
+    const sendAnswer = (value: string) => {
+      if (!inList) closeBox();
+      changeComment({ action: "answer", n: c.n, text: value }, "Answer sent");
+    };
+    // Answers the agent suggested, sent with one click until the user has answered.
+    const choices = c.options?.length && !c.answer
+      ? make("div", { className: "choices" }, ...c.options.map((option) =>
+        make("button", { type: "button", textContent: option, onclick: () => sendAnswer(option) })))
+      : null;
+    if (choices) text.after(choices);
     meta.append(
-      make("button", { type: "button", textContent: c.answer ? "Change answer" : "Answer", onclick: () => {
+      make("button", { type: "button", textContent: c.answer ? "Change answer" : choices ? "Write your own" : "Answer", onclick: () => {
         const field = commentField(c.answer ?? "", () => save(), "Answer", "Your answer");
-        const save = () => {
-          if (!field.value.trim()) return;
-          if (!inList) closeBox();
-          changeComment({ action: "answer", n: c.n, text: field.value }, "Answer sent");
-        };
-        if (answer) answer.replaceWith(field);
+        const save = () => field.value.trim() && sendAnswer(field.value);
+        const shown = answer ?? choices;
+        if (shown) shown.replaceWith(field);
         else text.after(field);
         field.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && inList) { e.stopPropagation(); answer ? field.replaceWith(answer) : field.remove(); }
+          if (e.key === "Escape" && inList) { e.stopPropagation(); shown ? field.replaceWith(shown) : field.remove(); }
         });
         meta.replaceChildren(make("button", { type: "button", textContent: "Send", onclick: save }));
         field.focus();

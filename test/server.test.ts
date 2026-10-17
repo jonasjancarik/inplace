@@ -167,6 +167,12 @@ test("the agent leaves its own comments, which the page can answer but not forge
       ...JSON.parse(added.body).comment, n: 1, by: "agent", quote: "ell", prefix: "H", suffix: "o", status: "open",
     });
     assert.equal((await add(page, { id: "p-1", text: "Forged" })).status, 403);
+
+    const asked = await add(agent, { id: "p-1", text: "Formal?", options: [" Yes,  formal ", "No", "No", ""] });
+    assert.deepEqual(JSON.parse(asked.body).comment.options, ["Yes, formal", "No"]);
+    assert.match(JSON.parse((await add(agent, { id: "p-1", text: "x", options: ["a", "b", "c", "d"] })).body).error, /at most 3/);
+    const fromPage = await s.send("POST", "/__inplace/comment", page, JSON.stringify({ action: "add", id: "p-1", text: "x", options: ["a"] }));
+    assert.equal(JSON.parse(fromPage.body).comment.options, undefined);
     assert.equal((await add(agent, { id: "p-1", text: "x", quote: "Goodbye" })).status, 400);
     assert.match(JSON.parse((await add(agent, { id: "p-9", text: "x" })).body).error, /no element with data-id "p-9"/);
 

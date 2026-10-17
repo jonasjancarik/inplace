@@ -16,7 +16,7 @@ const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--al
        inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
        inplace comments [--port 8765] [--all]
        inplace resolve <n> [--reply <text>] [--port 8765]
-       inplace comment <data-id> <text> [--quote <text>] [--port 8765]
+       inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
        inplace guide
        inplace mcp [--allow-host <name>] [--pause 5] [--log <file>]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
@@ -50,7 +50,7 @@ inplace comments prints the open comments the user left on the page, as JSON (--
 those marked done). inplace resolve marks comment n as done once you've dealt with it; --reply
 adds a short note the user sees under the comment. inplace comment leaves your own comment on the
 element with that data-id, for the user to answer or dismiss; --quote puts it on those words inside
-the element.
+the element, and --option (up to three times) suggests an answer the user can pick with one click.
 
 inplace guide prints the instructions an agent needs to work on a document with you.
 
@@ -77,6 +77,7 @@ const { values, positionals } = parseArgs({
     after: { type: "string" },
     reply: { type: "string" },
     quote: { type: "string" },
+    option: { type: "string", multiple: true, default: [] },
     all: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -259,7 +260,8 @@ function comments(): void {
     process.exit(2);
   }
   const body = command === "resolve" ? JSON.stringify({ action: "resolve", n, ...(values.reply ? { reply: values.reply } : {}) })
-    : command === "comment" ? JSON.stringify({ action: "add", by: "agent", id: rest[0], text: rest[1], ...(values.quote ? { quote: values.quote } : {}) })
+    : command === "comment" ? JSON.stringify({ action: "add", by: "agent", id: rest[0], text: rest[1],
+      ...(values.quote ? { quote: values.quote } : {}), ...(values.option.length ? { options: values.option } : {}) })
     : undefined;
   const req = request({
     host, port, method: body ? "POST" : "GET",

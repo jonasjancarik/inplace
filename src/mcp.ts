@@ -12,7 +12,7 @@ import { createInterface } from "node:readline";
 import { extname, resolve } from "node:path";
 
 import { AgentStatus } from "./agent.js";
-import { CommentNotFound } from "./comments.js";
+import { BadOptions, CommentNotFound } from "./comments.js";
 import { AGENT_GUIDE_PATH } from "./guide.js";
 import { BlockConflict, BlockNotFound } from "./htmldoc.js";
 import { PauseWatcher } from "./idle.js";
@@ -156,13 +156,18 @@ const TOOLS = [
     description: "Leave your own comment on the page, for things the user should decide rather than you: a figure " +
       "that doesn't match the project's data, a claim its sources don't support, a gap in the argument. The user can " +
       "answer it or dismiss it on the page, and you see either in get_edits. Pass quote to put it on those words " +
-      "inside the element instead of the whole element.",
+      "inside the element instead of the whole element. When you ask a question, pass options with one to three short " +
+      "answers the user can pick with one click; they can still write their own.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "data-id of the element the comment is about, e.g. td-12" },
         text: { type: "string", description: "What you noticed and what you'd suggest, in a sentence or two" },
         quote: { type: "string", description: "Exact text inside that element to attach the comment to" },
+        options: {
+          type: "array", items: { type: "string" }, maxItems: 3,
+          description: "Up to three short answers to your question, written as the user would say them, e.g. \"Yes, correct it\"",
+        },
       },
       required: ["id", "text"],
     },
@@ -318,10 +323,12 @@ class Session {
     const id = String(args.id);
     let n: number;
     try {
-      n = this.current().addAgentComment(id, String(args.text ?? ""), typeof args.quote === "string" ? args.quote : undefined).n;
+      const options = Array.isArray(args.options) ? args.options.filter((o): o is string => typeof o === "string") : undefined;
+      n = this.current().addAgentComment(id, String(args.text ?? ""), typeof args.quote === "string" ? args.quote : undefined, options).n;
     } catch (e) {
       if (e instanceof BlockNotFound) throw new Error(`No element has data-id="${id}". Read the document again.`);
       if (e instanceof QuoteNotFound) throw new Error(`${e.message}. Pass text exactly as it reads inside that element.`);
+      if (e instanceof BadOptions) throw new Error(`Options: ${e.message}.`);
       throw e;
     }
     this.agent?.agentWrote();

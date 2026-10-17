@@ -90,7 +90,7 @@ The commented text gets a yellow highlight and the element a small numbered mark
 
 Comments are kept outside your document, in a file in the system's temporary folder, so they survive a restart of inplace and never end up in the HTML. They reach the agent the same way your edits do (see below), and it marks them done with `inplace resolve` or the `resolve_comment` tool.
 
-The agent can comment too. When it notices something that's for you to decide, such as a figure that doesn't match the project's data or a claim its sources don't back up, it leaves a comment instead of changing your text. Its comments have a blue highlight and marker, and a short notice tells you when one arrives. Answer one to tell the agent what to do, or dismiss it if nothing needs to change; either way the agent finds out.
+The agent can comment too. When it notices something that's for you to decide, such as a figure that doesn't match the project's data or a claim its sources don't back up, it leaves a comment instead of changing your text. Its comments have a blue highlight and marker, and a short notice tells you when one arrives. When it asks a question, it can suggest a few answers that you pick with one click, or you can write your own. Answer one to tell the agent what to do, or dismiss it if nothing needs to change; either way the agent finds out.
 
 This works in any browser, also on a tablet or for other people on your network. If your agent's own browser has a comment tool, as Claude's and Codex's do, you can keep using that too.
 
@@ -179,7 +179,7 @@ inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
-inplace comment <data-id> <text> [--quote <text>] [--port 8765]
+inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
 inplace guide
 inplace mcp [--allow-host <name>] [--pause 5] [--log <file>]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
@@ -200,6 +200,7 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-
 | `--all` | off | With `comments`: also list comments already marked done. |
 | `--reply` | none | With `resolve`: a short note shown under the comment on the page. |
 | `--quote` | none | With `comment`: put the comment on these words inside the element rather than on the whole element. |
+| `--option` | none | With `comment`: an answer you can pick with one click on the page. Repeat it for up to three. |
 | `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
 | `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
 

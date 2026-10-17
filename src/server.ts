@@ -13,7 +13,7 @@ import {
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
 import { buildContext, findQuote } from "./anchor.js";
-import { type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
+import { BadOptions, type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
 import { readEditorScript } from "./editor-script.js";
 import { type Author, copyOf, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
@@ -505,13 +505,13 @@ export class Document {
   }
 
   /** The agent's own comment on the element with this id, or on `quote`, words inside it. */
-  addAgentComment(id: string, text: string, quote?: string): Comment {
+  addAgentComment(id: string, text: string, quote?: string, options?: string[]): Comment {
     const plain = elementText(this.load().text, id);
     if (plain === null) throw new BlockNotFound(id);
-    if (!quote?.trim()) return this.comments.add({ id, text, by: "agent" });
+    if (!quote?.trim()) return this.comments.add({ id, text, by: "agent", options });
     const found = findQuote(plain, { quote: quote.trim(), prefix: "", suffix: "" });
     if (!found) throw new QuoteNotFound(`${id} doesn't contain the text ${JSON.stringify(quote.trim())}`);
-    return this.comments.add({ id, text, ...buildContext(plain, found.start, found.end), by: "agent" });
+    return this.comments.add({ id, text, ...buildContext(plain, found.start, found.end), by: "agent", options });
   }
 
   /** An agent's edit through tools rather than the file; see replaceElement. */
@@ -760,7 +760,8 @@ export function createInplaceServer(
       if (body.action === "add" && body.by === "agent" && str("id") && str("text") !== undefined) {
         // Only for agents: otherwise anyone who can open the page could write in the agent's name.
         if (req.headers.origin || req.headers["sec-fetch-site"]) return json(res, 403, { error: "not for browsers" });
-        const added = doc.addAgentComment(str("id")!, str("text")!, str("quote"));
+        const options = Array.isArray(body.options) ? body.options.filter((o): o is string => typeof o === "string") : undefined;
+        const added = doc.addAgentComment(str("id")!, str("text")!, str("quote"), options);
         agent.agentWrote();
         return json(res, 200, { comment: added });
       }
@@ -789,7 +790,7 @@ export function createInplaceServer(
     } catch (e) {
       if (e instanceof CommentNotFound) return json(res, 404, { error: e.message });
       if (e instanceof BlockNotFound) return json(res, 404, { error: `there's no element with data-id "${str("id")}"` });
-      if (e instanceof EmptyComment || e instanceof NotTheirs || e instanceof QuoteNotFound) return json(res, 400, { error: e.message });
+      if (e instanceof EmptyComment || e instanceof NotTheirs || e instanceof QuoteNotFound || e instanceof BadOptions) return json(res, 400, { error: e.message });
       throw e;
     }
   };

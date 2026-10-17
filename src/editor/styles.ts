@@ -114,11 +114,16 @@ style.textContent = `
   #inplace-comment-box .about,#inplace-changes .comment .about,#inplace-changes .comment .lost{color:#7a8580;font-size:12px}
   #inplace-comment-box .quote.old,#inplace-changes .comment .quote.old{border-left-color:#cfd6d2;text-decoration:line-through}
   #inplace-comment-box .text,#inplace-changes .comment .text{white-space:pre-wrap;overflow-wrap:anywhere}
+  #inplace-comment-box .choices,#inplace-changes .comment .choices{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:6px 0}
+  #inplace-comment-box .choices button,#inplace-changes .comment .choices button{all:unset;box-sizing:border-box;max-width:100%;padding:4px 10px;
+    border:1px solid #4a7bd4;border-radius:6px;color:#1f3f7a;cursor:pointer;overflow-wrap:anywhere}
+  #inplace-comment-box .choices button:hover,#inplace-changes .comment .choices button:hover{background:#eaf0fb}
+  #inplace-comment-box .choices button:focus-visible,#inplace-changes .comment .choices button:focus-visible{outline:2px solid #4a7bd4;outline-offset:1px}
   #inplace-comment-box .reply,#inplace-changes .comment .reply{color:#56615b}
   #inplace-comment-box .meta,#inplace-changes .comment .meta{display:flex;align-items:center;gap:10px;font-size:12px;color:#7a8580}
   #inplace-comment-box .meta span,#inplace-changes .comment .meta span{margin-right:auto}
   #inplace-comment-box .meta button,#inplace-changes .comment .meta button,#inplace-changes .comments .clear{all:unset;cursor:pointer;
-    color:#1f2a24;text-decoration:underline}
+    color:#1f2a24;text-decoration:underline;white-space:nowrap}
   #inplace-changes .comments{margin:0 0 8px;padding:0 8px 8px;border-bottom:1px solid #eef1ef}
   #inplace-changes .comments h3{all:unset;display:block;margin:2px 0 6px;font-size:12px;font-weight:600}
   #inplace-changes .comment{padding:6px 0}

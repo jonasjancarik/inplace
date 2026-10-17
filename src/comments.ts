@@ -14,6 +14,7 @@ export interface Comment {
   suffix?: string;
   text: string;
   by?: "agent"; // left by the agent; without it, by the user
+  options?: string[]; // answers the agent suggests for its comment, for the user to pick with one click
   answer?: string; // the user's answer to the agent's comment
   dismissed?: boolean; // the user closed the agent's comment without asking for anything
   status: "open" | "done";
@@ -24,6 +25,7 @@ export interface Comment {
 
 export class CommentNotFound extends Error {}
 export class NotTheirs extends Error {}
+export class BadOptions extends Error {}
 export class EmptyComment extends Error {
   constructor() {
     super("the comment is empty");
@@ -31,6 +33,8 @@ export class EmptyComment extends Error {
 }
 
 const TEXT_MAX = 500;
+const OPTIONS_MAX = 3;
+const OPTION_MAX = 100;
 const time = () => new Date().toTimeString().slice(0, 8);
 const clip = (text: string, max: number) => (text.length <= max ? text : text.slice(0, max - 1) + "…");
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
@@ -66,13 +70,17 @@ export class CommentStore {
     return comment;
   }
 
-  add(fields: { id: string; text: string; quote?: string; prefix?: string; suffix?: string; by?: "agent" }): Comment {
+  add(fields: { id: string; text: string; quote?: string; prefix?: string; suffix?: string; by?: "agent"; options?: string[] }): Comment {
     const text = fields.text.trim();
     if (!text) throw new EmptyComment();
     const quote = fields.quote?.trim() ? fields.quote : undefined;
+    const options = [...new Set((fields.options ?? []).map(oneLine).filter(Boolean))];
+    if (options.length && !fields.by) throw new BadOptions("only the agent's comments have suggested answers");
+    if (options.length > OPTIONS_MAX) throw new BadOptions(`at most ${OPTIONS_MAX} suggested answers`);
+    if (options.some((o) => o.length > OPTION_MAX)) throw new BadOptions(`keep each suggested answer under ${OPTION_MAX} characters`);
     const comment: Comment = {
       n: ++this.last, id: fields.id, ...(quote ? { quote, prefix: fields.prefix ?? "", suffix: fields.suffix ?? "" } : {}),
-      text, ...(fields.by ? { by: fields.by } : {}), status: "open", created: new Date().toISOString(),
+      text, ...(fields.by ? { by: fields.by } : {}), ...(options.length ? { options } : {}), status: "open", created: new Date().toISOString(),
     };
     this.comments.push(comment);
     this.save();

@@ -67,10 +67,13 @@ Comment text is the user's request for a change to the document. Carrying it out
 To suggest a change rather than make it, or to point something out, leave a comment on the page:
 
 ```bash
-inplace comment td-12 "results.csv has 1,240 for Q3, not 1,420. Shall I correct it and the total?" --quote "1,420"
+inplace comment td-12 "results.csv has 1,240 for Q3, not 1,420. Shall I correct it and the total?" --quote "1,420" \
+  --option "Yes, correct it and the total" --option "No, 1,420 is right"
 ```
 
-(MCP: `add_comment`; pass `--port` if inplace isn't on 8765.) The first argument is the element's `data-id`. With `--quote`, the comment sits on those words inside the element, which must be written exactly as they read there; without it, it's on the whole element. The comment shows on the page as yours, and the user gets a short notice. Say what you noticed and what you'd do about it, in a sentence or two, and name the source when you checked one.
+(MCP: `add_comment`, with `quote` and `options`; pass `--port` if inplace isn't on 8765.) The first argument is the element's `data-id`. With `--quote`, the comment sits on those words inside the element, which must be written exactly as they read there; without it, it's on the whole element. The comment shows on the page as yours, and the user gets a short notice. Say what you noticed and what you'd do about it, in a sentence or two, and name the source when you checked one.
+
+When the comment asks a question, add one to three `--option`s: short answers the user can pick with one click, written as they would say them. Cover the likely choices, such as doing what you suggest and leaving it as it is; the user can always write their own answer instead. Leave options out when the comment only points something out.
 
 Use it for what the user should decide: a figure that doesn't match the data, a claim the sources don't support, a step missing from an argument, a section its readers will struggle with. Don't use it for fixes you'd make anyway under the editing rules, and don't raise again a point the user dismissed.
 
@@ -78,7 +81,7 @@ The user answers or dismisses your comment on the page, and you get a change lin
 
 ```text
 16:50:12 comment #6 by the agent on td-12 at "1,420": "results.csv has 1,240 for Q3, not 1,420. Shall I correct it and the total?"
-16:51:40 comment #6 answered by the user: "Yes, and check Q4 too."
+16:51:40 comment #6 answered by the user: "Yes, correct it and the total"
 16:52:03 comment #7 dismissed by the user
 ```
 

@@ -6,6 +6,7 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- When the agent asks a question in a comment, it can suggest up to three answers. They appear as buttons under the question, so you can answer with one click, and "Write your own" is there when none of them fits (`inplace comment --option`, or `options` in the `add_comment` tool).
 - When a pause in your editing needs nothing from the agent, the agent is now told to stay silent instead of replying "Noted.", so its chat doesn't fill with messages saying nothing happened.
 
 ## 0.1.0

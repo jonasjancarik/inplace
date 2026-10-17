@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import type { Locator, Page } from "@playwright/test";
 
-import { block, caretAfter, type Doc, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
+import { block, caretAfter, CLI, type Doc, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
 
 const MOD = "ControlOrMeta";
 
@@ -998,5 +999,40 @@ test.describe("comments", () => {
     await expect(box).toContainText("Same order as the table, please.");
     await box.getByRole("button", { name: "Delete" }).click();
     await expect.poll(() => doc.output).toContain("comment #1 deleted");
+  });
+
+  test("the agent's question offers its suggested answers, and one click sends one", async ({ editor, doc }) => {
+    const port = new URL(doc.url).port;
+    const id = await editor.locator("h1[data-id]").getAttribute("data-id");
+    execFileSync(process.execPath, [CLI, "comment", id!, "Should the title say garden or orchard?", "--port", port,
+      "--option", "Garden", "--option", "Orchard, and change the rest too"]);
+    await expect(editor.locator("#inplace-comment-layer .marker.agent")).toHaveCount(1);
+    await editor.locator("#inplace-comment-layer .marker").click();
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await expect(box.locator(".choices button")).toHaveText(["Garden", "Orchard, and change the rest too"]);
+    await box.getByRole("button", { name: "Garden" }).click();
+    await expect.poll(() => doc.output).toContain('comment #1 answered by the user: "Garden"');
+
+    // Once answered, the suggestions are gone and the answer can still be changed in words.
+    await editor.locator("#inplace-comment-layer .marker").click();
+    await expect(box).toContainText("You: Garden");
+    await expect(box.locator(".choices")).toHaveCount(0);
+    await box.getByRole("button", { name: "Change answer" }).click();
+    await box.getByRole("textbox").fill("Garden, but mention the fruit trees");
+    await box.getByRole("textbox").press("Enter");
+    await expect.poll(() => doc.output).toContain('comment #1 answered by the user: "Garden, but mention the fruit trees"');
+  });
+
+  test("Write your own replaces the suggested answers with a text field", async ({ editor, doc }) => {
+    const id = await editor.locator("h1[data-id]").getAttribute("data-id");
+    execFileSync(process.execPath, [CLI, "comment", id!, "Shorter title?", "--port", new URL(doc.url).port, "--option", "Yes"]);
+    await expect(editor.locator("#inplace-comment-layer .marker")).toHaveCount(1);
+    await editor.locator("#inplace-comment-layer .marker").click();
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await box.getByRole("button", { name: "Write your own" }).click();
+    await expect(box.locator(".choices")).toHaveCount(0);
+    await box.getByRole("textbox").fill("Keep it, but drop the subtitle");
+    await box.getByRole("button", { name: "Send" }).click();
+    await expect.poll(() => doc.output).toContain('comment #1 answered by the user: "Keep it, but drop the subtitle"');
   });
 });
