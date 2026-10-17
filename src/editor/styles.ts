@@ -118,12 +118,16 @@ style.textContent = `
   #inplace-comment-box .choices button,#inplace-changes .comment .choices button{all:unset;box-sizing:border-box;max-width:100%;padding:2px 8px;font-size:12px;
     border:1px solid #b9cbec;border-radius:5px;color:#2d4f8f;cursor:pointer;overflow-wrap:anywhere}
   #inplace-comment-box .choices button:hover,#inplace-changes .comment .choices button:hover{background:#eaf0fb}
+  #inplace-comment-box .choices button.own,#inplace-changes .comment .choices button.own{border-color:transparent;color:#7a8580}
+  #inplace-comment-box .choices button.own:hover,#inplace-changes .comment .choices button.own:hover{background:none;color:#2d4f8f;text-decoration:underline}
   #inplace-comment-box .choices button:focus-visible,#inplace-changes .comment .choices button:focus-visible{outline:2px solid #4a7bd4;outline-offset:1px}
   #inplace-comment-box .reply,#inplace-changes .comment .reply{color:#56615b}
-  #inplace-comment-box .meta,#inplace-changes .comment .meta{display:flex;align-items:center;gap:10px;font-size:12px;color:#7a8580}
-  #inplace-comment-box .meta span,#inplace-changes .comment .meta span{margin-right:auto}
+  #inplace-comment-box .meta,#inplace-changes .comment .meta{display:flex;align-items:baseline;gap:12px;margin-top:6px;font-size:12px;color:#7a8580}
+  #inplace-comment-box .meta span,#inplace-changes .comment .meta span{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #inplace-comment-box .meta button,#inplace-changes .comment .meta button,#inplace-changes .comments .clear{all:unset;cursor:pointer;
-    color:#1f2a24;text-decoration:underline;white-space:nowrap}
+    color:#3d4842;font-weight:500;white-space:nowrap}
+  #inplace-comment-box .meta button:hover,#inplace-changes .comment .meta button:hover,#inplace-changes .comments .clear:hover,
+    #inplace-comment-box .meta button:focus-visible,#inplace-changes .comment .meta button:focus-visible{color:#1f2a24;text-decoration:underline}
   #inplace-changes .comments{margin:0 0 8px;padding:0 8px 8px;border-bottom:1px solid #eef1ef}
   #inplace-changes .comments h3{all:unset;display:block;margin:2px 0 6px;font-size:12px;font-weight:600}
   #inplace-changes .comment{padding:6px 0}

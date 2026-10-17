@@ -1009,7 +1009,7 @@ test.describe("comments", () => {
     await expect(editor.locator("#inplace-comment-layer .marker.agent")).toHaveCount(1);
     await editor.locator("#inplace-comment-layer .marker").click();
     const box = editor.getByRole("dialog", { name: "Comment" });
-    await expect(box.locator(".choices button")).toHaveText(["Garden", "Orchard, and change the rest too"]);
+    await expect(box.locator(".choices button")).toHaveText(["Garden", "Orchard, and change the rest too", "Write your own"]);
     await box.getByRole("button", { name: "Garden" }).click();
     await expect.poll(() => doc.output).toContain('comment #1 answered by the user: "Garden"');
 

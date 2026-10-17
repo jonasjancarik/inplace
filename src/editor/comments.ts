@@ -265,19 +265,22 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
         make("button", { type: "button", textContent: option, onclick: () => sendAnswer(option) })))
       : null;
     if (choices) text.after(choices);
+    const writeAnswer = () => {
+      const field = commentField(c.answer ?? "", () => save(), "Answer", "Your answer");
+      const save = () => field.value.trim() && sendAnswer(field.value);
+      const shown = answer ?? choices;
+      if (shown) shown.replaceWith(field);
+      else text.after(field);
+      field.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && inList) { e.stopPropagation(); shown ? field.replaceWith(shown) : field.remove(); }
+      });
+      meta.replaceChildren(make("button", { type: "button", textContent: "Send", onclick: save }));
+      field.focus();
+    };
+    // With suggestions, writing an answer is the last of them; otherwise it's a link next to Dismiss.
+    if (choices) choices.append(make("button", { type: "button", className: "own", textContent: "Write your own", onclick: writeAnswer }));
+    else meta.append(make("button", { type: "button", textContent: c.answer ? "Change answer" : "Answer", onclick: writeAnswer }));
     meta.append(
-      make("button", { type: "button", textContent: c.answer ? "Change answer" : choices ? "Write your own" : "Answer", onclick: () => {
-        const field = commentField(c.answer ?? "", () => save(), "Answer", "Your answer");
-        const save = () => field.value.trim() && sendAnswer(field.value);
-        const shown = answer ?? choices;
-        if (shown) shown.replaceWith(field);
-        else text.after(field);
-        field.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && inList) { e.stopPropagation(); shown ? field.replaceWith(shown) : field.remove(); }
-        });
-        meta.replaceChildren(make("button", { type: "button", textContent: "Send", onclick: save }));
-        field.focus();
-      } }),
       make("button", { type: "button", textContent: "Dismiss", onclick: () => {
         if (!inList) closeBox();
         changeComment({ action: "dismiss", n: c.n }, "Comment dismissed");
