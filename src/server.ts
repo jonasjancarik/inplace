@@ -166,16 +166,30 @@ export class Document {
     return `${s.mtimeMs}:${s.size}`;
   }
 
+  /**
+   * The file as it is now. It's read every time, which is quick even for a large file, so a
+   * change by someone else is never missed; when nothing changed, the text inplace already has
+   * is reused, and with it everything worked out from it (its version, and its parse in htmldoc).
+   */
   private refresh(): string {
-    const text = this.read();
+    let text = this.read();
     this.stamp = this.statStamp();
     // A change inplace didn't write came from the agent (or another editor).
     // New elements get their ids as soon as the page loads, so compare with
     // ids already in place to see them as added blocks.
     if (this.last === null) this.last = text;
-    else if (text !== this.last) this.remember(this.writeIds ? assignIds(text).source : text, "agent");
-    this.announce(digest(text));
+    else if (text === this.last) text = this.last;
+    else this.remember(this.writeIds ? assignIds(text).source : text, "agent");
+    this.announce(this.versionOf(text));
     return text;
+  }
+
+  private hashed: { text: string; version: string } | null = null;
+
+  /** The version for this text, remembered for the latest one, since hashing a large file takes a while. */
+  private versionOf(text: string): string {
+    if (this.hashed?.text !== text) this.hashed = { text, version: digest(text) };
+    return this.hashed.version;
   }
 
   /** Current text with ids on every editable block, and its version. */

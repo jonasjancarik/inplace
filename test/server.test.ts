@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import { BlockConflict } from "../src/htmldoc.js";
 import { createInplaceServer, Document, isLocalHost } from "../src/server.js";
 
 /** A server for a one-paragraph document, and a raw request helper that sets every header itself. */
@@ -145,4 +146,56 @@ test("the agent leaves its own comments, which the page can answer but not forge
   } finally {
     s.close();
   }
+});
+
+/** A document with two paragraphs, and a way to change the file the way an agent would. */
+function twoParagraphs() {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-cache-"));
+  const path = join(dir, "doc.html");
+  writeFileSync(path, '<html><body><p data-id="p-1">Hello</p>\n<p data-id="p-2">World</p></body></html>');
+  const doc = new Document(path, true, () => {}, dir);
+  doc.load();
+  const read = () => readFileSync(path, "utf8");
+  // Change the file, then give it back the size and modification time it had, as a quick
+  // second write can on a file system that keeps times coarsely.
+  const agent = (from: string, to: string) => {
+    const before = statSync(path);
+    writeFileSync(path, read().replace(from, to));
+    utimesSync(path, before.atimeMs / 1000, before.mtimeMs / 1000);
+    const after = statSync(path);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeMs, before.mtimeMs);
+  };
+  return { doc, read, agent };
+}
+
+test("a change to the file between two saves is kept, even with the same size and time", () => {
+  const { doc, read, agent } = twoParagraphs();
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  agent("World", "Earth");
+  doc.saveBlock("p-1", "Hello there", "Hello again");
+  assert.match(read(), /<p data-id="p-1">Hello again<\/p>\n<p data-id="p-2">Earth<\/p>/);
+  assert.deepEqual(doc.history.entries.map((e) => e.by), ["you", "agent", "you"]);
+});
+
+test("a change to the same block between two saves is still a conflict", () => {
+  const { doc, read, agent } = twoParagraphs();
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  agent("Hello there", "Hi there yo");
+  assert.throws(() => doc.saveBlock("p-1", "Hello there", "Howdy there"), BlockConflict);
+  assert.match(read(), /Hi there yo/);
+  assert.equal(doc.stashCount, 1);
+});
+
+test("each save builds on inplace's own last write", () => {
+  const { doc, read } = twoParagraphs();
+  const version = doc.version;
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  assert.notEqual(doc.version, version);
+  doc.saveBlock("p-1", "Hello there", "Hello again");
+  doc.saveBlock("p-2", "World", "Earth");
+  doc.poll();
+  assert.match(read(), /<p data-id="p-1">Hello again<\/p>\n<p data-id="p-2">Earth<\/p>/);
+  assert.ok(doc.history.entries.every((e) => e.by === "you"));
+  assert.equal(doc.source("p-1"), '<p data-id="p-1">Hello again</p>');
 });

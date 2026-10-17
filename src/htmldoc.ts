@@ -59,8 +59,32 @@ function isElement(n: ChildNode | ParentNode): n is Element {
   return "tagName" in n;
 }
 
-/** Elements that appear in the source, with offsets. Parser-inserted ones (an implied <tbody>) are skipped. */
+// The last few documents parsed, newest last. A save parses the same text several times
+// (to find the block, then to see what changed), and parsing a large file is slow.
+const RECENT = 4;
+const recent: { source: string; root: Node }[] = [];
+
+/**
+ * Elements that appear in the source, with offsets. Parser-inserted ones (an implied <tbody>) are skipped.
+ *
+ * Remembers the trees of recent sources and hands the same one back for the same text, so
+ * callers must never change a tree.
+ */
 export function parse(source: string): Node {
+  // Newest first: that's usually the one, and comparing with the others can take a while.
+  const i = recent.findLastIndex((r) => r.source === source);
+  if (i !== -1) {
+    const [hit] = recent.splice(i, 1);
+    recent.push(hit);
+    return hit.root;
+  }
+  const root = parseTree(source);
+  recent.push({ source, root });
+  if (recent.length > RECENT) recent.shift();
+  return root;
+}
+
+function parseTree(source: string): Node {
   const doc = parseDocument(source, { sourceCodeLocationInfo: true });
   const root: Node = {
     tag: "#root", attrs: new Map(), start: 0, openEnd: 0, innerEnd: source.length, end: source.length,

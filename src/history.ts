@@ -68,8 +68,23 @@ function nested(node: Node): Node[] {
   return found;
 }
 
+type Blocks = { blocks: Map<string, Block>; order: Map<string, string[]> };
+
+// The last two files looked at: each change compares the file before it, which is usually the
+// one the previous change produced, with the file after it.
+const recent: { source: string; result: Blocks }[] = [];
+
 /** Every block with an id, in document order, and the order of blocks within each parent. */
-function blocksOf(source: string): { blocks: Map<string, Block>; order: Map<string, string[]> } {
+function blocksOf(source: string): Blocks {
+  const hit = recent.findLast((r) => r.source === source);
+  if (hit) return hit.result;
+  const result = readBlocks(source);
+  recent.push({ source, result });
+  if (recent.length > 2) recent.shift();
+  return result;
+}
+
+function readBlocks(source: string): Blocks {
   const blocks = new Map<string, Block>();
   const order = new Map<string, string[]>();
   // Each element's children that have an id, and where each of them is among those, worked out
