@@ -52,10 +52,21 @@ interface StashEntry {
   changed: boolean;
 }
 
-type AgentSummary =
+type AgentSummary = (
   /** `ago`: seconds since the agent last checked, as of when the summary was sent. */
   | { state: "checked"; ago: number }
-  | { state: "waiting" | "working" | "unknown" | "none"; ago?: undefined };
+  | { state: "waiting" | "working" | "unknown" | "none"; ago?: undefined }
+) & { seen?: SeenPause[] };
+
+/**
+ * The mark beside the blocks of one pause (see SeenMark in src/agent.ts): "picked", an eye until the
+ * agent is done; "sent", an eye that fades; "done", a check that fades. `age` is in milliseconds.
+ */
+interface SeenPause {
+  ids: string[];
+  mark: "picked" | "sent" | "done";
+  age: number;
+}
 
 /** The JSON reply to a POST to /__inplace/<action>; which fields are set depends on the action. */
 interface Reply {

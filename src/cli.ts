@@ -162,15 +162,19 @@ function serve(): void {
   const feed = pauseSeconds ? new ChangeFeed() : undefined;
   const pauses = pauseSeconds
     ? new PauseWatcher(pauseSeconds * 1000, (summary, lines) => {
+      agent.paused();
       print(summary);
       feed?.add(summary, true);
       onPause?.run(lines);
     })
     : undefined;
-  const doc = new Document(path, !values["no-write-ids"], (line, byUser) => {
+  const doc = new Document(path, !values["no-write-ids"], (line, byUser, ids = []) => {
     print(line);
     feed?.add(line);
-    if (byUser) pauses?.record(line);
+    if (byUser) {
+      agent.edited(ids);
+      pauses?.record(line);
+    }
   });
   setInterval(() => doc.poll(), 250);
 

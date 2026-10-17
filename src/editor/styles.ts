@@ -95,6 +95,14 @@ style.textContent = `
     text-align:center;cursor:pointer;box-shadow:0 1px 4px #0003}
   #inplace-comment-layer .marker.agent{background:#4a7bd4;color:#fff}
   #inplace-comment-layer .marker:focus-visible{outline:2px solid #4a7bd4;outline-offset:2px}
+  #inplace-seen-layer .seen{position:fixed;z-index:2147483645;box-sizing:border-box;width:20px;height:20px;display:flex;
+    align-items:center;justify-content:center;border-radius:10px;background:#fff;color:#4a7bd4;box-shadow:0 1px 3px #0002;
+    opacity:.8;transition:opacity .4s,transform .25s}
+  #inplace-seen-layer .seen svg{width:13px;height:13px}
+  #inplace-seen-layer .seen[data-mark=done]{color:#2f8a57}
+  #inplace-seen-layer .seen.new{opacity:0;transform:scale(.6)}
+  #inplace-seen-layer .seen.fading{opacity:0}
+  @media (prefers-reduced-motion:reduce){#inplace-seen-layer .seen{transition:none}}
   #inplace-comment-here{all:unset;position:fixed;z-index:2147483646;display:none;padding:3px 9px;border-radius:6px;background:#1f2a24;
     color:#e8ece9;font:12px/1.4 -apple-system,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px #0003}
   #inplace-comment-here:hover{background:#34433a}
@@ -209,6 +217,6 @@ style.textContent = `
   #inplace-stash button.primary{background:#1f2a24;color:#fff}
   #inplace-stash button.primary:hover{background:#34433a}
   #inplace-stash .close{float:right}
-  @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes,#inplace-comment-layer,#inplace-comment-box,#inplace-comment-here{display:none!important}::highlight(inplace-comment),::highlight(inplace-agent-comment){background-color:transparent}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
+  @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes,#inplace-comment-layer,#inplace-seen-layer,#inplace-comment-box,#inplace-comment-here{display:none!important}::highlight(inplace-comment),::highlight(inplace-agent-comment){background-color:transparent}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
     [data-id].inplace-changed,[data-id].inplace-changed-fade{background-color:transparent!important;animation:none!important}}`;
 document.head.append(style);

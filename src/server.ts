@@ -142,12 +142,13 @@ export class Document {
 
   /**
    * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
-   * changes inplace makes on its own, such as adding ids.
+   * changes inplace makes on its own, such as adding ids. `ids` are the elements the user's change
+   * left in the document, for the marks beside them that show the agent has seen it.
    */
   constructor(
     readonly path: string,
     readonly writeIds = true,
-    readonly log: (line: string, byUser: boolean) => void = () => {},
+    readonly log: (line: string, byUser: boolean, ids?: string[]) => void = () => {},
     stashDir = join(tmpdir(), "inplace"),
   ) {
     this.file = realpathSync(path);
@@ -268,17 +269,17 @@ export class Document {
           `${time()} conflict on ${id}: the user and the file both changed it, so the user's version was set aside ` +
           `(stash #${n}). The user wrote ${JSON.stringify(clip(plain(newInner), 400))}; ` +
           `the file has ${JSON.stringify(clip(plain(e.current), 400))}`,
-          true,
+          true, [id],
         );
         throw e;
       }
       this.write(patchBlock(text, id, e.current, merged), "you");
-      this.log(`${time()} edited ${id}, merged with the file's newer version: ${describeEdit(e.current, merged)}`, true);
+      this.log(`${time()} edited ${id}, merged with the file's newer version: ${describeEdit(e.current, merged)}`, true, [id]);
       return { version: this.version, merged: true };
     }
     if (patched !== text) {
       this.write(patched, "you");
-      this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`, true);
+      this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`, true, [id]);
     }
     return { version: this.version };
   }
@@ -330,12 +331,12 @@ export class Document {
       if (action === "mine") {
         const patched = patchBlock(text, entry.id, current, entry.mine);
         if (patched !== text) this.write(patched, "you");
-        this.log(`${time()} edited ${entry.id}, using the user's set-aside version: ${describeEdit(current, entry.mine)}`, true);
+        this.log(`${time()} edited ${entry.id}, using the user's set-aside version: ${describeEdit(current, entry.mine)}`, true, [entry.id]);
       } else {
         const inserted = insertBlock(text, entry.id, "after", node.tag, entry.mine);
         this.write(inserted.source, "you");
         this.log(`${time()} added ${inserted.id} <${node.tag}> after ${entry.id}, with the user's set-aside version: ` +
-          JSON.stringify(clip(plain(entry.mine), 200)), true);
+          JSON.stringify(clip(plain(entry.mine), 200)), true, [inserted.id]);
       }
     }
     this.stashed = this.stashed.filter((e) => e.n !== n);
@@ -354,7 +355,7 @@ export class Document {
       this.write(moved, "you");
       this.pushUndo({ kind: "move", id, tag: findBlock(parse(text), id)!.tag, before: text, after: moved, place: placeOf(text, id) });
       const parent = findBlock(parse(moved), id)?.parent?.attrs.get("data-id");
-      this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true);
+      this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true, [id]);
     }
     return this.version;
   }
@@ -369,9 +370,9 @@ export class Document {
     const inserted = insertBlock(text, id, position, tag, content, split);
     this.write(inserted.source, "you");
     this.pushUndo({ kind: "add", id: inserted.id, tag, before: text, after: inserted.source });
-    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`, true);
+    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`, true, [id]);
     const what = squash(content) ? `: ${JSON.stringify(clip(squash(content), 200))}` : " (empty)";
-    this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`, true);
+    this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`, true, [inserted.id]);
     return { id: inserted.id, html: inserted.html };
   }
 
@@ -392,7 +393,7 @@ export class Document {
     if (retagged !== text) {
       this.write(retagged, "you");
       this.pushUndo({ kind: "retag", id, tag: to, before: text, after: retagged, from, to });
-      this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true);
+      this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true, [id]);
     }
     return this.version;
   }
@@ -491,7 +492,7 @@ export class Document {
       remove: `added ${id} <${step.tag}> back ${where}`,
       retag: `changed ${id} from <${step.to}> to <${step.from}>`,
     }[kind];
-    this.log(`${time()} ${line} (undone)`, true);
+    this.log(`${time()} ${line} (undone)`, true, kind === "add" ? [] : [id]);
     return this.version;
   }
 

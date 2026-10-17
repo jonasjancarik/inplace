@@ -6,6 +6,7 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- A small eye beside each block you changed shows that the agent has picked up your edit, and turns into a check that fades once the agent is done with it, so you can tell it's following along without it writing anything in its chat. This works with `inplace wait`, `wait_for_edits` and `--on-pause`; a Claude Code channel shows the eye only, and agents reading the terminal or the log file get no marks.
 - When the agent asks a question in a comment, it can suggest up to three answers. They appear as buttons under the question, so you can answer with one click, and "Write your own" is there when none of them fits (`inplace comment --option`, or `options` in the `add_comment` tool).
 - When a pause in your editing needs nothing from the agent, the agent is now told to stay silent instead of replying "Noted.", so its chat doesn't fill with messages saying nothing happened.
 - If inplace restarts while the agent is following your edits with `inplace wait`, the agent now gets your first pause after the restart, with a note to read the document again. Before, it could miss your pauses until you had made as many changes as before the restart.

@@ -45,13 +45,13 @@ export class Doc {
   }
 }
 
-export async function startDoc(source = EXAMPLE, html?: string): Promise<Doc> {
+export async function startDoc(source = EXAMPLE, html?: string, args: string[] = []): Promise<Doc> {
   const dir = mkdtempSync(join(tmpdir(), "inplace-e2e-"));
   const path = join(dir, "doc.html");
   if (html !== undefined) writeFileSync(path, html);
   else copyFileSync(source, path);
   const port = await freePort();
-  const proc = spawn(process.execPath, [CLI, path, "--port", String(port), "--host", "127.0.0.1"], {
+  const proc = spawn(process.execPath, [CLI, path, "--port", String(port), "--host", "127.0.0.1", ...args], {
     stdio: ["ignore", "pipe", "inherit"],
   });
   const doc = new Doc(path, `http://localhost:${port}/`, proc);

@@ -253,6 +253,7 @@ class Session {
     };
     const pauses = this.pauseMs
       ? new PauseWatcher(this.pauseMs, (summary, lines) => {
+        agent.paused();
         record(summary, true);
         const { content, meta } = pauseEvent(path, summary, lines);
         if (this.notify) {
@@ -261,9 +262,12 @@ class Session {
         }
       })
       : undefined;
-    const doc = new Document(path, true, (line, byUser) => {
+    const doc = new Document(path, true, (line, byUser, ids = []) => {
       record(line);
-      if (byUser) pauses?.record(line);
+      if (byUser) {
+        agent.edited(ids);
+        pauses?.record(line);
+      }
     });
     const http = createInplaceServer(doc, { feed, agent, allowHosts: this.allowHosts });
     await new Promise<void>((ok, fail) => {
@@ -296,7 +300,7 @@ class Session {
     const lines = this.unread;
     this.unread = [];
     this.seen = this.feed?.latest ?? 0;
-    this.agent?.checked();
+    this.agent?.pulled();
     if (lines.length) return lines.join("\n");
     return this.doc ? "No changes since the last call." : "No document is open.";
   }

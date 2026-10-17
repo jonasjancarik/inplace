@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import type { Locator, Page } from "@playwright/test";
 
@@ -1035,4 +1035,42 @@ test.describe("comments", () => {
     await box.getByRole("button", { name: "Send" }).click();
     await expect.poll(() => doc.output).toContain('comment #1 answered by the user: "Keep it, but drop the subtitle"');
   });
+});
+
+test("an agent waiting for pauses gets an eye beside the block you edited, then a check that fades", async ({ page }) => {
+  const doc = await startDoc(undefined, undefined, ["--pause", "0.4"]);
+  const port = new URL(doc.url).port;
+  // An agent in the `inplace wait` loop, as Codex runs it.
+  const wait = () => new Promise<void>((ok, fail) =>
+    execFile(process.execPath, [CLI, "wait", "--port", port], (e) => (e ? fail(e) : ok())));
+  try {
+    await page.goto(doc.url);
+    await page.waitForFunction(() => document.querySelector("#inplace-toolbar"));
+    const para = block(page, "p", "The roof is already used");
+    const id = await idOf(para);
+    const mark = page.locator(`#inplace-seen-layer .seen[data-for="${id}"]`);
+
+    let waiting = wait();
+    await caretAfter(para, "drying laundry");
+    await page.keyboard.type(" daily");
+    await waiting;
+    await expect(mark).toHaveAttribute("aria-label", "Your agent picked up this change.");
+    expect(await para.locator(".seen").count()).toBe(0);
+    expect(doc.read()).not.toContain("inplace-seen");
+
+    // Editing the block again takes the mark away until the agent has that change too.
+    await page.keyboard.type(" again");
+    await expect(mark).toHaveCount(0);
+    waiting = wait();
+    await waiting;
+    await expect(mark).toHaveAttribute("data-mark", "picked");
+
+    // The agent waits again once it's done: the eye turns into a check, which fades.
+    void wait().catch(() => {});
+    await expect(mark).toHaveAttribute("aria-label", "Your agent checked this change.");
+    await expect(mark).toHaveCount(0, { timeout: 5_000 });
+    expect(doc.read()).not.toContain("inplace-seen");
+  } finally {
+    doc.stop();
+  }
 });

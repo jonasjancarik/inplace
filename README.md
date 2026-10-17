@@ -125,6 +125,8 @@ Only the changed part of a block is shown, with a little context. Once you've st
 
 The list of changes behind the button in the bottom-left corner starts with one line about the agent: that it's waiting for your next pause (an `inplace wait`, `wait_for_edits` or Claude Code channel is attached), that it picked up your last changes, or when it last checked them. An agent that reads the terminal output or the `--log` file can't be seen from the page, so in that case the line says nothing about it and only suggests asking it to check your edits if it doesn't react.
 
+When inplace can see the agent take your pause, a small eye appears at the top right of each block you changed. If it can also tell when the agent is done with it, the eye turns into a check that fades away. That happens with an agent that follows your edits with `inplace wait` or `wait_for_edits`, as Codex does, and with an `--on-pause` command. A Claude Code channel shows only the eye, which fades on its own, because inplace can't tell when the agent has finished. An agent reading the terminal output or the `--log` file gets no marks. If you change a block again, its mark goes away until the agent has picked up that change too. The marks are never written to the file and don't print.
+
 ### Letting the agent react while you work
 
 An agent normally reads these lines only when it next does something: when you leave a comment or send it a message. How soon it can react on its own depends on the agent:
