@@ -1,7 +1,7 @@
 // Serve one HTML file for in-place editing, with live reload when it changes on disk.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { hostname, tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -112,6 +112,8 @@ export class Document {
   readonly stashPath: string;
   /** Comments made on the page, kept next to the stash. */
   readonly comments: CommentStore;
+  /** The file `path` leads to, after following links: inplace reads and writes this one. */
+  readonly file: string;
 
   /**
    * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
@@ -123,6 +125,7 @@ export class Document {
     readonly log: (line: string, byUser: boolean) => void = () => {},
     stashDir = join(tmpdir(), "inplace"),
   ) {
+    this.file = realpathSync(path);
     this.stashPath = join(stashDir, `stash-${digest(resolve(path))}.json`);
     this.comments = new CommentStore(join(stashDir, `comments-${digest(resolve(path))}.json`), (line, byUser) => this.log(line, byUser));
     try {
@@ -134,14 +137,24 @@ export class Document {
   }
 
   private read(): string {
-    return readFileSync(this.path, "utf8");
+    return readFileSync(this.file, "utf8");
   }
 
-  /** `by` is who made the change; leave it out for changes inplace makes on its own, such as adding ids. */
+  /**
+   * Write through a temporary file, so nothing ever reads a half-written document. The temporary
+   * file gets the document's permissions, and goes next to the real file rather than a link to it,
+   * so links stay links. A file with other hard links is written in place, or they'd keep the old text.
+   */
   private write(text: string, by?: Author): void {
-    const tmp = join(dirname(this.path), `.${basename(this.path)}.inplace-tmp`);
-    writeFileSync(tmp, text, "utf8");
-    renameSync(tmp, this.path);
+    const { mode, nlink } = statSync(this.file);
+    if (nlink > 1) {
+      writeFileSync(this.file, text, "utf8");
+    } else {
+      const tmp = join(dirname(this.file), `.${basename(this.file)}.inplace-tmp`);
+      writeFileSync(tmp, text, "utf8");
+      chmodSync(tmp, mode & 0o7777);
+      renameSync(tmp, this.file);
+    }
     this.stamp = this.statStamp();
     if (by) this.remember(text, by);
     else this.last = text;
@@ -166,7 +179,7 @@ export class Document {
   }
 
   private statStamp(): string {
-    const s = statSync(this.path);
+    const s = statSync(this.file);
     return `${s.mtimeMs}:${s.size}`;
   }
 
@@ -565,7 +578,8 @@ export interface ServerOptions {
 }
 
 export function createInplaceServer(doc: Document, { feed, agent = new AgentStatus() }: ServerOptions = {}): Server {
-  const rootDir = dirname(resolve(doc.path));
+  // Where the real file is, with the images and stylesheets it loads, even when it was opened through a link.
+  const rootDir = dirname(doc.file);
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
   const editorScript = readFileSync(join(STATIC_DIR, "editor.js"));

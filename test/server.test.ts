@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync,
+} from "node:fs";
 import { request } from "node:http";
 import { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -175,4 +177,43 @@ test("files next to the document are served, but not hidden ones or ones a link 
   } finally {
     s.close();
   }
+});
+
+/** A one-paragraph document in a new folder. */
+function docFile(): { dir: string; path: string } {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-save-"));
+  const path = join(dir, "doc.html");
+  writeFileSync(path, '<html><body><p data-id="p-1">Hello</p></body></html>');
+  return { dir, path };
+}
+
+test("saving a document opened through a link changes the file it leads to and keeps the link", () => {
+  const { dir, path } = docFile();
+  const link = join(mkdtempSync(join(tmpdir(), "inplace-link-")), "link.html");
+  symlinkSync(path, link);
+  const doc = new Document(link, true, () => {}, dir);
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  assert.ok(lstatSync(link).isSymbolicLink());
+  assert.match(readFileSync(path, "utf8"), /Hello there/);
+  assert.deepEqual(readdirSync(dirname(link)), ["link.html"], "no temporary file is left next to the link");
+  // Changes made to the real file are still noticed.
+  const before = doc.version;
+  writeFileSync(path, '<html><body><p data-id="p-1">Changed by the agent, at length</p></body></html>');
+  doc.poll();
+  assert.notEqual(doc.version, before);
+});
+
+test("saving keeps the document's permissions and its other hard links", () => {
+  const { dir, path } = docFile();
+  chmodSync(path, 0o640);
+  const doc = new Document(path, true, () => {}, dir);
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  assert.equal(statSync(path).mode & 0o777, 0o640);
+
+  const other = join(dir, "other.html");
+  linkSync(path, other);
+  doc.saveBlock("p-1", "Hello there", "Hello again");
+  assert.match(readFileSync(other, "utf8"), /Hello again/);
+  assert.equal(statSync(path).ino, statSync(other).ino);
+  assert.equal(statSync(path).mode & 0o777, 0o640);
 });
