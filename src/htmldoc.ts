@@ -224,10 +224,16 @@ export function assignIds(source: string): { source: string; added: number } {
       inserts.push([node.start + 1 + node.tag.length, ` ${ID_ATTR}="${nextId(node.tag)}"`]);
     }
   }
-  for (const [offset, text] of inserts.reverse()) {
-    source = source.slice(0, offset) + text + source.slice(offset);
+  if (!inserts.length) return { source, added: 0 };
+  // One pass rather than a splice per id, which is slow when a large file needs thousands.
+  const parts: string[] = [];
+  let at = 0;
+  for (const [offset, text] of inserts) {
+    parts.push(source.slice(at, offset), text);
+    at = offset;
   }
-  return { source, added: inserts.length };
+  parts.push(source.slice(at));
+  return { source: parts.join(""), added: inserts.length };
 }
 
 export function findBlock(root: Node, blockId: string): Node | null {
