@@ -273,6 +273,8 @@ npm install
 npm test
 ```
 
+The script that does the editing in the page lives in `src/editor/`. Its files are plain TypeScript scripts rather than modules: they share one scope, so code in one file can call functions from another without imports. `npm run build` type-checks them against the browser's DOM types, and the server joins the compiled files into the single script it adds to the page, in the order listed in `src/editor-script.ts`. When you add a file there, add it to that list too. `npm run test:e2e` runs the browser tests that cover it.
+
 `npm link` puts your local checkout on the PATH as `inplace`. To use the skill from a checkout, link it into your agent's skills folder, e.g. `ln -s "$PWD/skills/inplace" ~/.claude/skills/inplace`.
 
 ## License
