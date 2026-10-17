@@ -119,3 +119,30 @@ test("comments are added from the page, listed, and resolved by the agent", asyn
     s.close();
   }
 });
+
+test("the agent leaves its own comments, which the page can answer but not forge", async () => {
+  const s = await start();
+  try {
+    const host = `localhost:${s.port}`;
+    const agent = { host, "content-type": "application/json" };
+    const page = { ...agent, origin: `http://${host}` };
+    const add = (headers: Record<string, string>, fields: Record<string, unknown>) =>
+      s.send("POST", "/__inplace/comment", headers, JSON.stringify({ action: "add", by: "agent", ...fields }));
+
+    const added = await add(agent, { id: "p-1", text: "Hello to whom?", quote: "ell" });
+    assert.equal(added.status, 200, added.body);
+    assert.deepEqual(JSON.parse(added.body).comment, {
+      ...JSON.parse(added.body).comment, n: 1, by: "agent", quote: "ell", prefix: "H", suffix: "o", status: "open",
+    });
+    assert.equal((await add(page, { id: "p-1", text: "Forged" })).status, 403);
+    assert.equal((await add(agent, { id: "p-1", text: "x", quote: "Goodbye" })).status, 400);
+    assert.match(JSON.parse((await add(agent, { id: "p-9", text: "x" })).body).error, /no element with data-id "p-9"/);
+
+    assert.equal((await s.send("POST", "/__inplace/comment", page, JSON.stringify({ action: "edit", n: 1, text: "x" }))).status, 400);
+    const answered = await s.send("POST", "/__inplace/comment", page, JSON.stringify({ action: "answer", n: 1, text: "The reader." }));
+    assert.equal(answered.status, 200, answered.body);
+    assert.equal(JSON.parse(answered.body).comment.answer, "The reader.");
+  } finally {
+    s.close();
+  }
+});

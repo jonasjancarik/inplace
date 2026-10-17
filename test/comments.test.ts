@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { CommentNotFound, CommentStore } from "../src/comments.js";
+import { CommentNotFound, CommentStore, NotTheirs } from "../src/comments.js";
 import { Document } from "../src/server.js";
 
 const strip = (line: string) => line.replace(/^\d\d:\d\d:\d\d /, "");
@@ -64,4 +64,35 @@ test("comments survive a restart, and numbers are never reused", () => {
   const again = new Document(path, true, () => {}, dir);
   assert.deepEqual(again.comments.list().map((c) => [c.n, c.text]), [[3, "Three"]]);
   assert.equal(again.comments.add({ id: "p-1", text: "Four" }).n, 4);
+});
+
+test("the agent's comments are answered or dismissed by the user, never edited or deleted", () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-comments-"));
+  const lines: [string, boolean][] = [];
+  const store = new CommentStore(join(dir, "comments.json"), (line, byUser) => lines.push([strip(line), byUser]));
+  store.add({ id: "td-4", text: "results.csv has 1,240.", quote: "1,420", prefix: "", suffix: "", by: "agent" });
+  store.add({ id: "p-2", text: "This contradicts section 2.", by: "agent" });
+  store.add({ id: "p-3", text: "Shorter, please." });
+
+  assert.throws(() => store.edit(1, "Something else"), NotTheirs);
+  assert.throws(() => store.delete(1), NotTheirs);
+  assert.throws(() => store.answer(3, "Yes"), NotTheirs);
+  store.answer(1, " Yes, and fix the total. ");
+  store.dismiss(2);
+  assert.throws(() => store.answer(2, "Actually yes"), NotTheirs);
+  store.resolve(1, "Corrected both.");
+
+  assert.deepEqual(lines, [
+    ['comment #1 by the agent on td-4 at "1,420": "results.csv has 1,240."', false],
+    ['comment #2 by the agent on p-2: "This contradicts section 2."', false],
+    ['comment #3 on p-3: "Shorter, please."', true],
+    ['comment #1 answered by the user: "Yes, and fix the total."', true],
+    ["comment #2 dismissed by the user", true],
+    ['comment #1 marked done by the agent: "Corrected both."', false],
+  ]);
+  assert.deepEqual(store.list().map((c) => [c.n, c.by, c.answer, c.dismissed, c.status]), [
+    [1, "agent", "Yes, and fix the total.", undefined, "done"],
+    [2, "agent", undefined, true, "done"],
+    [3, undefined, undefined, undefined, "open"],
+  ]);
 });

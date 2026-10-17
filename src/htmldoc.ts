@@ -235,6 +235,23 @@ export function findBlock(root: Node, blockId: string): Node | null {
   return null;
 }
 
+/** The text inside the element with this id, as the browser's textContent gives it, or null if there's no such element. */
+export function elementText(source: string, id: string): string | null {
+  const find = (from: ParentNode): Element | null => {
+    for (const child of from.childNodes) {
+      if (!isElement(child)) continue;
+      if (child.attrs.some((a) => a.name === ID_ATTR && a.value === id)) return child;
+      const found = find(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  const textOf = (node: ParentNode): string => node.childNodes.map((c) =>
+    c.nodeName === "#text" ? (c as DefaultTreeAdapterMap["textNode"]).value : isElement(c) ? textOf(c) : "").join("");
+  const element = find(parseDocument(source));
+  return element ? textOf(element) : null;
+}
+
 type Token = string;
 
 /**

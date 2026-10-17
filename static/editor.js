@@ -99,9 +99,11 @@
     #inplace-changes .agent-status{margin:0 8px 8px;color:#56615b}
     ::highlight(inplace-comment){background-color:#ffe08a}
     ::highlight(inplace-comment-draft){background-color:#ffe08a}
+    ::highlight(inplace-agent-comment){background-color:#cfe0fb}
     #inplace-comment-layer .marker{all:unset;box-sizing:border-box;position:fixed;z-index:2147483646;min-width:20px;height:20px;padding:0 5px;
       border-radius:10px 10px 10px 3px;background:#e0a800;color:#1f2a24;font:600 11px/20px -apple-system,system-ui,sans-serif;
       text-align:center;cursor:pointer;box-shadow:0 1px 4px #0003}
+    #inplace-comment-layer .marker.agent{background:#4a7bd4;color:#fff}
     #inplace-comment-layer .marker:focus-visible{outline:2px solid #4a7bd4;outline-offset:2px}
     #inplace-comment-here{all:unset;position:fixed;z-index:2147483646;display:none;padding:3px 9px;border-radius:6px;background:#1f2a24;
       color:#e8ece9;font:12px/1.4 -apple-system,system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px #0003}
@@ -118,6 +120,7 @@
     #inplace-comment-box .comment+.comment{margin-top:8px;padding-top:8px;border-top:1px solid #eef1ef}
     #inplace-comment-box p,#inplace-changes .comment p{margin:0 0 4px}
     #inplace-comment-box .quote,#inplace-changes .comment .quote{padding-left:8px;border-left:3px solid #e0a800;color:#56615b}
+    #inplace-comment-box .agent .quote,#inplace-changes .comment.agent .quote{border-left-color:#4a7bd4}
     #inplace-comment-box .about,#inplace-changes .comment .about,#inplace-changes .comment .lost{color:#7a8580;font-size:12px}
     #inplace-comment-box .quote.old,#inplace-changes .comment .quote.old{border-left-color:#cfd6d2;text-decoration:line-through}
     #inplace-comment-box .text,#inplace-changes .comment .text{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -207,7 +210,7 @@
     #inplace-stash button.primary{background:#1f2a24;color:#fff}
     #inplace-stash button.primary:hover{background:#34433a}
     #inplace-stash .close{float:right}
-    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes,#inplace-comment-layer,#inplace-comment-box,#inplace-comment-here{display:none!important}::highlight(inplace-comment){background-color:transparent}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
+    @media print{#inplace-status,#inplace-ui,#inplace-toolbar,#inplace-stash,#inplace-corner,#inplace-changes,#inplace-comment-layer,#inplace-comment-box,#inplace-comment-here{display:none!important}::highlight(inplace-comment),::highlight(inplace-agent-comment){background-color:transparent}[data-id][contenteditable]{box-shadow:none!important}.inplace-sparkle{display:none!important}
       [data-id].inplace-changed,[data-id].inplace-changed-fade{background-color:transparent!important;animation:none!important}}`;
   document.head.append(style);
 
@@ -1824,12 +1827,16 @@
     return null;
   }
 
+  let seenComments = null; // numbers of the comments loaded so far, to notice new ones from the agent
   async function loadComments() {
     try {
       comments = (await (await fetch("/__inplace/comments")).json()).comments;
     } catch {
       return;
     }
+    const fromAgent = seenComments ? comments.filter((c) => c.by && c.status === "open" && !seenComments.has(c.n)).length : 0;
+    seenComments = new Set(comments.map((c) => c.n));
+    if (fromAgent) status(fromAgent === 1 ? "Your agent left a comment" : `Your agent left ${fromAgent} comments`, "info", 5000);
     await anchoringReady;
     placeComments();
     updateCorner();
@@ -1854,9 +1861,11 @@
   function paintComments() {
     const open = comments.filter((c) => c.status === "open");
     if (canHighlight) {
-      const ranges = open.map((c) => commentPlaces.get(c.n)?.range).filter(Boolean);
-      if (ranges.length) CSS.highlights.set("inplace-comment", new Highlight(...ranges));
-      else CSS.highlights.delete("inplace-comment");
+      for (const [name, list] of [["inplace-comment", open.filter((c) => !c.by)], ["inplace-agent-comment", open.filter((c) => c.by)]]) {
+        const ranges = list.map((c) => commentPlaces.get(c.n)?.range).filter(Boolean);
+        if (ranges.length) CSS.highlights.set(name, new Highlight(...ranges));
+        else CSS.highlights.delete(name);
+      }
     }
     // One marker per element with open comments, at its top right corner.
     const byElement = new Map();
@@ -1865,7 +1874,7 @@
       if (el) byElement.set(el, [...(byElement.get(el) ?? []), c]);
     }
     commentLayer.replaceChildren(...[...byElement].map(([el, list]) => {
-      const marker = make("button", { type: "button", className: "marker", textContent: String(list.length),
+      const marker = make("button", { type: "button", className: list.every((c) => c.by) ? "marker agent" : "marker", textContent: String(list.length),
         title: list.length === 1 ? "1 comment" : `${list.length} comments` });
       marker.setAttribute("aria-label", marker.title);
       marker.inplaceTarget = el;
@@ -1915,9 +1924,9 @@
   }
 
   // A text field where Enter submits, Shift+Enter adds a line and Escape cancels.
-  function commentField(value, submit) {
-    const field = make("textarea", { value, placeholder: "What should change?", rows: 3 });
-    field.setAttribute("aria-label", "Comment");
+  function commentField(value, submit, label = "Comment", placeholder = "What should change?") {
+    const field = make("textarea", { value, placeholder, rows: 3 });
+    field.setAttribute("aria-label", label);
     field.addEventListener("keydown", (e) => {
       if (composing(e)) return;
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1986,21 +1995,46 @@
     loadComments();
   }
 
-  // A comment as shown in the box and in the list of changes, with Edit and Delete while it's open.
+  // A comment as shown in the box and in the list of changes. While it's open, the user's own
+  // comments have Edit and Delete, and the agent's have Answer and Dismiss.
   function commentView(c, { inList = false } = {}) {
     const place = commentPlaces.get(c.n);
-    const node = make("div", { className: `comment ${c.status}` });
+    const node = make("div", { className: `comment ${c.status}${c.by ? " agent" : ""}` });
     if (place?.lost && c.status === "open") {
       node.append(make("p", { className: "lost", textContent: "The text this was about has changed:" }),
         make("p", { className: "quote old", textContent: clipText(c.quote || "", 160) }));
     } else if (c.quote) node.append(make("p", { className: "quote", textContent: clipText(c.quote, 160) }));
     else if (place?.el) node.append(make("p", { className: "about", textContent: `On this ${commentNoun(place.el)}` }));
-    const text = make("p", { className: "text", textContent: c.text });
+    const text = make("p", { className: "text", textContent: c.by ? `Your agent: ${c.text}` : c.text });
     node.append(text);
+    const answer = c.answer ? make("p", { className: "text", textContent: `You: ${c.answer}` }) : null;
+    if (answer) node.append(answer);
     if (c.reply) node.append(make("p", { className: "reply", textContent: `Your agent: ${c.reply}` }));
-    const meta = make("div", { className: "meta" },
-      make("span", { textContent: `${c.status === "done" ? "Done" : "Not done yet"} · ${ago(c.created)}` }));
-    if (c.status === "open") {
+    const state = c.dismissed ? "Dismissed" : c.status === "done" ? "Done"
+      : c.by && !c.answer ? "Waiting for your answer" : "Not done yet";
+    const meta = make("div", { className: "meta" }, make("span", { textContent: `${state} · ${ago(c.created)}` }));
+    if (c.status === "open" && c.by) {
+      meta.append(
+        make("button", { type: "button", textContent: c.answer ? "Change answer" : "Answer", onclick: () => {
+          const field = commentField(c.answer ?? "", () => save(), "Answer", "Your answer");
+          const save = () => {
+            if (!field.value.trim()) return;
+            if (!inList) closeBox();
+            changeComment({ action: "answer", n: c.n, text: field.value }, "Answer sent");
+          };
+          if (answer) answer.replaceWith(field);
+          else text.after(field);
+          field.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && inList) { e.stopPropagation(); answer ? field.replaceWith(answer) : field.remove(); }
+          });
+          meta.replaceChildren(make("button", { type: "button", textContent: "Send", onclick: save }));
+          field.focus();
+        } }),
+        make("button", { type: "button", textContent: "Dismiss", onclick: () => {
+          if (!inList) closeBox();
+          changeComment({ action: "dismiss", n: c.n }, "Comment dismissed");
+        } }));
+    } else if (c.status === "open") {
       meta.append(
         make("button", { type: "button", textContent: "Edit", onclick: () => {
           const field = commentField(c.text, () => save());

@@ -8,11 +8,12 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import { fileURLToPath } from "node:url";
 
 import {
-  assignIds, blockHashes, BlockConflict, BlockNotFound, cutChunk, editableIds, findBlock, insertBlock, movableIds, moveBlock, parse,
+  assignIds, blockHashes, BlockConflict, BlockNotFound, cutChunk, editableIds, elementText, findBlock, insertBlock, movableIds, moveBlock, parse,
   patchBlock, putChunk, removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
-import { CommentNotFound, CommentStore, EmptyComment } from "./comments.js";
+import { buildContext, findQuote } from "./anchor.js";
+import { type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
 import { type Author, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
@@ -87,6 +88,7 @@ interface UndoStep {
 
 /** An undo that no longer fits the file, with a message for the user. */
 export class UndoGone extends Error {}
+export class QuoteNotFound extends Error {}
 
 /** The edited file, plus a version that changes whenever its content does. */
 export class Document {
@@ -437,6 +439,16 @@ export class Document {
     return text.slice(node.start, node.end);
   }
 
+  /** The agent's own comment on the element with this id, or on `quote`, words inside it. */
+  addAgentComment(id: string, text: string, quote?: string): Comment {
+    const plain = elementText(this.load().text, id);
+    if (plain === null) throw new BlockNotFound(id);
+    if (!quote?.trim()) return this.comments.add({ id, text, by: "agent" });
+    const found = findQuote(plain, { quote: quote.trim(), prefix: "", suffix: "" });
+    if (!found) throw new QuoteNotFound(`${id} doesn't contain the text ${JSON.stringify(quote.trim())}`);
+    return this.comments.add({ id, text, ...buildContext(plain, found.start, found.end), by: "agent" });
+  }
+
   /** An agent's edit through tools rather than the file; see replaceElement. */
   replaceElement(id: string, part: "inner" | "outer", expected: string, html: string): void {
     const text = this.load().text;
@@ -652,7 +664,8 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     }
   };
 
-  // Comments: the page adds, edits, deletes and clears them; the agent resolves them.
+  // Comments: the page adds, edits, deletes and clears the user's, and answers or dismisses the
+  // agent's; the agent adds its own and resolves them.
   const comment = async (req: IncomingMessage, res: ServerResponse) => {
     let body: Record<string, unknown>;
     try {
@@ -664,6 +677,13 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     const n = typeof body.n === "number" ? body.n : undefined;
     const comments = doc.comments;
     try {
+      if (body.action === "add" && body.by === "agent" && str("id") && str("text") !== undefined) {
+        // Only for agents: otherwise anyone who can open the page could write in the agent's name.
+        if (req.headers.origin || req.headers["sec-fetch-site"]) return json(res, 403, { error: "not for browsers" });
+        const added = doc.addAgentComment(str("id")!, str("text")!, str("quote"));
+        agent.agentWrote();
+        return json(res, 200, { comment: added });
+      }
       if (body.action === "add" && str("id") && str("text") !== undefined) {
         doc.source(str("id")); // throws if there's no such element
         const added = comments.add({
@@ -680,12 +700,16 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
         agent.agentWrote();
         return json(res, 200, { comment: resolved });
       }
+      if (body.action === "answer" && n !== undefined && str("text") !== undefined) {
+        return json(res, 200, { comment: comments.answer(n, str("text")!) });
+      }
+      if (body.action === "dismiss" && n !== undefined) return json(res, 200, { comment: comments.dismiss(n) });
       if (body.action === "clear") return json(res, 200, { cleared: comments.clearDone() });
       return json(res, 400, { error: "missing or invalid fields" });
     } catch (e) {
       if (e instanceof CommentNotFound) return json(res, 404, { error: e.message });
-      if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found" });
-      if (e instanceof EmptyComment) return json(res, 400, { error: e.message });
+      if (e instanceof BlockNotFound) return json(res, 404, { error: `there's no element with data-id "${str("id")}"` });
+      if (e instanceof EmptyComment || e instanceof NotTheirs || e instanceof QuoteNotFound) return json(res, 400, { error: e.message });
       throw e;
     }
   };
