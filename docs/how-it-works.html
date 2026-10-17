@@ -35,7 +35,7 @@
 
 <div class="page-head">
   <h1>How inplace works</h1>
-  <p class="lede">What changes in your file when you edit on the page, how your agent hears about it, and a few things worth knowing.</p>
+  <p class="lede">What changes in your file when you edit on the page, how your agent hears about it, how comments work in both directions, and a few things worth knowing.</p>
 </div>
 
 <section>
@@ -62,12 +62,24 @@
 </section>
 
 <section>
+  <div class="split">
+    <div>
+      <h2>Comments</h2>
+      <p>For anything bigger than a quick edit, select some text, or hover over a table, chart or row, and leave a comment on the page. Comments are kept outside your document, so they never end up in the HTML, and they survive a restart.</p>
+      <p>Your agent gets each one with the element&rsquo;s <code>data-id</code> and the words you selected, so it finds the exact spot even after the wording has changed. Once it has dealt with a comment, the comment is marked done, with a note if there&rsquo;s something you should know. If your agent&rsquo;s own browser has a comment tool, as Claude&rsquo;s and Codex&rsquo;s do, you can use that too.</p>
+      <p>Your agent comments as well. When it notices something that&rsquo;s yours to decide, such as a figure that doesn&rsquo;t match your project&rsquo;s data or a claim its sources don&rsquo;t back up, it leaves a blue comment instead of changing your text. Answer it to tell the agent what to do, or dismiss it if nothing needs to change.</p>
+    </div>
+    <pre class="diff changelog" aria-label="Example of comments in inplace's change log"><span><i>16:41:02</i> comment #3 on p-7 at "raised beds are shared": "Say how many beds each floor gets."</span><span><i>16:41:40</i> comment #3 marked done by the agent: "Two beds per floor, as in the survey."</span><span><i>16:44:12</i> comment #4 by the agent on td-2 at "€3,600": "The quote in quotes/beds.pdf is €3,840. Update it and the total?"</span><span><i>16:45:30</i> comment #4 answered by the user: "Yes, please."</span></pre>
+  </div>
+</section>
+
+<section>
   <h2>Good to know</h2>
   <div class="notes" style="margin-top:26px">
-    <div class="note"><h3>Comments find the right element</h3><p>Every block and table has a stable <code>data-id</code>. When you comment on an element in your agent&rsquo;s browser, your agent gets that id and finds the exact spot in the file, even after the wording has changed.</p></div>
+    <div class="note"><h3>Undo and review</h3><p>Press <code>⌘Z</code> (<code>Ctrl+Z</code> on Windows and Linux) to take back a move, an added or removed paragraph, or a heading change. To read the whole document with every change in place, turn on &ldquo;Show what changed&rdquo; in the list of changes: your agent&rsquo;s edits are marked like tracked changes, and editing pauses until you&rsquo;re done.</p></div>
     <div class="note"><h3>Formatting stays plain HTML</h3><p>Bold, italics, code and links are written as <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;code&gt;</code> and <code>&lt;a&gt;</code>, so the document&rsquo;s own styles decide how they look.</p></div>
     <div class="note"><h3>Editing at the same time</h3><p>Edits to different paragraphs never get in each other&rsquo;s way, and if you and your agent change different words of the same paragraph, both changes are kept. If you change the same words, the document keeps your agent&rsquo;s version and yours waits under &ldquo;edits set aside&rdquo; at the bottom of the page. There you can put yours back, add it below, or copy it. Your agent is told about it too and can combine the two for you.</p></div>
-    <div class="note"><h3>What to do on the page and what to ask for</h3><p>On the page you can type, format, add and remove paragraphs, list items and rows, and reorder things among their neighbours. New sections or tables, moving something into another section, styling and charts are for a comment.</p></div>
+    <div class="note"><h3>What to do on the page and what to ask for</h3><p>On the page you can type, format, add and remove paragraphs, list items and rows, and reorder things among their neighbours. New sections or tables, moving something into another section, styling and charts are for a comment on the page.</p></div>
     <div class="note"><h3>Parts you don&rsquo;t want edited by hand</h3><p>Add <code>data-locked</code> to an element, such as a figure calculated from data, and it can&rsquo;t be typed into or moved on the page. You can still comment on it.</p></div>
     <div class="note"><h3>Working with people nearby</h3><p>Only your computer can open the document at first. Ask your agent to share it on your network and it gives you an address that works on your tablet or on a colleague&rsquo;s laptop on the same Wi-Fi. There&rsquo;s no login, so anyone on that network with the address can edit it. Ask your agent to keep it to this computer again when you&rsquo;re done.</p></div>
   </div>
