@@ -14,7 +14,7 @@ import {
 import { AgentStatus } from "./agent.js";
 import { buildContext, findQuote } from "./anchor.js";
 import { type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
-import { type Author, diffBlocks, History, type Place, placeOf } from "./history.js";
+import { type Author, copyOf, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
 import { type ChangeFeed } from "./wait.js";
@@ -58,6 +58,21 @@ export function describeEdit(before: string, after: string, context = 30): strin
   return `${excerpt(a)} → ${excerpt(b)}`;
 }
 
+/** How many characters `a` and `b` have in common at the start, and then at the end. */
+function sharedEnds(a: string, b: string): [number, number] {
+  // A large piece at a time first, since comparing strings is much quicker than comparing characters.
+  const CHUNK = 4096;
+  const most = Math.min(a.length, b.length);
+  let head = 0;
+  while (head + CHUNK <= most && a.slice(head, head + CHUNK) === b.slice(head, head + CHUNK)) head += CHUNK;
+  while (head < most && a[head] === b[head]) head++;
+  let tail = 0;
+  const end = (s: string, from: number, to: number) => s.slice(s.length - to, s.length - from);
+  while (tail + CHUNK <= most - head && end(a, tail, tail + CHUNK) === end(b, tail, tail + CHUNK)) tail += CHUNK;
+  while (tail < most - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return [head, tail];
+}
+
 const time = () => new Date().toTimeString().slice(0, 8);
 const sameText = (a: string, b: string) => squash(a) === squash(b);
 const plain = (html: string) => squash(html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " "));
@@ -74,7 +89,7 @@ export interface StashEntry {
 export type UndoKind = "move" | "add" | "remove" | "retag";
 
 /** One of the user's changes to the structure, with what it takes to reverse it. */
-interface UndoStep {
+interface UndoChange {
   kind: UndoKind;
   id: string;
   tag: string;
@@ -84,6 +99,16 @@ interface UndoStep {
   chunk?: string; // remove: its markup
   from?: string; // retag: the tags before and after
   to?: string;
+}
+
+/**
+ * A change as it's kept: rather than two copies of a possibly large file, the version of the
+ * file right after it, and the one edit that turns that file back into the file from before.
+ */
+interface UndoStep extends Omit<UndoChange, "before" | "after"> {
+  after: string; // the version
+  size: number; // and length of the file right after the change
+  restore: { at: number; cut: number; text: string }; // replace `cut` characters at `at` with `text`
 }
 
 /** An undo that no longer fits the file, with a message for the user. */
@@ -243,7 +268,7 @@ export class Document {
 
   private stash(id: string, mine: string, theirs: string): number {
     const n = Math.max(0, ...this.stashed.map((e) => e.n)) + 1;
-    this.stashed = [...this.stashed, { n, id, mine, theirs, at: new Date().toISOString() }];
+    this.stashed = [...this.stashed, { n, id, mine, theirs: copyOf(theirs), at: new Date().toISOString() }];
     this.saveStash();
     return n;
   }
@@ -357,8 +382,15 @@ export class Document {
 
   // --- undoing the user's moves, additions, removals and heading changes ---
 
-  private pushUndo(step: UndoStep): void {
-    this.undos.push(step);
+  private pushUndo({ before, after, chunk, ...change }: UndoChange): void {
+    const [head, tail] = sharedEnds(before, after);
+    this.undos.push({
+      ...change,
+      ...(chunk === undefined ? {} : { chunk: copyOf(chunk) }),
+      after: this.versionOf(after),
+      size: after.length,
+      restore: { at: head, cut: after.length - head - tail, text: copyOf(before.slice(head, before.length - tail)) },
+    });
     if (this.undos.length > 50) this.undos.shift();
   }
 
@@ -370,12 +402,14 @@ export class Document {
     const { id, place } = step;
     const inside = place?.parent ? ` (inside ${place.parent})` : "";
     const anchors = [[place?.next, "before"], [place?.prev, "after"]].filter(([a]) => a) as [string, "before" | "after"][];
-    const exact = text === step.after;
+    const exact = text.length === step.size && this.versionOf(text) === step.after;
+    const { at, cut, text: put } = step.restore;
+    const before = () => text.slice(0, at) + put + text.slice(at + cut);
     const gone = (why = "the elements around it have changed") => new UndoGone(`This can't be undone any more, because ${why}.`);
     if (step.kind === "move") {
       for (const [anchor, position] of anchors) {
         try {
-          return { text: exact ? step.before : moveBlock(text, id, anchor, position), where: `${position} ${anchor}${inside}` };
+          return { text: exact ? before() : moveBlock(text, id, anchor, position), where: `${position} ${anchor}${inside}` };
         } catch {
           // try the other neighbour
         }
@@ -383,7 +417,7 @@ export class Document {
       throw gone();
     }
     if (step.kind === "add") {
-      if (exact) return { text: step.before, where: "" };
+      if (exact) return { text: before(), where: "" };
       try {
         return { text: removeBlock(text, id), where: "" };
       } catch (e) {
@@ -394,7 +428,7 @@ export class Document {
       if (findBlock(parse(text), id)) throw gone("it's back in the document already");
       for (const [anchor, position] of anchors) {
         try {
-          return { text: exact ? step.before : putChunk(text, step.chunk!, anchor, position), where: `${position} ${anchor}${inside}` };
+          return { text: exact ? before() : putChunk(text, step.chunk!, anchor, position), where: `${position} ${anchor}${inside}` };
         } catch {
           // try the other neighbour
         }
@@ -402,7 +436,7 @@ export class Document {
       throw gone();
     }
     try {
-      return { text: exact ? step.before : retagBlock(text, id, step.to!, step.from!), where: "" };
+      return { text: exact ? before() : retagBlock(text, id, step.to!, step.from!), where: "" };
     } catch {
       throw gone("it has been changed again since");
     }

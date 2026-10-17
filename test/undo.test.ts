@@ -47,6 +47,19 @@ test("undoing a move puts the file back exactly as it was", () => {
   assert.deepEqual(doc.undoable(), []);
 });
 
+test("changes in a long file are undone back to exactly the file from before", () => {
+  const long = (n: number) => `<p data-id="p-${n}">${"Some words to fill the page. ".repeat(400)}</p>\n`;
+  const html = LIST.replace("<h1", long(10) + "<h1").replace("</body>", long(11) + long(12) + "</body>");
+  const { doc, read } = open(html);
+  doc.moveBlock("li-4", "li-1", "before");
+  doc.retagBlock("p-1", "p", "h2");
+  doc.insertBlock("li-2", "after", "li", "New");
+  doc.undo("add", "li-5");
+  doc.undo("retag", "p-1");
+  doc.undo("move", "li-4");
+  assert.equal(read(), html);
+});
+
 test("a move is undone next to its old neighbour after other changes to the file", () => {
   const { doc, read, agent } = open();
   doc.moveBlock("li-2", "li-4", "after");

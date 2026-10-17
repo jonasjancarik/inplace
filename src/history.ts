@@ -38,6 +38,13 @@ export interface HistoryEntry {
 const TEXT_MAX = 600;
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
+/**
+ * A copy of `text` that doesn't keep the string it was cut from in memory. A slice shares the
+ * memory of the whole string it came from, so keeping a short piece of a large file would
+ * otherwise keep all of it.
+ */
+export const copyOf = (text: string) => (" " + text).slice(1);
+
 /** The readable text of some HTML, on one line. */
 export function plainText(html: string): string {
   const text = html
@@ -119,7 +126,7 @@ function readBlocks(source: string): Blocks {
         tag: child.tag,
         parent,
         own: own.replace(/\s+/g, " ").replace(/>\s+</g, "><").trim(),
-        text: plainText(source.slice(child.openEnd, child.innerEnd)),
+        text: copyOf(plainText(source.slice(child.openEnd, child.innerEnd))),
         place,
       });
       const ids = order.get(parent);
