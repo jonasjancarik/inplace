@@ -1,0 +1,16 @@
+{
+  // The editing script that runs in the page. The files here are plain scripts sharing one
+  // scope; src/editor-script.ts joins their compiled output into the script the server serves.
+  "compilerOptions": {
+    "target": "es2023",
+    // Keeps the page's import() of /__inplace/anchor.js as it is.
+    "module": "esnext",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "rootDir": ".",
+    "outDir": "../../dist/src/editor",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["*.ts"]
+}

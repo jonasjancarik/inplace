@@ -14,18 +14,17 @@
   },
   "files": [
     "dist/src",
-    "static",
     "agent-guide.md"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc",
-    "test": "tsc && node --test dist/test/*.test.js",
-    "prepare": "tsc",
-    "test:e2e": "tsc && playwright test",
-    "record-demo": "tsc && node scripts/record-demo.mjs"
+    "build": "tsc && tsc -p src/editor",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "prepare": "tsc && tsc -p src/editor",
+    "test:e2e": "npm run build && playwright test",
+    "record-demo": "npm run build && node scripts/record-demo.mjs"
   },
   "dependencies": {
     "parse5": "^8.0.1"

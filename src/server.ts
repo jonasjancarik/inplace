@@ -14,13 +14,13 @@ import {
 import { AgentStatus } from "./agent.js";
 import { buildContext, findQuote } from "./anchor.js";
 import { type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
+import { readEditorScript } from "./editor-script.js";
 import { type Author, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
 import { type ChangeFeed } from "./wait.js";
 
 const EDITOR_PREFIX = "/__inplace/";
-const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "static");
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -564,7 +564,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
   const rootDir = dirname(resolve(doc.path));
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
-  const editorScript = readFileSync(join(STATIC_DIR, "editor.js"));
+  const editorScript = readEditorScript();
   // The page imports the comment anchoring helpers from the same compiled code the server runs.
   const anchorScript = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "anchor.js"), "utf8")
     .replace(/\n\/\/# sourceMappingURL=.*\n?$/, "\n");

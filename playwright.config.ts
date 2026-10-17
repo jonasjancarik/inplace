@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Browser tests for the editing script (static/editor.js). Each test starts its
+// Browser tests for the editing script (src/editor/). Each test starts its
 // own inplace server on a temporary copy of a document; see e2e/fixtures.ts.
 export default defineConfig({
   testDir: "e2e",
