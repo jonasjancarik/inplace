@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import { createInplaceServer, Document, isLocalHost } from "../src/server.js";
@@ -142,6 +142,36 @@ test("the agent leaves its own comments, which the page can answer but not forge
     const answered = await s.send("POST", "/__inplace/comment", page, JSON.stringify({ action: "answer", n: 1, text: "The reader." }));
     assert.equal(answered.status, 200, answered.body);
     assert.equal(JSON.parse(answered.body).comment.answer, "The reader.");
+  } finally {
+    s.close();
+  }
+});
+
+test("files next to the document are served, but not hidden ones or ones a link leads outside to", async () => {
+  const s = await start();
+  const dir = dirname(s.path);
+  const outside = mkdtempSync(join(tmpdir(), "inplace-outside-"));
+  try {
+    mkdirSync(join(dir, "img"));
+    writeFileSync(join(dir, "img", "a.png"), "png");
+    writeFileSync(join(dir, "style.css"), "p {}");
+    writeFileSync(join(dir, ".env"), "SECRET=1");
+    mkdirSync(join(dir, ".git"));
+    writeFileSync(join(dir, ".git", "config"), "[core]");
+    writeFileSync(join(dir, "notes.sqlite"), "data");
+    writeFileSync(join(outside, "secret.css"), "secret");
+    symlinkSync(outside, join(dir, "linked"));
+    symlinkSync(join(dir, ".env"), join(dir, "env.css"));
+    symlinkSync(join(dir, "img", "a.png"), join(dir, "logo.png"));
+    const get = (path: string) => s.send("GET", path, { host: `localhost:${s.port}` });
+    assert.equal((await get("/img/a.png")).status, 200);
+    assert.equal((await get("/style.css")).body, "p {}");
+    assert.equal((await get("/logo.png")).body, "png", "a link to another file in the folder still works");
+    for (const path of ["/.env", "/.git/config", "/%2egit/config", "/img/../.env", "/notes.sqlite", "/linked/secret.css", "/env.css"]) {
+      const res = await get(path);
+      assert.equal(res.status, 404, path);
+      assert.doesNotMatch(res.body, /SECRET|core|data|secret/, path);
+    }
   } finally {
     s.close();
   }

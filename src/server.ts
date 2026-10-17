@@ -1,10 +1,10 @@
 // Serve one HTML file for in-place editing, with live reload when it changes on disk.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { hostname, tmpdir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -22,13 +22,17 @@ import { type ChangeFeed } from "./wait.js";
 const EDITOR_PREFIX = "/__inplace/";
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "static");
 
+/** The files a document can load from its folder; anything else there isn't served. */
 const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8", ".json": "application/json",
+  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".json": "application/json",
+  ".txt": "text/plain; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".md": "text/markdown; charset=utf-8",
+  ".xml": "application/xml", ".vtt": "text/vtt; charset=utf-8", ".wasm": "application/wasm",
   ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".ico": "image/x-icon",
   ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf",
-  ".pdf": "application/pdf", ".mp4": "video/mp4", ".webm": "video/webm",
+  ".pdf": "application/pdf", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg", ".glb": "model/gltf-binary",
 };
 
 const digest = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 12);
@@ -738,15 +742,22 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     });
   };
 
+  // Files next to the document, such as its images and stylesheets. Not hidden files or folders
+  // (.env, .git), nothing a link leads to outside the folder, and only the kinds of file pages load.
+  const hidden = (rel: string) => rel.split(sep).some((part) => part.startsWith("."));
   const staticFile = (path: string, res: ServerResponse) => {
+    const notFound = () => send(res, 404, "not found", "text/plain");
     const target = resolve(rootDir, "." + path);
     const rel = relative(rootDir, target);
-    if (rel.startsWith("..") || rel.split(sep).includes("..")) return send(res, 404, "not found", "text/plain");
+    const type = MIME[extname(target).toLowerCase()];
+    if (!rel || hidden(rel) || !type) return notFound();
     try {
-      if (!statSync(target).isFile()) throw new Error();
-      send(res, 200, readFileSync(target), MIME[extname(target).toLowerCase()] ?? "application/octet-stream");
+      const realRoot = realpathSync(rootDir);
+      const realRel = relative(realRoot, realpathSync(target));
+      if (!realRel || isAbsolute(realRel) || hidden(realRel) || !statSync(target).isFile()) return notFound();
+      send(res, 200, readFileSync(target), type);
     } catch {
-      send(res, 404, "not found", "text/plain");
+      notFound();
     }
   };
 
