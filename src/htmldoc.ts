@@ -84,18 +84,122 @@ export function parse(source: string): Node {
   return root;
 }
 
-function parseTree(source: string): Node {
-  const doc = parseDocument(source, { sourceCodeLocationInfo: true });
+// Runs of plain characters this long, such as an image embedded as base64. parse5 reads an
+// attribute value one character at a time, which makes a file with a large image slow to
+// parse; when every run is inside an attribute value, they're left out while parsing.
+// ("=" is left out so that a run never starts in an attribute's name: base64 only ends with it.)
+const LONG_RUN = /[A-Za-z0-9+/]{1024}/g;
+const RUN_END = /[^A-Za-z0-9+/]/g;
+
+/** Where the long runs are, as [start, end) pairs. (A regex can't match one this long in one go.) */
+function longRuns(source: string): [number, number][] {
+  const runs: [number, number][] = [];
+  LONG_RUN.lastIndex = 0;
+  for (let m; (m = LONG_RUN.exec(source));) {
+    RUN_END.lastIndex = m.index + m[0].length;
+    const end = RUN_END.exec(source)?.index ?? source.length;
+    runs.push([m.index, end]);
+    LONG_RUN.lastIndex = end;
+  }
+  return runs;
+}
+
+type Document5 = DefaultTreeAdapterMap["document"];
+
+const childrenOf = (from: ParentNode): ChildNode[] => isElement(from) && from.tagName === "template"
+  ? (from as DefaultTreeAdapterMap["template"]).content.childNodes
+  : from.childNodes;
+
+/** Like parse, without remembering the tree. `skipLong: false` always parses every character, for tests. */
+export function parseTree(source: string, skipLong = true): Node {
+  const runs = skipLong ? longRuns(source) : [];
+  const shortened = runs.length ? parseShortened(source, runs) : null;
+  if (shortened) return shortened;
+  return buildTree(source, parseDocument(source, { sourceCodeLocationInfo: true }), (offset) => offset);
+}
+
+/**
+ * Parse with each long run cut down to its first character, then put the offsets and attribute
+ * values back as the full source has them. Inside an attribute value these characters don't
+ * change what the parser does, so the tree is the one the full source gives. Returns null when
+ * a run is anywhere else (text, a script, an attribute name), or a value needed decoding.
+ */
+function parseShortened(source: string, runs: [number, number][]): Node | null {
+  const at: number[] = []; // where each run starts in the shortened text
+  const cut: number[] = []; // characters left out up to the end of each run
+  const parts: string[] = [];
+  let from = 0;
+  let removed = 0;
+  for (const [start, end] of runs) {
+    parts.push(source.slice(from, start + 1));
+    at.push(start - removed);
+    removed += end - start - 1;
+    cut.push(removed);
+    from = end;
+  }
+  parts.push(source.slice(from));
+  const short = parts.join("");
+  // The first run starting at or after `offset` in the shortened text.
+  const firstFrom = (offset: number) => {
+    let lo = 0;
+    let hi = at.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (at[mid] < offset) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const back = (offset: number) => {
+    const k = firstFrom(offset);
+    return k ? offset + cut[k - 1] : offset;
+  };
+
+  const doc = parseDocument(short, { sourceCodeLocationInfo: true });
+  let covered = 0;
+  const check = (from: ParentNode): boolean => {
+    for (const child of childrenOf(from)) {
+      if (!isElement(child)) continue;
+      const spans = child.sourceCodeLocation?.attrs;
+      if (spans) {
+        for (const attr of child.attrs) {
+          const span = spans[attr.name];
+          if (!span) continue;
+          const k = firstFrom(span.startOffset);
+          if (k === at.length || at[k] >= span.endOffset) continue;
+          // The value starts after the first "=" (one can only come first in the name).
+          const eq = short.indexOf("=", span.startOffset + 1);
+          if (eq === -1 || eq >= span.endOffset) return false;
+          let start = eq + 1;
+          while (/\s/.test(short[start])) start++;
+          const quoted = short[start] === '"' || short[start] === "'";
+          if (quoted) start++;
+          const end = quoted ? span.endOffset - 1 : span.endOffset;
+          if (at[k] < start || short.slice(start, end) !== attr.value) return false;
+          for (let j = k; j < at.length && at[j] < span.endOffset; j++) {
+            if (at[j] >= end) return false;
+            covered++;
+          }
+          attr.value = source.slice(back(start), back(end));
+        }
+      }
+      if (!check(child)) return false;
+    }
+    return true;
+  };
+  if (!check(doc) || covered !== runs.length) return null;
+  return buildTree(source, doc, back);
+}
+
+/** Our tree from parse5's, with `offset` turning parse5's offsets into offsets in `source`. */
+function buildTree(source: string, doc: Document5, offset: (o: number) => number): Node {
   const root: Node = {
     tag: "#root", attrs: new Map(), start: 0, openEnd: 0, innerEnd: source.length, end: source.length,
     parent: null, children: [], hasText: false,
   };
 
   const visit = (from: ParentNode, into: Node) => {
-    const kids: ChildNode[] = isElement(from) && from.tagName === "template"
-      ? (from as DefaultTreeAdapterMap["template"]).content.childNodes
-      : from.childNodes;
-    for (const child of kids) {
+    for (const child of childrenOf(from)) {
       if (child.nodeName === "#text") {
         if ((child as DefaultTreeAdapterMap["textNode"]).value.trim()) into.hasText = true;
         continue;
@@ -109,10 +213,10 @@ function parseTree(source: string): Node {
       const node: Node = {
         tag: child.tagName,
         attrs: new Map(child.attrs.map((a) => [a.name, a.value])),
-        start: loc.startTag.startOffset,
-        openEnd: loc.startTag.endOffset,
-        innerEnd: loc.endTag ? loc.endTag.startOffset : loc.endOffset,
-        end: loc.endOffset,
+        start: offset(loc.startTag.startOffset),
+        openEnd: offset(loc.startTag.endOffset),
+        innerEnd: offset(loc.endTag ? loc.endTag.startOffset : loc.endOffset),
+        end: offset(loc.endOffset),
         parent: into,
         children: [],
         hasText: false,
