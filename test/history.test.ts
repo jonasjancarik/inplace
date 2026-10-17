@@ -89,3 +89,17 @@ test("a change that is undone within the same entry disappears", () => {
 test("plain text decodes entities and drops tags", () => {
   assert.equal(plainText("Fish&nbsp;&amp; <i>chips</i><br>&#8364;5 &#x2014; ok"), "Fish & chips €5 — ok");
 });
+
+test("in a long list, only the item that was dragged counts as moved", () => {
+  const items = Array.from({ length: 400 }, (_, i) => `<li data-id="li-${i}">Item ${i}</li>`);
+  const before = doc(`<ul data-id="ul-1">${items.join("\n")}</ul>`);
+  const forward = [...items];
+  forward.splice(250, 0, ...forward.splice(5, 1));
+  assert.deepEqual(diffBlocks(before, doc(`<ul data-id="ul-1">${forward.join("\n")}</ul>`)).map((c) => [c.id, c.kind]), [["li-5", "moved"]]);
+  const back = [...items];
+  back.splice(3, 0, ...back.splice(390, 1));
+  assert.deepEqual(diffBlocks(before, doc(`<ul data-id="ul-1">${back.join("\n")}</ul>`)).map((c) => [c.id, c.kind]), [["li-390", "moved"]]);
+  const swapped = [...items];
+  [swapped[0], swapped[1]] = [swapped[1], swapped[0]];
+  assert.equal(diffBlocks(before, doc(`<ul data-id="ul-1">${swapped.join("\n")}</ul>`)).length, 1);
+});

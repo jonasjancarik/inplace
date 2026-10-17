@@ -264,7 +264,7 @@ To read the whole document with every change in place, turn on **Show what chang
 - Other websites open in your browser can't change the document: inplace only accepts changes sent from its own page. It also only answers to `localhost`, your computer's own name (and its `.local` form) and IP addresses, so open it by one of those. Other names, such as a custom DNS name or a Tailscale MagicDNS name, are refused unless you list them with `--allow-host`.
 - On the page you can change text, add simple formatting, add and remove paragraphs, list items and rows, and reorder elements among their neighbours. New sections, tables or lists, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
-- Each save re-reads the whole file, so very large documents respond a little more slowly.
+- Each save checks the whole file again, so it never misses something the agent changed in the meantime. On a recent laptop a save takes about a tenth of a second for a 1 MB report or one with a 10 MB embedded image, and around half a second for a document with tens of thousands of paragraphs.
 
 ## Development
 

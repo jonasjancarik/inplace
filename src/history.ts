@@ -38,6 +38,13 @@ export interface HistoryEntry {
 const TEXT_MAX = 600;
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
+/**
+ * A copy of `text` that doesn't keep the string it was cut from in memory. A slice shares the
+ * memory of the whole string it came from, so keeping a short piece of a large file would
+ * otherwise keep all of it.
+ */
+export const copyOf = (text: string) => (" " + text).slice(1);
+
 /** The readable text of some HTML, on one line. */
 export function plainText(html: string): string {
   const text = html
@@ -68,10 +75,37 @@ function nested(node: Node): Node[] {
   return found;
 }
 
+type Blocks = { blocks: Map<string, Block>; order: Map<string, string[]> };
+
+// The last two files looked at: each change compares the file before it, which is usually the
+// one the previous change produced, with the file after it.
+const recent: { source: string; result: Blocks }[] = [];
+
 /** Every block with an id, in document order, and the order of blocks within each parent. */
-function blocksOf(source: string): { blocks: Map<string, Block>; order: Map<string, string[]> } {
+function blocksOf(source: string): Blocks {
+  const hit = recent.findLast((r) => r.source === source);
+  if (hit) return hit.result;
+  const result = readBlocks(source);
+  recent.push({ source, result });
+  if (recent.length > 2) recent.shift();
+  return result;
+}
+
+function readBlocks(source: string): Blocks {
   const blocks = new Map<string, Block>();
   const order = new Map<string, string[]>();
+  // Each element's children that have an id, and where each of them is among those, worked out
+  // once per element rather than once per child.
+  const idChildren = new Map<Node, Node[]>();
+  const position = new Map<Node, number>();
+  const withIds = (node: Node) => {
+    let found = idChildren.get(node);
+    if (!found) {
+      idChildren.set(node, (found = node.children.filter((s) => s.attrs.has(ID_ATTR))));
+      found.forEach((s, k) => position.set(s, k));
+    }
+    return found;
+  };
   const visit = (node: Node, parent: string) => {
     for (const child of nested(node)) {
       const id = child.attrs.get(ID_ATTR)!;
@@ -83,8 +117,8 @@ function blocksOf(source: string): { blocks: Map<string, Block>; order: Map<stri
         at = inner.end;
       }
       own += source.slice(at, child.innerEnd);
-      const siblings = child.parent!.children.filter((s) => s.attrs.has(ID_ATTR));
-      const k = siblings.indexOf(child);
+      const siblings = withIds(child.parent!);
+      const k = position.get(child)!;
       const place: Place = { parent };
       if (k > 0) place.prev = siblings[k - 1].attrs.get(ID_ATTR)!;
       if (k < siblings.length - 1) place.next = siblings[k + 1].attrs.get(ID_ATTR)!;
@@ -92,10 +126,12 @@ function blocksOf(source: string): { blocks: Map<string, Block>; order: Map<stri
         tag: child.tag,
         parent,
         own: own.replace(/\s+/g, " ").replace(/>\s+</g, "><").trim(),
-        text: plainText(source.slice(child.openEnd, child.innerEnd)),
+        text: copyOf(plainText(source.slice(child.openEnd, child.innerEnd))),
         place,
       });
-      order.set(parent, [...(order.get(parent) ?? []), id]);
+      const ids = order.get(parent);
+      if (ids) ids.push(id);
+      else order.set(parent, [id]);
       visit(child, id);
     }
   };
@@ -110,14 +146,25 @@ export function placeOf(source: string, id: string): Place | undefined {
 
 /** Items of `a` that stay in place when `a` is reordered into `b` (a longest common subsequence). */
 function stable(a: string[], b: string[]): Set<string> {
-  const len = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  // Whatever both start and end with stays in place; only the part between needs the full
+  // comparison, which is slow for long lists. Ids are unique, so this keeps the same items.
+  const keep = new Set<string>();
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) keep.add(a[head++]);
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) {
+    keep.add(a[a.length - 1 - tail++]);
+  }
+  a = a.slice(head, a.length - tail);
+  b = b.slice(head, b.length - tail);
+  const w = b.length + 1;
+  const len = new Int32Array((a.length + 1) * w);
   for (let i = a.length - 1; i >= 0; i--)
     for (let j = b.length - 1; j >= 0; j--)
-      len[i][j] = a[i] === b[j] ? len[i + 1][j + 1] + 1 : Math.max(len[i + 1][j], len[i][j + 1]);
-  const keep = new Set<string>();
+      len[i * w + j] = a[i] === b[j] ? len[(i + 1) * w + j + 1] + 1 : Math.max(len[(i + 1) * w + j], len[i * w + j + 1]);
   for (let i = 0, j = 0; i < a.length && j < b.length;) {
     if (a[i] === b[j]) { keep.add(a[i]); i++; j++; }
-    else if (len[i + 1][j] >= len[i][j + 1]) i++;
+    else if (len[(i + 1) * w + j] >= len[i * w + j + 1]) i++;
     else j++;
   }
   return keep;
