@@ -207,21 +207,23 @@ Some things to know before you rely on it:
 ## Options
 
 ```text
-inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
+inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
                     [--pause 5] [--log <file>] [--on-pause <command>]
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
 inplace comment <data-id> <text> [--quote <text>] [--port 8765]
 inplace guide
-inplace mcp [--pause 5] [--log <file>]
-inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
+inplace mcp [--allow-host <name>] [--pause 5] [--log <file>]
+inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
+                   [--pause 5] [--log <file>]
 ```
 
 | Option | Default | |
 | --- | --- | --- |
 | `--port` | `8765` | Port to listen on. |
 | `--host` | `127.0.0.1` | Address to listen on. By default only this computer can open the page. Use `0.0.0.0` to open it on other devices on your network, such as a tablet, or to edit it with people on the same Wi-Fi; or just ask your agent to share it on your network. There's no login, so anyone on that network with the address can edit the document. |
+| `--allow-host` | none | Another name the page may be opened by, such as your computer's Tailscale name (`mymac.tail1234.ts.net`). Without it, only `localhost`, your computer's own name and IP addresses work. Repeat it for more names. With `mcp`, it applies to every document the agent opens. |
 | `--no-write-ids` | off | Don't add `data-id` attributes to the file. |
 | `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
 | `--log` | none | Also append every change line to this file. |
@@ -240,7 +242,9 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 
 
 `inplace wait` waits until you pause editing in the inplace already running on `--port`, then prints that pause's change lines as JSON and exits.
 
-Images, stylesheets and other files next to the document are served too, so relative links keep working.
+Images, stylesheets, fonts, scripts and other files a page loads are served from the document's folder too, so relative links keep working. Hidden files and folders (such as `.env` or `.git`), other kinds of files, and anything a link in the folder leads to outside it are not.
+
+If the document itself is a link to a file somewhere else, inplace saves into that file and leaves the link as it is. Saving also keeps the file's permissions.
 
 ## How it works
 
@@ -257,7 +261,7 @@ To read the whole document with every change in place, turn on **Show what chang
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so only share it on your network (`--host 0.0.0.0`) when you trust the people on it.
-- Other websites open in your browser can't change the document: inplace only accepts changes sent from its own page. It also only answers to `localhost`, your computer's own name (and its `.local` form) and IP addresses, so open it by one of those. Other names, such as a custom DNS name or a Tailscale MagicDNS name, are refused; use the computer's IP address instead.
+- Other websites open in your browser can't change the document: inplace only accepts changes sent from its own page. It also only answers to `localhost`, your computer's own name (and its `.local` form) and IP addresses, so open it by one of those. Other names, such as a custom DNS name or a Tailscale MagicDNS name, are refused unless you list them with `--allow-host`.
 - On the page you can change text, add simple formatting, add and remove paragraphs, list items and rows, and reorder elements among their neighbours. New sections, tables or lists, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
 - Each save re-reads the whole file, so very large documents respond a little more slowly.

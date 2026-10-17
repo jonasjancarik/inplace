@@ -8,24 +8,29 @@ import { AgentStatus } from "./agent.js";
 import { AGENT_GUIDE_PATH } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
-import { createInplaceServer, Document, serverUrls } from "./server.js";
+import { allowedHostName, createInplaceServer, Document, serverUrls } from "./server.js";
 import { ChangeFeed } from "./wait.js";
 
-const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
+const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
                            [--pause 5] [--log <file>] [--on-pause <command>]
        inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
        inplace comments [--port 8765] [--all]
        inplace resolve <n> [--reply <text>] [--port 8765]
        inplace comment <data-id> <text> [--quote <text>] [--port 8765]
        inplace guide
-       inplace mcp [--pause 5] [--log <file>]
-       inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
+       inplace mcp [--allow-host <name>] [--pause 5] [--log <file>]
+       inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
+                          [--pause 5] [--log <file>]
 
 Edit an HTML document in the browser while an agent edits the same file.
 
   --port <n>        port to listen on (default 8765)
   --host <addr>     address to listen on (default 127.0.0.1, this computer only; use 0.0.0.0
                     to open the page on other devices on your network)
+  --allow-host <name>
+                    also let the page be opened by this name, such as a Tailscale MagicDNS
+                    name (mymac.tail1234.ts.net); repeat for more names. Without it, only
+                    localhost, this computer's own name and IP addresses work
   --no-write-ids    don't add data-id attributes to the file
                     (blocks without one can't be edited or commented on precisely)
   --pause <s>       after this many seconds without a change on the page, print one
@@ -61,6 +66,7 @@ const { values, positionals } = parseArgs({
   options: {
     port: { type: "string" },
     host: { type: "string" },
+    "allow-host": { type: "string", multiple: true, default: [] },
     http: { type: "boolean", default: false },
     token: { type: "string" },
     "no-write-ids": { type: "boolean", default: false },
@@ -88,6 +94,14 @@ if (!(pauseSeconds >= 0)) {
   process.exit(2);
 }
 const logPath = values.log ? resolve(values.log) : undefined;
+const allowHosts = values["allow-host"].map((value) => {
+  const name = allowedHostName(value);
+  if (name === null) {
+    console.error(`inplace: --allow-host takes a host name without a port, like mymac.tail1234.ts.net (got ${JSON.stringify(value)})`);
+    process.exit(2);
+  }
+  return name;
+});
 if (positionals[0] === "wait") {
   waitForPause();
 } else if (positionals[0] === "comments" || positionals[0] === "resolve" || positionals[0] === "comment") {
@@ -99,7 +113,7 @@ if (positionals[0] === "wait") {
   const port = Number(values.port ?? "8766");
   const host = values.host ?? "127.0.0.1";
   const token = values.token ?? process.env.INPLACE_TOKEN ?? newToken();
-  runMcpHttpServer({ pauseSeconds, logPath, port, host, token }).then(
+  runMcpHttpServer({ pauseSeconds, logPath, allowHosts, port, host, token }).then(
     (server) => {
       const actual = (server.address() as { port: number }).port;
       console.log(`inplace MCP server: http://${host === "0.0.0.0" ? "localhost" : host}:${actual}/mcp/${token}`);
@@ -111,7 +125,7 @@ if (positionals[0] === "wait") {
     },
   );
 } else if (positionals[0] === "mcp") {
-  runMcpServer({ pauseSeconds, logPath });
+  runMcpServer({ pauseSeconds, logPath, allowHosts });
 } else {
   serve();
 }
@@ -158,14 +172,14 @@ function serve(): void {
   });
   setInterval(() => doc.poll(), 250);
 
-  const server = createInplaceServer(doc, { feed, agent });
+  const server = createInplaceServer(doc, { feed, agent, allowHosts });
   server.on("error", (e: NodeJS.ErrnoException) => {
     console.error(e.code === "EADDRINUSE" ? `inplace: port ${port} is already in use; try --port` : e.message);
     process.exit(1);
   });
   server.listen(port, host, () => {
     console.log(`Editing ${path}`);
-    for (const url of serverUrls(port, host)) console.log(`  ${url}`);
+    for (const url of serverUrls(port, host, allowHosts)) console.log(`  ${url}`);
     console.log("Changes made on the page are listed below.");
   });
 }

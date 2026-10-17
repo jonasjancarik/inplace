@@ -22,6 +22,8 @@ The first time the page is opened, inplace adds `data-id` attributes to the file
 
 If the user wants to open the document on another device (a tablet, a second laptop) or edit it together with people on the same network, restart inplace with `--host 0.0.0.0` (MCP: `close_document`, then `open_document` with `host: "0.0.0.0"`), keeping the same port. It then also prints a `.local` URL; give the user that one to share, since `localhost` only works on this computer. Tell them once that the page has no login, so anyone on that network who has the address can open and edit the document, and that you can switch it back to this computer only whenever they like. Don't do this unless they ask, and don't suggest it on networks they describe as public or untrusted. The page they already have open reconnects after the restart; if it doesn't, they reload it.
 
+The page only answers to `localhost`, the computer's own name and IP addresses. To open it by another name, such as the computer's Tailscale name (`mymac.tail1234.ts.net`), add `--allow-host <name>` when you restart it. With MCP, `open_document` can't do this: ask the user to add `--allow-host <name>` to the `inplace mcp` command in their MCP settings and restart it, or give them the computer's IP address instead.
+
 ## What the ids mean
 
 - **Text blocks** (innermost `p`, `li`, `h1`–`h6`, `td`, `th`, `figcaption`, text-only `div`, …) are editable in the browser. Each save from the browser replaces only the inside of one such block. The user can also switch a `p` to `h1`–`h3` and back; the element keeps its `data-id` (so an `h2` may have the id `p-3`).

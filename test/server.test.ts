@@ -1,19 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync,
+} from "node:fs";
 import { request } from "node:http";
 import { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
-import { createInplaceServer, Document, isLocalHost } from "../src/server.js";
+import { allowedHostName, createInplaceServer, Document, isLocalHost, type ServerOptions } from "../src/server.js";
 
 /** A server for a one-paragraph document, and a raw request helper that sets every header itself. */
-async function start() {
+async function start(options: ServerOptions = {}) {
   const dir = mkdtempSync(join(tmpdir(), "inplace-server-"));
   const path = join(dir, "doc.html");
   writeFileSync(path, '<html><body><p data-id="p-1">Hello</p></body></html>');
-  const server = createInplaceServer(new Document(path, true, () => {}, dir));
+  const server = createInplaceServer(new Document(path, true, () => {}, dir), options);
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   const port = (server.address() as AddressInfo).port;
   const send = (method: string, path: string, headers: Record<string, string>, body?: string) =>
@@ -94,6 +96,34 @@ test("isLocalHost accepts this computer's names and IP addresses only", () => {
   }
 });
 
+test("--allow-host adds exact names, such as a Tailscale MagicDNS name, and nothing else", async () => {
+  const allow = ["mymac.tail1234.ts.net"];
+  assert.ok(isLocalHost("mymac.tail1234.ts.net:8765", allow));
+  assert.ok(isLocalHost("MyMac.Tail1234.ts.net.", allow));
+  for (const bad of ["mymac.tail1234.ts.net.attacker.example", "other.tail1234.ts.net", "tail1234.ts.net"]) {
+    assert.ok(!isLocalHost(bad, allow), bad);
+  }
+  assert.ok(!isLocalHost("mymac.tail1234.ts.net"), "not without --allow-host");
+
+  assert.equal(allowedHostName(" MyMac.Tail1234.ts.net. "), "mymac.tail1234.ts.net");
+  for (const bad of ["", "mymac.ts.net:8765", "http://mymac.ts.net", "*.ts.net", "my mac", "a..b"]) {
+    assert.equal(allowedHostName(bad), null, bad);
+  }
+
+  const s = await start({ allowHosts: allow });
+  try {
+    const host = `mymac.tail1234.ts.net:${s.port}`;
+    assert.equal((await s.send("GET", "/", { host })).status, 200);
+    const res = await s.send("POST", "/__inplace/insert",
+      { host, origin: `http://${host}`, "content-type": "application/json" },
+      JSON.stringify({ id: "p-1", position: "after", tag: "p", content: "World" }));
+    assert.equal(res.status, 200, res.body);
+    assert.equal((await s.send("GET", "/", { host: `attacker.example:${s.port}` })).status, 403);
+  } finally {
+    s.close();
+  }
+});
+
 test("comments are added from the page, listed, and resolved by the agent", async () => {
   const s = await start();
   try {
@@ -145,4 +175,73 @@ test("the agent leaves its own comments, which the page can answer but not forge
   } finally {
     s.close();
   }
+});
+
+test("files next to the document are served, but not hidden ones or ones a link leads outside to", async () => {
+  const s = await start();
+  const dir = dirname(s.path);
+  const outside = mkdtempSync(join(tmpdir(), "inplace-outside-"));
+  try {
+    mkdirSync(join(dir, "img"));
+    writeFileSync(join(dir, "img", "a.png"), "png");
+    writeFileSync(join(dir, "style.css"), "p {}");
+    writeFileSync(join(dir, ".env"), "SECRET=1");
+    mkdirSync(join(dir, ".git"));
+    writeFileSync(join(dir, ".git", "config"), "[core]");
+    writeFileSync(join(dir, "notes.sqlite"), "data");
+    writeFileSync(join(outside, "secret.css"), "secret");
+    symlinkSync(outside, join(dir, "linked"));
+    symlinkSync(join(dir, ".env"), join(dir, "env.css"));
+    symlinkSync(join(dir, "img", "a.png"), join(dir, "logo.png"));
+    const get = (path: string) => s.send("GET", path, { host: `localhost:${s.port}` });
+    assert.equal((await get("/img/a.png")).status, 200);
+    assert.equal((await get("/style.css")).body, "p {}");
+    assert.equal((await get("/logo.png")).body, "png", "a link to another file in the folder still works");
+    for (const path of ["/.env", "/.git/config", "/%2egit/config", "/img/../.env", "/notes.sqlite", "/linked/secret.css", "/env.css"]) {
+      const res = await get(path);
+      assert.equal(res.status, 404, path);
+      assert.doesNotMatch(res.body, /SECRET|core|data|secret/, path);
+    }
+  } finally {
+    s.close();
+  }
+});
+
+/** A one-paragraph document in a new folder. */
+function docFile(): { dir: string; path: string } {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-save-"));
+  const path = join(dir, "doc.html");
+  writeFileSync(path, '<html><body><p data-id="p-1">Hello</p></body></html>');
+  return { dir, path };
+}
+
+test("saving a document opened through a link changes the file it leads to and keeps the link", () => {
+  const { dir, path } = docFile();
+  const link = join(mkdtempSync(join(tmpdir(), "inplace-link-")), "link.html");
+  symlinkSync(path, link);
+  const doc = new Document(link, true, () => {}, dir);
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  assert.ok(lstatSync(link).isSymbolicLink());
+  assert.match(readFileSync(path, "utf8"), /Hello there/);
+  assert.deepEqual(readdirSync(dirname(link)), ["link.html"], "no temporary file is left next to the link");
+  // Changes made to the real file are still noticed.
+  const before = doc.version;
+  writeFileSync(path, '<html><body><p data-id="p-1">Changed by the agent, at length</p></body></html>');
+  doc.poll();
+  assert.notEqual(doc.version, before);
+});
+
+test("saving keeps the document's permissions and its other hard links", () => {
+  const { dir, path } = docFile();
+  chmodSync(path, 0o640);
+  const doc = new Document(path, true, () => {}, dir);
+  doc.saveBlock("p-1", "Hello", "Hello there");
+  assert.equal(statSync(path).mode & 0o777, 0o640);
+
+  const other = join(dir, "other.html");
+  linkSync(path, other);
+  doc.saveBlock("p-1", "Hello there", "Hello again");
+  assert.match(readFileSync(other, "utf8"), /Hello again/);
+  assert.equal(statSync(path).ino, statSync(other).ino);
+  assert.equal(statSync(path).mode & 0o777, 0o640);
 });

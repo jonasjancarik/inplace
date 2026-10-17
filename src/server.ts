@@ -1,10 +1,10 @@
 // Serve one HTML file for in-place editing, with live reload when it changes on disk.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { hostname, tmpdir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -22,13 +22,17 @@ import { type ChangeFeed } from "./wait.js";
 const EDITOR_PREFIX = "/__inplace/";
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "static");
 
+/** The files a document can load from its folder; anything else there isn't served. */
 const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8", ".json": "application/json",
+  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".json": "application/json",
+  ".txt": "text/plain; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".md": "text/markdown; charset=utf-8",
+  ".xml": "application/xml", ".vtt": "text/vtt; charset=utf-8", ".wasm": "application/wasm",
   ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".ico": "image/x-icon",
   ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf",
-  ".pdf": "application/pdf", ".mp4": "video/mp4", ".webm": "video/webm",
+  ".pdf": "application/pdf", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg", ".glb": "model/gltf-binary",
 };
 
 const digest = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 12);
@@ -108,6 +112,8 @@ export class Document {
   readonly stashPath: string;
   /** Comments made on the page, kept next to the stash. */
   readonly comments: CommentStore;
+  /** The file `path` leads to, after following links: inplace reads and writes this one. */
+  readonly file: string;
 
   /**
    * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
@@ -119,6 +125,7 @@ export class Document {
     readonly log: (line: string, byUser: boolean) => void = () => {},
     stashDir = join(tmpdir(), "inplace"),
   ) {
+    this.file = realpathSync(path);
     this.stashPath = join(stashDir, `stash-${digest(resolve(path))}.json`);
     this.comments = new CommentStore(join(stashDir, `comments-${digest(resolve(path))}.json`), (line, byUser) => this.log(line, byUser));
     try {
@@ -130,14 +137,24 @@ export class Document {
   }
 
   private read(): string {
-    return readFileSync(this.path, "utf8");
+    return readFileSync(this.file, "utf8");
   }
 
-  /** `by` is who made the change; leave it out for changes inplace makes on its own, such as adding ids. */
+  /**
+   * Write through a temporary file, so nothing ever reads a half-written document. The temporary
+   * file gets the document's permissions, and goes next to the real file rather than a link to it,
+   * so links stay links. A file with other hard links is written in place, or they'd keep the old text.
+   */
   private write(text: string, by?: Author): void {
-    const tmp = join(dirname(this.path), `.${basename(this.path)}.inplace-tmp`);
-    writeFileSync(tmp, text, "utf8");
-    renameSync(tmp, this.path);
+    const { mode, nlink } = statSync(this.file);
+    if (nlink > 1) {
+      writeFileSync(this.file, text, "utf8");
+    } else {
+      const tmp = join(dirname(this.file), `.${basename(this.file)}.inplace-tmp`);
+      writeFileSync(tmp, text, "utf8");
+      chmodSync(tmp, mode & 0o7777);
+      renameSync(tmp, this.file);
+    }
     this.stamp = this.statStamp();
     if (by) this.remember(text, by);
     else this.last = text;
@@ -162,7 +179,7 @@ export class Document {
   }
 
   private statStamp(): string {
-    const s = statSync(this.path);
+    const s = statSync(this.file);
     return `${s.mtimeMs}:${s.size}`;
   }
 
@@ -503,18 +520,28 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
-/** The URLs a server listening on `host`:`port` can be opened at. */
-export function serverUrls(port: number, host: string): string[] {
+/** The URLs a server listening on `host`:`port` can be opened at, including the extra names it answers to. */
+export function serverUrls(port: number, host: string, allowHosts: readonly string[] = []): string[] {
   const urls = [`http://localhost:${port}/`];
-  if (host === "0.0.0.0") urls.push(`http://${hostname().replace(/\.local$/, "")}.local:${port}/`);
+  if (host === "0.0.0.0") {
+    urls.push(`http://${hostname().replace(/\.local$/, "")}.local:${port}/`);
+    for (const name of allowHosts) urls.push(`http://${name}:${port}/`);
+  }
   return urls;
 }
 
+/** A name given to --allow-host, in the form isLocalHost compares, or null if it isn't a host name. */
+export function allowedHostName(value: string): string | null {
+  const name = value.trim().toLowerCase().replace(/\.$/, "");
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(name) ? name : null;
+}
+
 /**
- * Whether a Host header names this computer: localhost, its own name, or an IP address.
- * Any other name could be a domain an attacker has pointed at 127.0.0.1 (DNS rebinding).
+ * Whether a Host header names this computer: localhost, its own name, an IP address, or one of
+ * `allowHosts` (exact names from --allow-host, such as a Tailscale MagicDNS name). Any other name
+ * could be a domain an attacker has pointed at 127.0.0.1 (DNS rebinding).
  */
-export function isLocalHost(host: string | undefined): boolean {
+export function isLocalHost(host: string | undefined, allowHosts: readonly string[] = []): boolean {
   if (!host) return false;
   let name: string;
   try {
@@ -525,7 +552,7 @@ export function isLocalHost(host: string | undefined): boolean {
   if (name.endsWith(".")) name = name.slice(0, -1);
   const own = hostname().toLowerCase().replace(/\.local$/, "");
   return name === "localhost" || name.endsWith(".localhost") || name === own || name === `${own}.local` ||
-    /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.startsWith("[");
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.startsWith("[") || allowHosts.includes(name);
 }
 
 /**
@@ -533,9 +560,9 @@ export function isLocalHost(host: string | undefined): boolean {
  * this computer. Changes also need a JSON body, which browsers only send cross-origin after
  * asking first, and, when the browser says where they come from, the page's own origin.
  */
-function refusal(req: IncomingMessage): string | null {
+function refusal(req: IncomingMessage, allowHosts: readonly string[]): string | null {
   const host = req.headers.host;
-  if (!isLocalHost(host)) return "unknown host";
+  if (!isLocalHost(host, allowHosts)) return "unknown host";
   if (req.method !== "POST") return null;
   const origin = req.headers.origin;
   if (origin !== undefined) {
@@ -558,10 +585,15 @@ export interface ServerOptions {
   feed?: ChangeFeed;
   /** What is known about the agent, for the line in the page's list of changes. */
   agent?: AgentStatus;
+  /** More host names the page may be opened by, from --allow-host (see allowedHostName). */
+  allowHosts?: readonly string[];
 }
 
-export function createInplaceServer(doc: Document, { feed, agent = new AgentStatus() }: ServerOptions = {}): Server {
-  const rootDir = dirname(resolve(doc.path));
+export function createInplaceServer(
+  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [] }: ServerOptions = {},
+): Server {
+  // Where the real file is, with the images and stylesheets it loads, even when it was opened through a link.
+  const rootDir = dirname(doc.file);
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
   const editorScript = readFileSync(join(STATIC_DIR, "editor.js"));
@@ -738,15 +770,22 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     });
   };
 
+  // Files next to the document, such as its images and stylesheets. Not hidden files or folders
+  // (.env, .git), nothing a link leads to outside the folder, and only the kinds of file pages load.
+  const hidden = (rel: string) => rel.split(sep).some((part) => part.startsWith("."));
   const staticFile = (path: string, res: ServerResponse) => {
+    const notFound = () => send(res, 404, "not found", "text/plain");
     const target = resolve(rootDir, "." + path);
     const rel = relative(rootDir, target);
-    if (rel.startsWith("..") || rel.split(sep).includes("..")) return send(res, 404, "not found", "text/plain");
+    const type = MIME[extname(target).toLowerCase()];
+    if (!rel || hidden(rel) || !type) return notFound();
     try {
-      if (!statSync(target).isFile()) throw new Error();
-      send(res, 200, readFileSync(target), MIME[extname(target).toLowerCase()] ?? "application/octet-stream");
+      const realRoot = realpathSync(rootDir);
+      const realRel = relative(realRoot, realpathSync(target));
+      if (!realRel || isAbsolute(realRel) || hidden(realRel) || !statSync(target).isFile()) return notFound();
+      send(res, 200, readFileSync(target), type);
     } catch {
-      send(res, 404, "not found", "text/plain");
+      notFound();
     }
   };
 
@@ -755,7 +794,7 @@ export function createInplaceServer(doc: Document, { feed, agent = new AgentStat
     const path = decodeURIComponent(url.pathname);
     Promise.resolve()
       .then(() => {
-        const refused = refusal(req);
+        const refused = refusal(req, allowHosts);
         if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
