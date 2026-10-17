@@ -1,6 +1,7 @@
-// Comments the user leaves on the page, kept outside the document until the agent has
-// dealt with them. Each change is also a change line, so the agent hears about
-// comments every way it hears about edits.
+// Comments on the page, kept outside the document until they've been dealt with. Most are
+// the user's requests to the agent; the agent can also leave its own, for the user to answer
+// or dismiss. Each change is also a change line, so the agent hears about comments every
+// way it hears about edits.
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -12,6 +13,9 @@ export interface Comment {
   prefix?: string;
   suffix?: string;
   text: string;
+  by?: "agent"; // left by the agent; without it, by the user
+  answer?: string; // the user's answer to the agent's comment
+  dismissed?: boolean; // the user closed the agent's comment without asking for anything
   status: "open" | "done";
   created: string; // ISO time
   resolved?: string;
@@ -19,6 +23,7 @@ export interface Comment {
 }
 
 export class CommentNotFound extends Error {}
+export class NotTheirs extends Error {}
 export class EmptyComment extends Error {
   constructor() {
     super("the comment is empty");
@@ -61,22 +66,38 @@ export class CommentStore {
     return comment;
   }
 
-  add(fields: { id: string; text: string; quote?: string; prefix?: string; suffix?: string }): Comment {
+  add(fields: { id: string; text: string; quote?: string; prefix?: string; suffix?: string; by?: "agent" }): Comment {
     const text = fields.text.trim();
     if (!text) throw new EmptyComment();
     const quote = fields.quote?.trim() ? fields.quote : undefined;
     const comment: Comment = {
       n: ++this.last, id: fields.id, ...(quote ? { quote, prefix: fields.prefix ?? "", suffix: fields.suffix ?? "" } : {}),
-      text, status: "open", created: new Date().toISOString(),
+      text, ...(fields.by ? { by: fields.by } : {}), status: "open", created: new Date().toISOString(),
     };
     this.comments.push(comment);
     this.save();
-    this.log(`${time()} comment #${comment.n} on ${comment.id}${quote ? ` at ${quoted(quote, 80)}` : ""}: ${quoted(text, TEXT_MAX)}`, true);
+    const by = comment.by ? " by the agent" : "";
+    this.log(`${time()} comment #${comment.n}${by} on ${comment.id}${quote ? ` at ${quoted(quote, 80)}` : ""}: ${quoted(text, TEXT_MAX)}`, !comment.by);
+    return comment;
+  }
+
+  /** The user's comment, which only the user changes. */
+  private usersComment(n: number): Comment {
+    const comment = this.get(n);
+    if (comment.by) throw new NotTheirs(`comment #${n} is the agent's`);
+    return comment;
+  }
+
+  /** The agent's comment, still open, for the user to answer or dismiss. */
+  private openAgentComment(n: number): Comment {
+    const comment = this.get(n);
+    if (!comment.by) throw new NotTheirs(`comment #${n} is the user's`);
+    if (comment.status !== "open") throw new NotTheirs(`comment #${n} is already done`);
     return comment;
   }
 
   edit(n: number, text: string): Comment {
-    const comment = this.get(n);
+    const comment = this.usersComment(n);
     if (!text.trim()) throw new EmptyComment();
     if (comment.text === text.trim()) return comment;
     comment.text = text.trim();
@@ -86,10 +107,32 @@ export class CommentStore {
   }
 
   delete(n: number): void {
-    this.get(n);
+    this.usersComment(n);
     this.comments = this.comments.filter((c) => c.n !== n);
     this.save();
     this.log(`${time()} comment #${n} deleted`, true);
+  }
+
+  /** The user answers the agent's comment; the agent then acts on the answer and resolves it. */
+  answer(n: number, text: string): Comment {
+    const comment = this.openAgentComment(n);
+    if (!text.trim()) throw new EmptyComment();
+    if (comment.answer === text.trim()) return comment;
+    comment.answer = text.trim();
+    this.save();
+    this.log(`${time()} comment #${n} answered by the user: ${quoted(comment.answer, TEXT_MAX)}`, true);
+    return comment;
+  }
+
+  /** The user closes the agent's comment without asking for anything. */
+  dismiss(n: number): Comment {
+    const comment = this.openAgentComment(n);
+    comment.status = "done";
+    comment.dismissed = true;
+    comment.resolved = new Date().toISOString();
+    this.save();
+    this.log(`${time()} comment #${n} dismissed by the user`, true);
+    return comment;
   }
 
   /** The agent has dealt with the comment, with an optional note for the user. */

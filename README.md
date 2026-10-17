@@ -88,6 +88,8 @@ The commented text gets a yellow highlight and the element a small numbered mark
 
 Comments are kept outside your document, in a file in the system's temporary folder, so they survive a restart of inplace and never end up in the HTML. They reach the agent the same way your edits do (see below), and it marks them done with `inplace resolve` or the `resolve_comment` tool.
 
+The agent can comment too. When it notices something that's for you to decide, such as a figure that doesn't match the project's data or a claim its sources don't back up, it leaves a comment instead of changing your text. Its comments have a blue highlight and marker, and a short notice tells you when one arrives. Answer one to tell the agent what to do, or dismiss it if nothing needs to change; either way the agent finds out.
+
 This works in any browser, also on a tablet or for other people on your network. If your agent's own browser has a comment tool, as Claude's and Codex's do, you can keep using that too.
 
 ## What inplace changes in your file
@@ -138,7 +140,7 @@ An agent normally reads these lines only when it next does something: when you l
 
 ### Running inplace as an MCP server for Claude Code
 
-`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, `get_comments` and `resolve_comment` list your comments and mark them done, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
+`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, `get_comments` and `resolve_comment` list your comments and mark them done, `add_comment` leaves a comment of the agent's own, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
 
 The server is also a Claude Code [channel](https://code.claude.com/docs/en/channels): each time you pause, it sends the session one message with that burst of changes, and Claude reacts even if it's sitting idle. Unlike a Monitor watch, this doesn't expire after 30 minutes.
 
@@ -157,7 +159,7 @@ Some things to know before you rely on it:
 - Channels are a research preview and need Claude Code 2.1.80 or newer. Team and Enterprise organizations have to enable them first.
 - inplace isn't on Claude Code's list of approved channels, so it only works with `--dangerously-load-development-channels`. Claude Code shows a warning each time you start it this way; choose **I am using this for local development**. The flag is ignored in non-interactive runs (`claude -p`).
 - Started without the flag, the tools still work, but no messages arrive while Claude is idle. It sees your edits through `get_edits` when it next does something.
-- Anyone who can open the page can type into it and comment on it, and what they write reaches Claude. inplace marks typed text as document content, not instructions, and tells Claude to treat comments as requests to change the document and nothing else, never to run commands, read other files or send anything anywhere. Still, only share the page on your network (see `--host` below) with people you trust.
+- Anyone who can open the page can type into it and comment on it, and what they write reaches Claude. inplace marks typed text as document content, not instructions, and tells Claude to treat comments as requests to change the document and nothing else: it may read the project's files to carry one out, but a comment alone never gets it to change other files, run commands or send anything anywhere. Still, only share the page on your network (see `--host` below) with people you trust.
 
 `--pause` and `--log` work as below; add them after `mcp` in the `claude mcp add` command. In this mode the change lines go to standard error and the log file, because standard output carries the MCP messages.
 
@@ -214,6 +216,7 @@ inplace <file.html> [--port 8765] [--host 127.0.0.1] [--no-write-ids]
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
+inplace comment <data-id> <text> [--quote <text>] [--port 8765]
 inplace guide
 inplace mcp [--pause 5] [--log <file>]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 5] [--log <file>]
@@ -231,12 +234,13 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--pause 
 | `--after` | where the last wait stopped | With `wait`: return the changes after this line number, the `next` that the previous `inplace wait` printed. |
 | `--all` | off | With `comments`: also list comments already marked done. |
 | `--reply` | none | With `resolve`: a short note shown under the comment on the page. |
+| `--quote` | none | With `comment`: put the comment on these words inside the element rather than on the whole element. |
 | `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
 | `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
 
 `inplace guide` prints the instructions an agent needs to work on a document with you.
 
-`inplace comments` prints the open comments left on the page as JSON, and `inplace resolve <n>` marks comment `n` as done, both through the inplace already running on `--port`.
+`inplace comments` prints the open comments left on the page as JSON, `inplace resolve <n>` marks comment `n` as done, and `inplace comment <data-id> <text>` leaves the agent's own comment on that element, all through the inplace already running on `--port`.
 
 `inplace wait` waits until you pause editing in the inplace already running on `--port`, then prints that pause's change lines as JSON and exits.
 

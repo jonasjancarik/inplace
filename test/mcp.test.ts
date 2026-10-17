@@ -68,7 +68,7 @@ test("serves a document through MCP tools and sends one channel event per pause"
 
     const { result } = await server.request("tools/list");
     assert.deepEqual(result.tools.map((t: { name: string }) => t.name),
-      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "close_document"]);
+      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "add_comment", "close_document"]);
 
     assert.equal((await server.tool("get_edits")).text, "No document is open.");
     const missing = await server.tool("open_document", { path: join(dir, "nope.html") });
@@ -167,6 +167,15 @@ test("get_comments lists the page's comments and resolve_comment marks them done
     assert.equal(all[0].status, "done");
     assert.equal(all[0].reply, "Oaks and limes.");
     assert.match((await server.tool("get_edits")).text, /comment #1 marked done by the agent: "Oaks and limes\."/);
+
+    assert.equal((await server.tool("add_comment", { id: "p-1", text: "Ten or twelve?", quote: "Ten" })).text, "Added comment #2 on p-1.");
+    assert.ok((await server.tool("add_comment", { id: "p-1", text: "x", quote: "Eleven" })).isError);
+    assert.ok((await server.tool("add_comment", { id: "p-7", text: "x" })).isError);
+    await post(url, "comment", { action: "answer", n: 2, text: "Twelve." });
+    assert.match((await server.tool("wait_for_edits", { timeout_seconds: 5 })).text,
+      /comment #2 answered by the user: "Twelve\."\n.*paused after 1 change: comment #2$/);
+    const mine = JSON.parse((await server.tool("get_comments")).text);
+    assert.deepEqual(mine.map((c: Record<string, unknown>) => [c.n, c.by, c.quote, c.answer]), [[2, "agent", "Ten", "Twelve."]]);
   } finally {
     await server.stop();
   }
