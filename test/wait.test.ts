@@ -10,8 +10,9 @@ import { ChangeFeed } from "../src/wait.js";
 
 const CLI = resolve(import.meta.dirname, "..", "src", "cli.js");
 
+// Numbered from 0 here; inplace numbers them from the time it started.
 test("numbers the lines and answers straight away when a pause is already there", async () => {
-  const feed = new ChangeFeed();
+  const feed = new ChangeFeed(500, 0);
   feed.add("16:34:18 edited p-1");
   assert.equal(feed.latest, 1);
   assert.equal(feed.take(0), null, "no pause yet");
@@ -23,7 +24,7 @@ test("numbers the lines and answers straight away when a pause is already there"
 });
 
 test("a wait resolves at the next pause, and with null after its timeout", async () => {
-  const feed = new ChangeFeed();
+  const feed = new ChangeFeed(500, 0);
   const waiting = feed.wait(0, 5000);
   feed.add("edited p-1");
   feed.add("paused after 1 change", true);
@@ -36,11 +37,32 @@ test("a wait resolves at the next pause, and with null after its timeout", async
 });
 
 test("says so when older lines were dropped", () => {
-  const feed = new ChangeFeed(2);
+  const feed = new ChangeFeed(2, 0);
   for (const line of ["a", "b", "c"]) feed.add(line);
   feed.add("paused", true);
   assert.deepEqual(feed.take(0)!.lines, ["(older changes are no longer kept here; read the document to catch up)", "c", "paused"]);
   assert.deepEqual(feed.take(2)!.lines, ["c", "paused"]);
+});
+
+test("a number from before inplace restarted gets everything since the restart, and says so", () => {
+  const RESTARTED = "(inplace restarted since your last wait, so changes from before the restart may be missing; read the document to catch up)";
+  const old = new ChangeFeed(500, 1000);
+  old.add("edited p-1");
+  old.add("paused after 1 change", true);
+  const { next } = old.take(0)!;
+
+  const feed = new ChangeFeed(500, 2000);
+  feed.add("edited p-2");
+  assert.equal(feed.take(next), null, "no pause yet");
+  feed.add("paused after 1 change", true);
+  assert.deepEqual(feed.take(next), { next: 2002, lines: [RESTARTED, "edited p-2", "paused after 1 change"] });
+  feed.add("edited p-3");
+  feed.add("paused after 1 change", true);
+  assert.deepEqual(feed.take(next)!.lines, [RESTARTED, "edited p-2", "paused after 1 change", "edited p-3", "paused after 1 change"],
+    "the first pause isn't skipped once the new feed has more lines than the old one");
+  assert.equal(feed.take(9999)!.lines[0], RESTARTED, "a number this feed hasn't reached yet");
+  assert.equal(feed.take(0)!.lines[0], "edited p-2", "0 means from the start, with nothing to say about it");
+  assert.equal(feed.take(2002)!.lines[0], "edited p-3", "its own numbers carry on as usual");
 });
 
 function freePort(): Promise<number> {
@@ -101,6 +123,48 @@ test("inplace wait returns each pause's lines once, and times out when nothing h
     // Browsers can't hold waits open.
     const res = await fetch(`http://localhost:${port}/__inplace/wait?timeout=0`, { headers: { origin: "https://evil.example" } });
     assert.equal(res.status, 403);
+  } finally {
+    server.kill();
+  }
+});
+
+test("inplace wait --after carries on after inplace restarts, from the restart", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-restart-"));
+  const path = join(dir, "doc.html");
+  writeFileSync(path, '<html><body><p data-id="p-1">Ten trees</p></body></html>');
+  const port = await freePort();
+  const start = async () => {
+    const proc = spawn(process.execPath, [CLI, path, "--port", String(port), "--pause", "0.3"], { stdio: ["ignore", "pipe", "inherit"] });
+    await new Promise<void>((ok) => proc.stdout.on("data", (d) => String(d).includes("localhost") && ok()));
+    return proc;
+  };
+  const save = (old: string, next: string) => fetch(`http://localhost:${port}/__inplace/save`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "p-1", old, new: next }),
+  });
+  let server = await start();
+  try {
+    await save("Ten trees", "Twelve trees");
+    const before = JSON.parse((await run(["wait", "--port", String(port), "--timeout", "5"])).out);
+    assert.equal(before.status, "pause");
+
+    server.kill();
+    await new Promise((r) => server.on("close", r));
+    server = await start();
+    // The new inplace has as many lines as the old one had when the agent last waited.
+    await save("Twelve trees", "Twelve oaks");
+    await new Promise((r) => setTimeout(r, 700));
+    const after = await run(["wait", "--port", String(port), "--timeout", "2", "--after", String(before.next)]);
+    assert.equal(after.code, 0, "returns the pause instead of waiting for more lines than the old inplace had");
+    const reply = JSON.parse(after.out);
+    assert.match(reply.lines[0], /^\(inplace restarted since your last wait/);
+    assert.deepEqual(reply.lines.slice(1).map((l: string) => l.replace(/^\S+ /, "")),
+      ['edited p-1: "Twelve trees" → "Twelve oaks"', "paused after 1 change: edited p-1"]);
+
+    // From then on, its next carries on as usual.
+    await save("Twelve oaks", "Twelve limes");
+    const third = JSON.parse((await run(["wait", "--port", String(port), "--timeout", "5", "--after", String(reply.next)])).out);
+    assert.deepEqual(third.lines.map((l: string) => l.replace(/^\S+ /, "")),
+      ['edited p-1: "Twelve oaks" → "Twelve limes"', "paused after 1 change: edited p-1"]);
   } finally {
     server.kill();
   }

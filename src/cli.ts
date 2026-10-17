@@ -44,7 +44,8 @@ that pause's change lines and the number to pass as --after next time, as JSON, 
 --after, it carries on from where the previous wait stopped.
 
   --timeout <s>     give up after this many seconds: print {"status":"timeout"} and exit with code 3
-  --after <n>       return the lines after line n (the "next" a previous wait printed)
+  --after <n>       return the lines after line n (the "next" a previous wait printed); if
+                    inplace has restarted since, the lines since the restart
 
 inplace comments prints the open comments the user left on the page, as JSON (--all: also
 those marked done). inplace resolve marks comment n as done once you've dealt with it; --reply

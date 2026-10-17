@@ -196,7 +196,7 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-
 | `--log` | none | Also append every change line to this file. |
 | `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
 | `--timeout` | none | With `wait`: give up after this many seconds, print `{"status":"timeout"}` and exit with code 3. |
-| `--after` | where the last wait stopped | With `wait`: return the changes after this line number, the `next` that the previous `inplace wait` printed. |
+| `--after` | where the last wait stopped | With `wait`: return the changes after this line number, the `next` that the previous `inplace wait` printed. If inplace has restarted since, it returns the changes since the restart, with a line saying so. |
 | `--all` | off | With `comments`: also list comments already marked done. |
 | `--reply` | none | With `resolve`: a short note shown under the comment on the page. |
 | `--quote` | none | With `comment`: put the comment on these words inside the element rather than on the whole element. |

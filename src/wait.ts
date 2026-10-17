@@ -11,17 +11,24 @@ export interface PauseBatch {
  * The most recent change lines, each with an increasing number, and which of them are
  * `paused after` lines. A wait passes the number it got last time, so a pause that
  * comes between two waits is never missed and lines are never repeated.
+ *
+ * The numbers count on from the time in milliseconds when the feed started, far faster
+ * than lines come, so a number handed out before inplace restarted is lower than any this
+ * feed hands out, and a wait that passes one gets everything since the restart instead of
+ * waiting for the count to catch up.
  */
 export class ChangeFeed {
   private entries: { n: number; line: string; pause: boolean }[] = [];
-  private last = 0;
+  private last: number;
   private waiters = new Set<() => void>();
-  /** The `next` handed out most recently, where a wait without `after` continues from. */
+  /** The `next` handed out most recently, where a wait without `after` continues from (0: from the start). */
   delivered = 0;
 
-  constructor(readonly keep = 500) {}
+  constructor(readonly keep = 500, readonly start = Date.now()) {
+    this.last = start;
+  }
 
-  /** The number of the newest line, or 0 before the first. */
+  /** The number of the newest line, or `start` before the first. */
   get latest(): number {
     return this.last;
   }
@@ -32,14 +39,23 @@ export class ChangeFeed {
     if (pause) for (const wake of [...this.waiters]) wake();
   }
 
-  /** The lines after `after` up to the latest pause among them, or null if there's no pause yet. */
+  /**
+   * The lines after `after` (0: from the start) up to the latest pause among them, or null
+   * if there's no pause yet.
+   */
   take(after: number): PauseBatch | null {
-    const newer = this.entries.filter((e) => e.n > after);
+    // A number this feed never handed out comes from before inplace restarted (or from
+    // another inplace): start from this feed's first line, and say so.
+    const restarted = after !== 0 && (after < this.start || after > this.last);
+    const from = after === 0 || restarted ? this.start : after;
+    const newer = this.entries.filter((e) => e.n > from);
     const end = newer.findLastIndex((e) => e.pause);
     if (end === -1) return null;
     const lines = newer.slice(0, end + 1).map((e) => e.line);
-    // Only the last `keep` lines are kept; say so rather than pretend nothing happened.
-    if (this.entries.length && this.entries[0].n > after + 1) {
+    if (restarted) {
+      lines.unshift("(inplace restarted since your last wait, so changes from before the restart may be missing; read the document to catch up)");
+    } else if (this.entries.length && this.entries[0].n > from + 1) {
+      // Only the last `keep` lines are kept; say so rather than pretend nothing happened.
       lines.unshift("(older changes are no longer kept here; read the document to catch up)");
     }
     this.delivered = Math.max(this.delivered, newer[end].n);
