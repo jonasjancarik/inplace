@@ -271,6 +271,8 @@ npm test
 
 `npm link` puts your local checkout on the PATH as `inplace`. To use the skill from a checkout, link it into your agent's skills folder, e.g. `ln -s "$PWD/skills/inplace" ~/.claude/skills/inplace`.
 
+What changed in each version is listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT
