@@ -9,6 +9,13 @@
     "url": "git+https://github.com/jonasjancarik/inplace.git"
   },
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "inplace": "dist/src/cli.js"
   },

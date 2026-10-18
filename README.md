@@ -249,6 +249,10 @@ The script that does the editing in the page lives in `src/editor/`. Its files a
 
 `npm link` puts your local checkout on the PATH as `inplace`. To use the skill from a checkout, link it into your agent's skills folder, e.g. `ln -s "$PWD/skills/inplace" ~/.claude/skills/inplace`.
 
+### Using inplace inside another server
+
+inplace can also run inside your own Node.js server, for example to keep documents in a database instead of files. Import it as a package (`import { Document, createInplaceHandler } from "inplace-html"`), give `Document` a `DocumentStore` that reads and writes the document and the comments wherever you keep them (`MemoryStore` is a ready-made one with callbacks for saving), and pass the requests for that document to `createInplaceHandler(doc, { hostAllowed })`. The page's own requests go to paths starting with `/__inplace/`, so serve each document at the root of its own origin, such as a subdomain per document. That also keeps one document's scripts away from the others and from your app. `hostAllowed` decides which `Host` names may reach the document, in place of the check for names of this computer. Change lines reach the `log` callback you give `Document`, as they do for the CLI, and `PauseWatcher` turns them into pauses.
+
 What changed in each version is listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
