@@ -150,7 +150,9 @@ test("jevTagger gives up quietly on errors and timeouts, warning once", async ()
 
   const slow = fakeFetch(() => new Promise<Response>(() => {}));
   const hanging = (async (_url: string, init: RequestInit) => {
-    await new Promise((_, fail) => init.signal!.addEventListener("abort", () => fail(init.signal!.reason)));
+    // AbortSignal.timeout doesn't keep Node 22 alive, so hold it open as a real request would.
+    const open = setTimeout(() => {}, 5000);
+    await new Promise((_, fail) => init.signal!.addEventListener("abort", () => (clearTimeout(open), fail(init.signal!.reason))));
     return slow.fetch("", init);
   }) as unknown as typeof globalThis.fetch;
   const timeoutWarnings: string[] = [];
