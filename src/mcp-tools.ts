@@ -12,7 +12,7 @@ import { ChangeFeed } from "./wait.js";
 export interface McpDocument {
   doc: Document;
   /** The host's change lines and pauses. */
-  feed?: ChangeFeed;
+  feed: ChangeFeed;
   /** So the page shows that an agent is waiting. */
   agent: AgentStatus;
   /** Shown to the agent in instructions and results. */
@@ -141,17 +141,48 @@ export const str = (args: Record<string, unknown>, key: string): string => {
   return args[key] as string;
 };
 
-/** The tools on one document. */
+export interface ToolsOptions {
+  /** Stops waits when the document is closed. */
+  closed?: AbortSignal;
+  /** False when pauses are turned off, so wait_for_edits has nothing to wait for (default true). */
+  canWait?: boolean;
+  /**
+   * Where a client's first get_edits starts: "start" is everything the feed holds (right for a
+   * document opened for this agent), "now" only what changes after its first call (right for a
+   * document that has been running for a while).
+   */
+  join?: "start" | "now";
+}
+
+/** The most clients remembered at once; the one idle longest is forgotten first. */
+const MAX_CLIENTS = 100;
+
+/**
+ * The tools on one document. Each client (an MCP session) has its own place in the change
+ * lines, so two agents on one document each get every change from get_edits and wait_for_edits.
+ */
 export class DocumentTools {
-  unread: string[] = [];
-  private seen = 0;
+  /** For each client, the number of the last change line it has had. */
+  private seen = new Map<string, number>();
 
-  constructor(readonly target: McpDocument, private readonly closed?: AbortSignal) {}
+  constructor(readonly target: McpDocument, private readonly options: ToolsOptions = {}) {}
 
-  edits(): string {
-    const lines = this.unread;
-    this.unread = [];
-    this.seen = this.target.feed?.latest ?? 0;
+  private position(client: string): number {
+    const at = this.seen.get(client) ?? (this.options.join === "now" ? this.target.feed.latest : this.target.feed.start);
+    this.seen.delete(client);
+    this.seen.set(client, at);
+    if (this.seen.size > MAX_CLIENTS) this.seen.delete(this.seen.keys().next().value!);
+    return at;
+  }
+
+  /** Forget a client, such as when its MCP session ends. */
+  leave(client: string): void {
+    this.seen.delete(client);
+  }
+
+  edits(client: string): string {
+    const { next, lines } = this.target.feed.since(this.position(client));
+    this.seen.set(client, next);
     this.target.agent.pulled();
     return lines.length ? lines.join("\n") : "No changes since the last call.";
   }
@@ -190,19 +221,18 @@ export class DocumentTools {
     return `Added comment #${n} on ${id}.`;
   }
 
-  async waitForEdits(args: Record<string, unknown>): Promise<string> {
+  async waitForEdits(args: Record<string, unknown>, client: string, gone?: AbortSignal): Promise<string> {
     const { feed, agent } = this.target;
-    if (!feed) throw new Error("Pauses are turned off (--pause 0), so there are none to wait for. Use get_edits.");
+    if (this.options.canWait === false) throw new Error("Pauses are turned off (--pause 0), so there are none to wait for. Use get_edits.");
     const seconds = args.timeout_seconds === undefined ? 50 : Number(args.timeout_seconds);
     if (!(seconds >= 0)) throw new Error("timeout_seconds must be a number of seconds");
     agent.waitStarted();
-    const batch = await feed.wait(this.seen, seconds * 1000, this.closed);
+    const signal = gone && this.options.closed ? AbortSignal.any([gone, this.options.closed]) : gone ?? this.options.closed;
+    const batch = await feed.wait(this.position(client), seconds * 1000, signal);
     agent.waitEnded(batch !== null);
-    if (this.closed?.aborted) return "The document was closed.";
+    if (this.options.closed?.aborted) return "The document was closed.";
     if (!batch) return "timeout: the user hasn't paused since the last call. Call wait_for_edits again to keep waiting.";
-    this.seen = batch.next;
-    // get_edits then returns only what came after this pause. unread is the tail of the feed's lines.
-    this.unread = this.unread.slice(Math.max(0, this.unread.length - (feed.latest - batch.next)));
+    this.seen.set(client, batch.next); // get_edits then returns only what came after this pause
     return batch.lines.join("\n");
   }
 
@@ -234,10 +264,10 @@ export class DocumentTools {
   }
 
   /** Runs the tool of this name, or undefined when it isn't one of these. */
-  call(name: string, args: Record<string, unknown>): string | Promise<string> | undefined {
+  call(name: string, args: Record<string, unknown>, client = "", gone?: AbortSignal): string | Promise<string> | undefined {
     switch (name) {
-      case "get_edits": return this.edits();
-      case "wait_for_edits": return this.waitForEdits(args);
+      case "get_edits": return this.edits(client);
+      case "wait_for_edits": return this.waitForEdits(args, client, gone);
       case "get_comments": return this.comments(args);
       case "resolve_comment": return this.resolveComment(args);
       case "add_comment": return this.addComment(args);

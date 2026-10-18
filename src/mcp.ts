@@ -122,15 +122,14 @@ class Session {
     const host = typeof args.host === "string" ? args.host : "127.0.0.1";
     await this.close();
 
-    const feed = this.pauseMs ? new ChangeFeed() : undefined;
+    const feed = new ChangeFeed();
     // A log file, or channel events sent to a client that didn't say it takes them, may still be read.
     const agent = new AgentStatus({
       channel: this.channel, unseenReaders: this.logFile || (this.notify !== undefined && !this.channel),
     });
     const record = (line: string, pause = false) => {
       this.log(line);
-      this.tools?.unread.push(line);
-      feed?.add(line, pause);
+      feed.add(line, pause);
     };
     const pauses = this.pauseMs
       ? new PauseWatcher(this.pauseMs, (summary, lines) => {
@@ -151,7 +150,7 @@ class Session {
       }
     });
     if (this.tagger) doc.useTagger(this.tagger);
-    const http = createInplaceServer(doc, { feed, agent, allowHosts: this.allowHosts });
+    const http = createInplaceServer(doc, { feed: this.pauseMs ? feed : undefined, agent, allowHosts: this.allowHosts });
     await new Promise<void>((ok, fail) => {
       http.once("error", (e: NodeJS.ErrnoException) =>
         fail(new Error(e.code === "EADDRINUSE" ? `port ${port} is already in use; pass another port, or 0` : e.message)));
@@ -162,7 +161,8 @@ class Session {
     this.doc = doc;
     this.http = http;
     this.pauses = pauses;
-    this.tools = new DocumentTools({ doc, feed, agent, name: path, url: urls[0] }, this.closed.signal);
+    this.tools = new DocumentTools({ doc, feed, agent, name: path, url: urls[0] },
+      { closed: this.closed.signal, canWait: this.pauseMs > 0 });
     this.poll = setInterval(() => doc.poll(), 250);
     this.log(`Editing ${path} at ${urls.join(" ")}`);
     if (this.tagger) this.log("Comments are tagged by Jev (TypeSafe AI), which receives each comment and the text of the element it's on.");
