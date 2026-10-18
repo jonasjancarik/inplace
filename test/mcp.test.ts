@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
+import { AGENT } from "../src/history.js";
 
 import { pauseEvent } from "../src/mcp.js";
 
@@ -175,7 +176,7 @@ test("get_comments lists the page's comments and resolve_comment marks them done
     assert.match((await server.tool("wait_for_edits", { timeout_seconds: 5 })).text,
       /comment #2 answered by the user: "Twelve\."\n.*paused after 1 change: comment #2$/);
     const mine = JSON.parse((await server.tool("get_comments")).text);
-    assert.deepEqual(mine.map((c: Record<string, unknown>) => [c.n, c.by, c.quote, c.answer]), [[2, "agent", "Ten", "Twelve."]]);
+    assert.deepEqual(mine.map((c: Record<string, unknown>) => [c.n, c.by, c.quote, c.answer]), [[2, AGENT, "Ten", "Twelve."]]);
   } finally {
     await server.stop();
   }

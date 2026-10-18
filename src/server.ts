@@ -12,11 +12,12 @@ import {
   patchBlock, putChunk, removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
+import { Authorship } from "./authorship.js";
 import { readBuildInfo } from "./build-info.js";
 import { buildContext, findQuote } from "./anchor.js";
 import { BadOptions, type Comment, CommentNotFound, CommentStore, type CommentTagger, EmptyComment, NotTheirs } from "./comments.js";
 import { readEditorScript } from "./editor-script.js";
-import { type Author, copyOf, diffBlocks, History, type Place, placeOf } from "./history.js";
+import { AGENT, type Author, copyOf, diffBlocks, History, type Place, placeOf, YOU } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
 import { type DocumentStore, FileStore } from "./store.js";
@@ -83,6 +84,24 @@ const time = () => new Date().toTimeString().slice(0, 8);
 const sameText = (a: string, b: string) => squash(a) === squash(b);
 const plain = (html: string) => squash(html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " "));
 
+/** A person a host has named, from `ServerOptions.author`. */
+export interface Person {
+  id: string;
+  name: string;
+}
+
+/** What a host can say about its own agent when it calls the methods an agent uses. */
+export interface AgentName {
+  id?: string;
+  name?: string;
+}
+
+const personAuthor = (who?: Person): Author => (who ? { kind: "person", id: who.id, name: who.name } : YOU);
+const agentAuthor = (by?: AgentName): Author =>
+  by && (by.id || by.name) ? { kind: "agent", ...(by.id ? { id: by.id } : {}), ...(by.name ? { name: by.name } : {}) } : AGENT;
+/** ` (Jana)` after an id in a change line, so the agent can tell people apart; never longer than a name should be. */
+const named = (who?: Person) => (who?.name ? ` (${squash(who.name).slice(0, 40)})` : "");
+
 /** A user's edit that couldn't be saved because the block had changed in the file in the meantime. */
 export interface StashEntry {
   n: number;
@@ -135,6 +154,8 @@ export class Document {
   private last: string | null = null;
   /** The user's recent moves, additions, removals and heading changes, oldest first, so they can be undone. */
   private undos: UndoStep[] = [];
+  /** Who wrote each block last, kept beside the stash. */
+  private authors!: Authorship;
   /** Comments made on the page, kept beside the stash. */
   readonly comments: CommentStore;
   /** Where the document, the stash and the comments are saved. */
@@ -168,7 +189,7 @@ export class Document {
     } catch {
       this.stashed = [];
     }
-    this.refresh();
+    this.authors = new Authorship(store.loadSide("authors"), this.refresh());
   }
 
   private read(): string {
@@ -179,14 +200,33 @@ export class Document {
     this.store.write(text);
     this.stamp = this.statStamp();
     if (by) this.remember(text, by);
-    else this.last = text;
+    else {
+      this.last = text;
+      if (this.authors.refit(text)) this.saveAuthors();
+    }
     this.announce(digest(text));
   }
 
   private remember(text: string, by: Author): void {
-    if (this.last !== null && this.last !== text && this.history.add(by, diffBlocks(this.last, text)))
-      for (const listener of this.historyListeners) listener();
+    if (this.last !== null && this.last !== text) {
+      const changes = diffBlocks(this.last, text);
+      if (this.authors.record(changes, by, text)) this.saveAuthors();
+      if (this.history.add(by, changes)) for (const listener of this.historyListeners) listener();
+    }
     this.last = text;
+  }
+
+  private saveAuthors(): void {
+    try {
+      this.store.saveSide("authors", JSON.stringify(this.authors));
+    } catch {
+      // the marks still work in memory
+    }
+  }
+
+  /** Who last wrote each block, for the page's margin marks. */
+  authorMarks() {
+    return this.authors.summary();
   }
 
   onHistoryChange(listener: () => void): () => void {
@@ -217,7 +257,7 @@ export class Document {
     // ids already in place to see them as added blocks.
     if (this.last === null) this.last = text;
     else if (text === this.last) text = this.last;
-    else this.remember(this.writeIds ? assignIds(text).source : text, "agent");
+    else this.remember(this.writeIds ? assignIds(text).source : text, AGENT);
     this.announce(this.versionOf(text));
     return text;
   }
@@ -249,7 +289,7 @@ export class Document {
    * the two edits are merged when they touch different words; otherwise the user's version is
    * set aside in the stash and BlockConflict is thrown.
    */
-  saveBlock(id: string, oldInner: string, newInner: string): { version: string; merged?: true } {
+  saveBlock(id: string, oldInner: string, newInner: string, who?: Person): { version: string; merged?: true } {
     checkNewLinks(oldInner, newInner);
     const text = this.refresh();
     let patched: string;
@@ -261,20 +301,20 @@ export class Document {
       if (merged === null) {
         const n = this.stash(id, newInner, e.current);
         this.log(
-          `${time()} conflict on ${id}: the user and the file both changed it, so the user's version was set aside ` +
+          `${time()} conflict on ${id}${named(who)}: the user and the file both changed it, so the user's version was set aside ` +
           `(stash #${n}). The user wrote ${JSON.stringify(clip(plain(newInner), 400))}; ` +
           `the file has ${JSON.stringify(clip(plain(e.current), 400))}`,
           true, [id],
         );
         throw e;
       }
-      this.write(patchBlock(text, id, e.current, merged), "you");
-      this.log(`${time()} edited ${id}, merged with the file's newer version: ${describeEdit(e.current, merged)}`, true, [id]);
+      this.write(patchBlock(text, id, e.current, merged), personAuthor(who));
+      this.log(`${time()} edited ${id}${named(who)}, merged with the file's newer version: ${describeEdit(e.current, merged)}`, true, [id]);
       return { version: this.version, merged: true };
     }
     if (patched !== text) {
-      this.write(patched, "you");
-      this.log(`${time()} edited ${id}: ${describeEdit(oldInner, newInner)}`, true, [id]);
+      this.write(patched, personAuthor(who));
+      this.log(`${time()} edited ${id}${named(who)}: ${describeEdit(oldInner, newInner)}`, true, [id]);
     }
     return { version: this.version };
   }
@@ -314,7 +354,7 @@ export class Document {
    * Act on a set-aside edit: put the user's version in place of the block's current content
    * ("mine"), add it as a new block right after ("below"), or drop it ("discard").
    */
-  resolveStash(n: number, action: "mine" | "below" | "discard"): void {
+  resolveStash(n: number, action: "mine" | "below" | "discard", who?: Person): void {
     const entry = this.stashed.find((e) => e.n === n);
     if (!entry) throw new BlockNotFound(`stash #${n}`);
     if (action !== "discard") {
@@ -324,11 +364,11 @@ export class Document {
       const current = text.slice(node.openEnd, node.innerEnd);
       if (action === "mine") {
         const patched = patchBlock(text, entry.id, current, entry.mine);
-        if (patched !== text) this.write(patched, "you");
+        if (patched !== text) this.write(patched, personAuthor(who));
         this.log(`${time()} edited ${entry.id}, using the user's set-aside version: ${describeEdit(current, entry.mine)}`, true, [entry.id]);
       } else {
         const inserted = insertBlock(text, entry.id, "after", node.tag, entry.mine);
-        this.write(inserted.source, "you");
+        this.write(inserted.source, personAuthor(who));
         this.log(`${time()} added ${inserted.id} <${node.tag}> after ${entry.id}, with the user's set-aside version: ` +
           JSON.stringify(clip(plain(entry.mine), 200)), true, [inserted.id]);
       }
@@ -342,52 +382,52 @@ export class Document {
     return () => this.stashListeners.delete(listener);
   }
 
-  moveBlock(id: string, target: string, position: "before" | "after"): string {
+  moveBlock(id: string, target: string, position: "before" | "after", who?: Person): string {
     const text = this.refresh();
     const moved = moveBlock(text, id, target, position);
     if (moved !== text) {
-      this.write(moved, "you");
+      this.write(moved, personAuthor(who));
       this.pushUndo({ kind: "move", id, tag: findBlock(parse(text), id)!.tag, before: text, after: moved, place: placeOf(text, id) });
       const parent = findBlock(parse(moved), id)?.parent?.attrs.get("data-id");
-      this.log(`${time()} moved ${id} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true, [id]);
+      this.log(`${time()} moved ${id}${named(who)} ${position} ${target}${parent ? ` (inside ${parent})` : ""}`, true, [id]);
     }
     return this.version;
   }
 
   insertBlock(
-    id: string, position: "before" | "after", tag: string, content: string, split?: { old: string; new: string },
+    id: string, position: "before" | "after", tag: string, content: string, split?: { old: string; new: string }, who?: Person,
   ): { id: string; html: string } {
     // The new element's text comes from the block it was split from.
     if (split) checkNewLinks(split.old, split.new + content);
     else checkNewLinks("", content);
     const text = this.refresh();
     const inserted = insertBlock(text, id, position, tag, content, split);
-    this.write(inserted.source, "you");
+    this.write(inserted.source, personAuthor(who));
     this.pushUndo({ kind: "add", id: inserted.id, tag, before: text, after: inserted.source });
-    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}: ${describeEdit(split.old, split.new)}`, true, [id]);
+    if (split && !sameText(split.old, split.new)) this.log(`${time()} edited ${id}${named(who)}: ${describeEdit(split.old, split.new)}`, true, [id]);
     const what = squash(content) ? `: ${JSON.stringify(clip(squash(content), 200))}` : " (empty)";
-    this.log(`${time()} added ${inserted.id} <${tag}> ${position} ${id}${what}`, true, [inserted.id]);
+    this.log(`${time()} added ${inserted.id}${named(who)} <${tag}> ${position} ${id}${what}`, true, [inserted.id]);
     return { id: inserted.id, html: inserted.html };
   }
 
-  removeBlock(id: string): void {
+  removeBlock(id: string, who?: Person): void {
     const text = this.refresh();
     const removed = removeBlock(text, id);
-    this.write(removed, "you");
+    this.write(removed, personAuthor(who));
     this.pushUndo({
       kind: "remove", id, tag: findBlock(parse(text), id)!.tag, before: text, after: removed, place: placeOf(text, id),
       chunk: cutChunk(text, id),
     });
-    this.log(`${time()} removed ${id}, which the user had emptied`, true);
+    this.log(`${time()} removed ${id}${named(who)}, which the user had emptied`, true);
   }
 
-  retagBlock(id: string, from: string, to: string): string {
+  retagBlock(id: string, from: string, to: string, who?: Person): string {
     const text = this.refresh();
     const retagged = retagBlock(text, id, from, to);
     if (retagged !== text) {
-      this.write(retagged, "you");
+      this.write(retagged, personAuthor(who));
       this.pushUndo({ kind: "retag", id, tag: to, before: text, after: retagged, from, to });
-      this.log(`${time()} changed ${id} from <${from}> to <${to}>`, true, [id]);
+      this.log(`${time()} changed ${id}${named(who)} from <${from}> to <${to}>`, true, [id]);
     }
     return this.version;
   }
@@ -472,14 +512,14 @@ export class Document {
   }
 
   /** Undo the user's latest change of this kind to this element. Throws UndoGone if that's no longer possible. */
-  undo(kind: UndoKind, id: string): string {
+  undo(kind: UndoKind, id: string, who?: Person): string {
     const i = this.undos.findLastIndex((s) => s.kind === kind && s.id === id);
     if (i === -1) throw new UndoGone("This can't be undone any more.");
     const step = this.undos[i];
     const text = this.refresh();
     const { text: reversed, where } = this.reverse(step, text);
     this.undos.splice(i, 1);
-    if (reversed !== text) this.write(reversed, "you");
+    if (reversed !== text) this.write(reversed, personAuthor(who));
     const line = {
       move: `moved ${id} ${where}`,
       add: `removed ${id}, which the user had just added`,
@@ -500,13 +540,13 @@ export class Document {
   }
 
   /** The agent's own comment on the element with this id, or on `quote`, words inside it. */
-  addAgentComment(id: string, text: string, quote?: string, options?: string[]): Comment {
+  addAgentComment(id: string, text: string, quote?: string, options?: string[], by?: AgentName): Comment {
     const plain = elementText(this.load().text, id);
     if (plain === null) throw new BlockNotFound(id);
-    if (!quote?.trim()) return this.comments.add({ id, text, by: "agent", options });
+    if (!quote?.trim()) return this.comments.add({ id, text, by: agentAuthor(by), options });
     const found = findQuote(plain, { quote: quote.trim(), prefix: "", suffix: "" });
     if (!found) throw new QuoteNotFound(`${id} doesn't contain the text ${JSON.stringify(quote.trim())}`);
-    return this.comments.add({ id, text, ...buildContext(plain, found.start, found.end), by: "agent", options });
+    return this.comments.add({ id, text, ...buildContext(plain, found.start, found.end), by: agentAuthor(by), options });
   }
 
   /**
@@ -519,16 +559,16 @@ export class Document {
   }
 
   /** An agent's edit through tools rather than the file; see replaceElement. */
-  replaceElement(id: string, part: "inner" | "outer", expected: string, html: string): void {
+  replaceElement(id: string, part: "inner" | "outer", expected: string, html: string, by?: AgentName): void {
     const text = this.load().text;
     const replaced = replaceElement(text, id, part, expected, html);
     if (replaced === text) return;
-    this.write(replaced, "agent");
+    this.write(replaced, agentAuthor(by));
     this.log(`${time()} the agent replaced ${part === "inner" ? "the inside of " : ""}${id}`, false);
   }
 
   /** Replace `find` with `replace` in the file's source; returns how many were replaced. */
-  findReplace(find: string, replace: string, all: boolean): number {
+  findReplace(find: string, replace: string, all: boolean, by?: AgentName): number {
     if (!find) throw new Error("find is empty");
     const text = this.load().text;
     const count = text.split(find).length - 1;
@@ -536,7 +576,7 @@ export class Document {
     if (count > 1 && !all) throw new Error(`found ${count} times; make find longer so it's unique, or pass all: true`);
     const replaced = all ? text.split(find).join(replace) : text.replace(find, () => replace);
     if (replaced === text) return 0;
-    this.write(replaced, "agent");
+    this.write(replaced, agentAuthor(by));
     this.log(`${time()} the agent replaced ${count} occurrence${count === 1 ? "" : "s"} of ${JSON.stringify(clip(find, 60))}`, false);
     return count;
   }
@@ -644,6 +684,11 @@ export interface ServerOptions {
    * this computer (isLocalHost). For a host that serves inplace under its own domain names.
    */
   hostAllowed?: (host: string | undefined) => boolean;
+  /**
+   * Who sent this request from the page, for the margin marks and the change lines. Left out, or
+   * when it returns undefined, the edit is "you", as when one person runs inplace on their own computer.
+   */
+  author?: (req: IncomingMessage) => Person | undefined;
 }
 
 export function createInplaceServer(doc: Document, options: ServerOptions = {}): Server {
@@ -652,7 +697,7 @@ export function createInplaceServer(doc: Document, options: ServerOptions = {}):
 
 /** The request handler createInplaceServer uses, for a host that runs its own HTTP server. */
 export function createInplaceHandler(
-  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [], hostAllowed }: ServerOptions = {},
+  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [], hostAllowed, author }: ServerOptions = {},
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const hostOk = hostAllowed ?? ((host: string | undefined) => isLocalHost(host, allowHosts));
   // Where the real file is, with the images and stylesheets it loads, even when it was opened through a link.
@@ -664,8 +709,13 @@ export function createInplaceHandler(
   // The page imports the comment anchoring helpers from the same compiled code the server runs.
   const anchorScript = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "anchor.js"), "utf8")
     .replace(/\n\/\/# sourceMappingURL=.*\n?$/, "\n");
+  // Who the host says sent a request; a host that returns something odd is treated as not knowing.
+  const whoSent = (req: IncomingMessage): Person | undefined => {
+    const who = author?.(req);
+    return who && typeof who.id === "string" && typeof who.name === "string" ? { id: who.id, name: who.name } : undefined;
+  };
   doc.onHistoryChange(() => {
-    if (doc.history.entries.at(-1)?.by === "agent") agent.agentWrote();
+    if (doc.history.entries.at(-1)?.by.kind === "agent") agent.agentWrote();
   });
 
   const page = (res: ServerResponse) => {
@@ -723,23 +773,24 @@ export function createInplaceHandler(
     const path = new URL(req.url ?? "/", "http://localhost").pathname.slice(EDITOR_PREFIX.length);
     let apply: (() => string | Record<string, unknown>) | null = null;
     const id = str("id");
+    const who = whoSent(req);
     if (path === "save" && id && str("old") !== null && str("new") !== null) {
-      apply = () => doc.saveBlock(id, str("old")!, str("new")!);
+      apply = () => doc.saveBlock(id, str("old")!, str("new")!, who);
     } else if (path === "move" && id && str("target") && (body.position === "before" || body.position === "after")) {
-      apply = () => doc.moveBlock(id, str("target")!, body.position as "before" | "after");
+      apply = () => doc.moveBlock(id, str("target")!, body.position as "before" | "after", who);
     } else if (path === "retag" && id && str("from") && str("to")) {
-      apply = () => doc.retagBlock(id, str("from")!, str("to")!);
+      apply = () => doc.retagBlock(id, str("from")!, str("to")!, who);
     } else if (path === "insert" && id && str("tag") && str("content") !== null &&
         (body.position === "before" || body.position === "after")) {
       const split = str("old") !== null && str("new") !== null ? { old: str("old")!, new: str("new")! } : undefined;
-      apply = () => doc.insertBlock(id, body.position as "before" | "after", str("tag")!, str("content")!, split);
+      apply = () => doc.insertBlock(id, body.position as "before" | "after", str("tag")!, str("content")!, split, who);
     } else if (path === "undo" && id && ["move", "add", "remove", "retag"].includes(body.kind as string)) {
-      apply = () => doc.undo(body.kind as UndoKind, id);
+      apply = () => doc.undo(body.kind as UndoKind, id, who);
     } else if (path === "remove" && id) {
-      apply = () => (doc.removeBlock(id), {});
+      apply = () => (doc.removeBlock(id, who), {});
     } else if (path === "stash/resolve" && typeof body.n === "number" &&
         (body.action === "mine" || body.action === "below" || body.action === "discard")) {
-      apply = () => (doc.resolveStash(body.n as number, body.action as "mine" | "below" | "discard"), {});
+      apply = () => (doc.resolveStash(body.n as number, body.action as "mine" | "below" | "discard", who), {});
     }
     if (!apply) return json(res, 400, { error: "missing or invalid fields" });
     try {
@@ -772,6 +823,7 @@ export function createInplaceHandler(
     const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : undefined);
     const n = typeof body.n === "number" ? body.n : undefined;
     const comments = doc.comments;
+    const who = whoSent(req);
     try {
       if (body.action === "add" && body.by === "agent" && str("id") && str("text") !== undefined) {
         // Only for agents: otherwise anyone who can open the page could write in the agent's name.
@@ -785,6 +837,7 @@ export function createInplaceHandler(
         doc.source(str("id")); // throws if there's no such element
         const added = comments.add({
           id: str("id")!, text: str("text")!, quote: str("quote"), prefix: str("prefix"), suffix: str("suffix"),
+          ...(who ? { from: { kind: "person", id: who.id, name: who.name } } : {}),
         });
         return json(res, 200, { comment: added });
       }
@@ -884,7 +937,11 @@ export function createInplaceHandler(
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
         if (path === EDITOR_PREFIX + "history") {
           doc.poll();
-          return json(res, 200, { entries: doc.history.entries, revision: doc.history.revision, undoable: doc.undoable() });
+          // `me` is the person asking, so the page can tell "you" from other people.
+          return json(res, 200, {
+            entries: doc.history.entries, revision: doc.history.revision, undoable: doc.undoable(),
+            authors: doc.authorMarks(), ...(whoSent(req) ? { me: whoSent(req)!.id } : {}),
+          });
         }
         return staticFile(path, res);
       })

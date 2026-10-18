@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { diffBlocks, History, plainText } from "../src/history.js";
+import { AGENT, diffBlocks, History, plainText, readAuthor, YOU } from "../src/history.js";
 
 const doc = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
 const BASE = doc(`
@@ -53,8 +53,8 @@ test("a block moved and then removed keeps the place it had first", () => {
   const p1 = `<p data-id="p-1">First paragraph.</p>`;
   const moved = BASE.replace(p1 + "\n", "").replace(`<table`, p1 + "\n<table");
   const history = new History();
-  history.add("you", diffBlocks(BASE, moved));
-  history.add("you", diffBlocks(moved, moved.replace(p1, "")));
+  history.add(YOU, diffBlocks(BASE, moved));
+  history.add(YOU, diffBlocks(moved, moved.replace(p1, "")));
   assert.deepEqual(history.entries[0].changes, [
     { id: "p-1", kind: "removed", tag: "p", before: "First paragraph.", place: { parent: "", prev: "h1-1", next: "p-2" } },
   ]);
@@ -67,22 +67,22 @@ test("nothing is reported when only whitespace between blocks changes", () => {
 test("quick changes by the same author are combined into one entry", () => {
   const history = new History(30_000);
   const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 12, 0, s));
-  history.add("you", [{ id: "p-1", kind: "changed", tag: "p", before: "a", after: "ab" }], t(0));
-  history.add("you", [{ id: "p-1", kind: "changed", tag: "p", before: "ab", after: "abc" }], t(5));
-  history.add("agent", [{ id: "p-2", kind: "added", tag: "p", after: "x" }], t(6));
-  history.add("agent", [{ id: "p-2", kind: "changed", tag: "p", before: "x", after: "xy" }], t(8));
-  history.add("you", [{ id: "p-1", kind: "changed", tag: "p", before: "abc", after: "abcd" }], t(9));
+  history.add(YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "a", after: "ab" }], t(0));
+  history.add(YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "ab", after: "abc" }], t(5));
+  history.add(AGENT, [{ id: "p-2", kind: "added", tag: "p", after: "x" }], t(6));
+  history.add(AGENT, [{ id: "p-2", kind: "changed", tag: "p", before: "x", after: "xy" }], t(8));
+  history.add(YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "abc", after: "abcd" }], t(9));
   assert.deepEqual(history.entries.map((e) => [e.by, e.changes]), [
-    ["you", [{ id: "p-1", kind: "changed", tag: "p", before: "a", after: "abc" }]],
-    ["agent", [{ id: "p-2", kind: "added", tag: "p", after: "xy" }]],
-    ["you", [{ id: "p-1", kind: "changed", tag: "p", before: "abc", after: "abcd" }]],
+    [YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "a", after: "abc" }]],
+    [AGENT, [{ id: "p-2", kind: "added", tag: "p", after: "xy" }]],
+    [YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "abc", after: "abcd" }]],
   ]);
 });
 
 test("a change that is undone within the same entry disappears", () => {
   const history = new History(30_000);
-  history.add("you", [{ id: "p-1", kind: "changed", tag: "p", before: "a", after: "ab" }]);
-  history.add("you", [{ id: "p-1", kind: "changed", tag: "p", before: "ab", after: "a" }]);
+  history.add(YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "a", after: "ab" }]);
+  history.add(YOU, [{ id: "p-1", kind: "changed", tag: "p", before: "ab", after: "a" }]);
   assert.equal(history.entries.length, 0);
 });
 

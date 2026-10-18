@@ -6,6 +6,8 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { type Author, readAuthor } from "./history.js";
+
 /** Where the comments are saved: a JSON file, or a host's own storage. */
 export interface CommentPersistence {
   load(): string | null;
@@ -38,7 +40,8 @@ export interface Comment {
   prefix?: string;
   suffix?: string;
   text: string;
-  by?: "agent"; // left by the agent; without it, by the user
+  by?: Author; // left by the agent (kind "agent"); without it, by a person
+  from?: Author; // the person who left it, when the host knows who that is
   options?: string[]; // answers the agent suggests for its comment, for the user to pick with one click
   answer?: string; // the user's answer to the agent's comment
   dismissed?: boolean; // the user closed the agent's comment without asking for anything
@@ -101,6 +104,8 @@ export class CommentStore {
     try {
       const saved = JSON.parse(this.persist.load() ?? "");
       this.comments = saved.comments ?? [];
+      // Comments saved before authors were objects have by: "agent".
+      for (const c of this.comments) if (c.by) c.by = readAuthor(c.by) ?? undefined;
       this.last = saved.last ?? Math.max(0, ...this.comments.map((c) => c.n));
     } catch {
       // no comments yet
@@ -118,7 +123,7 @@ export class CommentStore {
     return comment;
   }
 
-  add(fields: { id: string; text: string; quote?: string; prefix?: string; suffix?: string; by?: "agent"; options?: string[] }): Comment {
+  add(fields: { id: string; text: string; quote?: string; prefix?: string; suffix?: string; by?: Author; from?: Author; options?: string[] }): Comment {
     const text = fields.text.trim();
     if (!text) throw new EmptyComment();
     const quote = fields.quote?.trim() ? fields.quote : undefined;
@@ -128,11 +133,12 @@ export class CommentStore {
     if (options.some((o) => o.length > OPTION_MAX)) throw new BadOptions(`keep each suggested answer under ${OPTION_MAX} characters`);
     const comment: Comment = {
       n: ++this.last, id: fields.id, ...(quote ? { quote, prefix: fields.prefix ?? "", suffix: fields.suffix ?? "" } : {}),
-      text, ...(fields.by ? { by: fields.by } : {}), ...(options.length ? { options } : {}), status: "open", created: new Date().toISOString(),
+      text, ...(fields.by ? { by: fields.by } : {}), ...(fields.from ? { from: fields.from } : {}), ...(options.length ? { options } : {}), status: "open", created: new Date().toISOString(),
     };
     this.comments.push(comment);
     this.save();
-    const by = comment.by ? " by the agent" : "";
+    const name = (a?: Author) => (a?.name ? oneLine(a.name).slice(0, 40) : undefined);
+    const by = comment.by ? " by the agent" + (name(comment.by) ? ` (${name(comment.by)})` : "") : name(comment.from) ? ` by ${name(comment.from)}` : "";
     this.log(`${time()} comment #${comment.n}${by} on ${comment.id}${quote ? ` at ${quoted(quote, 80)}` : ""}: ${quoted(text, TEXT_MAX)}`, !comment.by);
     if (!comment.by) this.tag(comment);
     return comment;

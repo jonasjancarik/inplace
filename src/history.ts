@@ -3,9 +3,32 @@
 // before and after each write, so every way of changing it is covered the same
 // way: typing on the page, an agent editing the file, or the MCP tools.
 
+import { createHash } from "node:crypto";
+
 import { ID_ATTR, parse, type Node } from "./htmldoc.js";
 
-export type Author = "you" | "agent";
+/**
+ * Who made a change. `id` and `name` are only there when a host knows who it is; locally there is
+ * one person and one agent, with neither.
+ */
+export type Author =
+  | { kind: "person"; id?: string; name?: string }
+  | { kind: "agent"; id?: string; name?: string };
+
+export const YOU: Author = { kind: "person" };
+export const AGENT: Author = { kind: "agent" };
+
+/** An author from saved data or a request, including the old "you" and "agent" strings. */
+export function readAuthor(value: unknown): Author | undefined {
+  if (value === "you") return YOU;
+  if (value === "agent") return AGENT;
+  if (typeof value !== "object" || value === null) return undefined;
+  const { kind, id, name } = value as Record<string, unknown>;
+  if (kind !== "person" && kind !== "agent") return undefined;
+  return { kind, ...(typeof id === "string" ? { id } : {}), ...(typeof name === "string" ? { name } : {}) };
+}
+
+export const sameAuthor = (a: Author, b: Author) => a.kind === b.kind && a.id === b.id;
 
 /**
  * Where a block sits: the id of the nearest block around it ("" at the top),
@@ -139,6 +162,13 @@ function readBlocks(source: string): Blocks {
   return { blocks, order };
 }
 
+/** A short fingerprint of each block's own content, to tell later whether it was changed outside inplace. */
+export function fingerprints(source: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const [id, b] of blocksOf(source).blocks) found.set(id, createHash("sha1").update(`${b.tag}\0${b.own}`).digest("hex").slice(0, 10));
+  return found;
+}
+
 /** Where the block with this id sits in the file, or undefined if it isn't there. */
 export function placeOf(source: string, id: string): Place | undefined {
   return blocksOf(source).blocks.get(id)?.place;
@@ -246,7 +276,7 @@ export class History {
   add(by: Author, changes: BlockChange[], now = new Date()): boolean {
     if (!changes.length) return false;
     const last = this.entries.at(-1);
-    if (last && last.by === by && now.getTime() - Date.parse(last.at) < this.windowMs) {
+    if (last && sameAuthor(last.by, by) && now.getTime() - Date.parse(last.at) < this.windowMs) {
       for (const change of changes) {
         const i = last.changes.findIndex((c) => c.id === change.id);
         if (i === -1) last.changes.push({ ...change });
@@ -257,7 +287,7 @@ export class History {
       this.revision++;
       return true;
     }
-    this.entries.push({ n: this.next++, by, started: now.toISOString(), at: now.toISOString(), changes: changes.map((c) => ({ ...c })) });
+    this.entries.push({ n: this.next++, by: { ...by }, started: now.toISOString(), at: now.toISOString(), changes: changes.map((c) => ({ ...c })) });
     if (this.entries.length > this.max) this.entries.shift();
     this.revision++;
     return true;

@@ -8,6 +8,7 @@ import { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { AGENT, YOU } from "../src/history.js";
 
 import { BlockConflict } from "../src/htmldoc.js";
 import { allowedHostName, createInplaceServer, Document, isLocalHost, type ServerOptions } from "../src/server.js";
@@ -164,7 +165,7 @@ test("the agent leaves its own comments, which the page can answer but not forge
     const added = await add(agent, { id: "p-1", text: "Hello to whom?", quote: "ell" });
     assert.equal(added.status, 200, added.body);
     assert.deepEqual(JSON.parse(added.body).comment, {
-      ...JSON.parse(added.body).comment, n: 1, by: "agent", quote: "ell", prefix: "H", suffix: "o", status: "open",
+      ...JSON.parse(added.body).comment, n: 1, by: AGENT, quote: "ell", prefix: "H", suffix: "o", status: "open",
     });
     assert.equal((await add(page, { id: "p-1", text: "Forged" })).status, 403);
 
@@ -284,7 +285,7 @@ test("a change to the file between two saves is kept, even with the same size an
   agent("World", "Earth");
   doc.saveBlock("p-1", "Hello there", "Hello again");
   assert.match(read(), /<p data-id="p-1">Hello again<\/p>\n<p data-id="p-2">Earth<\/p>/);
-  assert.deepEqual(doc.history.entries.map((e) => e.by), ["you", "agent", "you"]);
+  assert.deepEqual(doc.history.entries.map((e) => e.by), [YOU, AGENT, YOU]);
 });
 
 test("a change to the same block between two saves is still a conflict", () => {
@@ -305,6 +306,6 @@ test("each save builds on inplace's own last write", () => {
   doc.saveBlock("p-2", "World", "Earth");
   doc.poll();
   assert.match(read(), /<p data-id="p-1">Hello again<\/p>\n<p data-id="p-2">Earth<\/p>/);
-  assert.ok(doc.history.entries.every((e) => e.by === "you"));
+  assert.ok(doc.history.entries.every((e) => e.by.kind === "person"));
   assert.equal(doc.source("p-1"), '<p data-id="p-1">Hello again</p>');
 });
