@@ -267,9 +267,21 @@ The script that does the editing in the page lives in `src/editor/`. Its files a
 
 `npm link` puts your local checkout on the PATH as `inplace`. To use the skill from a checkout, link it into your agent's skills folder, e.g. `ln -s "$PWD/skills/inplace" ~/.claude/skills/inplace`.
 
-### Using inplace inside another server
+### inplace as a library
 
 inplace can also run inside your own Node.js server, for example to keep documents in a database instead of files. Import it as a package (`import { Document, createInplaceHandler } from "inplace-html"`), give `Document` a `DocumentStore` that reads and writes the document and the comments wherever you keep them (`MemoryStore` is a ready-made one with callbacks for saving), and pass the requests for that document to `createInplaceHandler(doc, { hostAllowed })`. To let some people only comment or read, add `access: (req) => "edit" | "comment" | "view"`, which is asked for every request: below `"edit"` the server refuses changes to the text and the page shows no editing, and at `"view"` it refuses comments too. The page's own requests go to paths starting with `/__inplace/`, so serve each document at the root of its own origin, such as a subdomain per document. That also keeps one document's scripts away from the others and from your app. `hostAllowed` decides which `Host` names may reach the document, in place of the check for names of this computer. Change lines reach the `log` callback you give `Document`, as they do for the CLI, and `PauseWatcher` turns them into pauses. To tag comments, call `doc.useTagger(jevTagger(key))`, or pass your own function that returns a tag, and give `PauseWatcher` `(label) => doc.comments.withTag(label)` as its third argument so pauses show the tags.
+
+#### Letting people connect their own agent
+
+`createMcpHandler(target, options)` serves the same MCP tools that `inplace mcp` does for one document you already hold, so a user's own agent (Claude Code, Codex) can read and edit it over remote MCP. `target` is `{ doc, feed, agent, name, url? }`: the `Document`, the `ChangeFeed` your `log` callback and `PauseWatcher` write to, the `AgentStatus` you give `createInplaceHandler` (so the page shows that an agent is waiting), a name for the agent to see, and the page's address. Read the request body yourself and call the handler from the route you mount it on:
+
+```ts
+const mcp = createMcpHandler({ doc, feed, agent, name: "Report", url }, { tools: ["read_document", "get_edits", "get_comments"] });
+// in your route for POST /documents/:id/mcp, after your own sign-in check:
+await mcp(req, res, body);
+```
+
+The handler checks nothing about who is calling, so put your sign-in in front of it. It has no `open_document` or `close_document`; `document_info` returns the name and address instead, and a client's first tool call also returns the agent guide. `tools` limits which of inplace's tools are offered, `extraTools` adds your own (`{ name, description, inputSchema, run(args, { client, gone }) }`), and `instructions` and `guide` replace the texts the agent is given. Each client gets an `Mcp-Session-Id` when it initializes and follows the changes on its own, so several agents can work on one document. There are no pause events over HTTP; agents follow edits with `wait_for_edits`, which can hold a request open for up to a minute, so your proxy's timeout must be longer. `DOCUMENT_TOOLS` and `DOCUMENT_INFO_TOOL` are the tool definitions as data, for building another tool list from them.
 
 What changed in each version is listed in [CHANGELOG.md](CHANGELOG.md).
 

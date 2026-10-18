@@ -80,3 +80,4 @@ The change lines can name the person when there's more than one: `edited p-4 (Ja
 
 - Should the agent's model be part of its identity locally? inplace doesn't know which model Claude Code runs. Only hosts that run the agent themselves can say, so leave it to them.
 - Whether to keep a short per-block history (the last few authors) instead of only the last one. The hover text above needs `addedBy` and the last one; more can come when someone asks for it.
+- `createMcpHandler()` (`src/mcp-host.ts`) serves the MCP tools for a host's document. Once authors can be named, give it a `by` option so an outside agent's writes (`replace_element`, `find_replace`, `add_comment`) are recorded as that person's agent instead of plain "agent". The tools call `Document.replaceElement()`, `findReplace()` and `addAgentComment()` in `src/mcp-tools.ts`.
