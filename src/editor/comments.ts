@@ -181,13 +181,28 @@ function commentField(value: string, submit: () => void, label = "Comment", plac
   return field;
 }
 
+/**
+ * A triple-click on the last paragraph before the page's own controls (the toolbar, the comment
+ * markers) ends the selection inside them. Pull such an end back to the edge of the paragraph it
+ * started in, so only selections that really take in crossed-out text are refused.
+ */
+function trimOutsideUi(range: Range) {
+  const block = (node: Node) => (node.nodeType === 1 ? node as Element : node.parentElement)?.closest<HTMLElement>("[data-id]");
+  const stray = (node: Node) => inUi(node) && !block(node);
+  const start = stray(range.startContainer) ? block(range.endContainer) : block(range.startContainer);
+  if (!start || stray(range.startContainer) && stray(range.endContainer)) return;
+  if (stray(range.endContainer)) range.setEnd(start, start.childNodes.length);
+  if (stray(range.startContainer)) range.setStart(start, 0);
+}
+
 function startComment(el: HTMLElement | null | undefined = null) {
   if (!canComment) return;
   let range: Range | null = null;
   if (!el) {
     const sel = getSelection()!;
     if (!sel.rangeCount) return;
-    range = sel.getRangeAt(0);
+    range = sel.getRangeAt(0).cloneRange();
+    trimOutsideUi(range);
     if (inUi(range.startContainer) || inUi(range.endContainer))
       return showStatus("Crossed-out text is no longer in the document, so it can't be commented on.", "info", 4000);
     const node = range.commonAncestorContainer;
@@ -238,7 +253,8 @@ async function changeComment(payload: object, done?: string) {
 }
 
 // A comment as shown in the box and in the list of changes. While it's open, the user's own
-// comments have Edit and Delete, and the agent's have Answer and Dismiss.
+// comments have Edit and Delete (not other people's, where the host names people), and the
+// agent's have Answer and Dismiss.
 function commentView(c: PageComment, { inList = false }: { inList?: boolean } = {}) {
   const place = commentPlaces.get(c.n);
   const node = make("div", { className: `comment ${c.status}${c.by ? " agent" : ""}` });
@@ -288,6 +304,8 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
         if (!inList) closeBox();
         changeComment({ action: "dismiss", n: c.n }, "Comment dismissed");
       } }));
+  } else if (c.status === "open" && meId && c.from?.id && c.from.id !== meId) {
+    // Someone else's comment: it can be read, and only its writer changes it.
   } else if (c.status === "open") {
     meta.append(
       make("button", { type: "button", textContent: "Edit", onclick: () => {

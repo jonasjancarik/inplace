@@ -754,6 +754,13 @@ const REFUSED: Record<Access, string> = {
   view: "You can read this document, but not edit it or comment on it.",
 };
 
+/**
+ * Whether this person may edit or delete the comment. Where the host names people, only the one
+ * who wrote it may; comments with no recorded writer (from before, or from a host that didn't
+ * name people) stay open to everyone, and so does everything when no one is named.
+ */
+const ownsComment = (comment: Comment, who?: Person) => !who || !comment.from?.id || comment.from.id === who.id;
+
 export interface ServerOptions {
   /** The change lines and pauses, for `/__inplace/wait`. Leave it out when pauses are turned off. */
   feed?: ChangeFeed;
@@ -939,6 +946,9 @@ export function createInplaceHandler(
           ...(who ? { from: { kind: "person", id: who.id, name: who.name } } : {}),
         });
         return json(res, 200, { comment: added });
+      }
+      if ((body.action === "edit" || body.action === "delete") && n !== undefined && !ownsComment(comments.get(n), who)) {
+        return json(res, 403, { error: "You can only change your own comments." });
       }
       if (body.action === "edit" && n !== undefined && str("text") !== undefined) {
         return json(res, 200, { comment: comments.edit(n, str("text")!) });

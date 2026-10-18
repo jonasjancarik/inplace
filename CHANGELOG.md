@@ -6,6 +6,9 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- For hosts that name people with `author(req)`: a person can now edit or delete only the comments they wrote, even at comment access. The server refuses anything else with 403 and the page hides Edit and Delete on other people's comments. Answering or dismissing the agent's comments is still open to everyone who can comment, and nothing changes without `author(req)`, as in the CLI.
+- Fixed: on a page that can only be commented on, triple-clicking the last paragraph before the page's own controls said "Crossed-out text is no longer in the document…" instead of offering Comment.
+
 - **Keep or undo your agent's changes.** Each block the agent changed gets a thin blue bar in the margin, and pointing at it shows Keep and Undo beside it. The list of changes has them all at the top, with Keep all. Undo puts back the block as it was before the agent's first change to it, removes a block it added, or puts back one it removed or moved; your own edits to the block since are kept. The agent is told which changes you undid, so it doesn't make them again. The list survives a restart, is kept beside the document (as `"pending"` side data for hosts with their own `DocumentStore`), and is never printed. See "Reviewing what the agent changed" in the README.
 
 - **Show who wrote what** in the list of changes draws a thin bar beside each block, green for you and blue for your agent, with hover text such as "Your agent changed this 20 minutes ago". It's off by default, remembered for each document, and never printed. Blocks changed while inplace wasn't running show no bar. Nothing is written into the HTML file.

@@ -295,7 +295,8 @@ function showToolbar(range: Range) {
 // Where the person can't edit, selecting text offers only Comment.
 function updateCommentToolbar() {
   const sel = getSelection()!;
-  const range = canComment && sel.rangeCount && !sel.isCollapsed && !drag ? sel.getRangeAt(0) : null;
+  const range = canComment && sel.rangeCount && !sel.isCollapsed && !drag ? sel.getRangeAt(0).cloneRange() : null;
+  if (range) trimOutsideUi(range);
   const node = range?.commonAncestorContainer;
   const inText = (node?.nodeType === 1 ? node as Element : node?.parentElement)?.closest?.("[data-id]");
   if (!range || !inText || inText.closest("[data-inplace-ui]")) {

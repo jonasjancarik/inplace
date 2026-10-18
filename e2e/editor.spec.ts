@@ -1194,6 +1194,26 @@ test.describe("pages that can only be commented on or read", () => {
     }
   });
 
+  test("--comment-only: triple-clicking a paragraph offers Comment", async ({ page }) => {
+    const doc = await open(page, "--comment-only");
+    try {
+      // The last paragraph on the page: a triple-click ends its selection inside the toolbar.
+      const para = page.locator("footer[data-id]");
+      await para.click({ clickCount: 3, position: { x: 5, y: 5 } });
+      const toolbar = page.locator("#inplace-toolbar");
+      await expect(toolbar.getByRole("button", { name: "Comment" })).toBeVisible();
+      await toolbar.getByRole("button", { name: "Comment" }).click();
+      const box = page.getByRole("dialog", { name: "Comment" });
+      await expect(box.getByRole("textbox")).toBeVisible();
+      await expect(page.locator("#inplace-status")).not.toContainText("Crossed-out");
+      await box.getByRole("textbox").fill("Who wrote this?");
+      await box.getByRole("button", { name: "Add comment" }).click();
+      await expect.poll(() => doc.output).toContain(`comment #1 on footer-1 at "Prepared by the garden working group.`);
+    } finally {
+      doc.stop();
+    }
+  });
+
   test("--view-only: you can read the page and its comments, and nothing else", async ({ page }) => {
     const doc = await open(page, "--view-only");
     try {
