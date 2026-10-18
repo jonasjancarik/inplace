@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { type AddressInfo } from "node:net";
 import { test } from "node:test";
 
-import { createMcpHandler, type HostTool, type McpHandlerOptions } from "../src/index.js";
+import { createMcpHandler, DOCUMENT_INFO_TOOL, DOCUMENT_TOOLS, type HostTool, type McpHandlerOptions } from "../src/index.js";
 import { hostDocument } from "./host-document.js";
 
 /** The handler mounted the way a host would, on its own server, with a client that speaks JSON-RPC to it. */
@@ -125,6 +125,16 @@ test("a request that isn't a POST gets a 405, and a bad body a 400", async () =>
     assert.equal((await fetch(host.url, { method: "POST", body: "{" })).status, 400);
     const note = await fetch(host.url, { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
     assert.equal(note.status, 202);
+  } finally {
+    host.close();
+  }
+});
+
+test("the exported tool definitions are what the handler offers", async () => {
+  const host = await mount({ guide: false });
+  try {
+    const listed = (await host.client().rpc("tools/list")).result.tools;
+    assert.deepEqual(listed, JSON.parse(JSON.stringify([...DOCUMENT_TOOLS, DOCUMENT_INFO_TOOL])));
   } finally {
     host.close();
   }
