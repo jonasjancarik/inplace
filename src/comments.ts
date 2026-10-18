@@ -6,6 +6,31 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+/** Where the comments are saved: a JSON file, or a host's own storage. */
+export interface CommentPersistence {
+  load(): string | null;
+  save(json: string): void;
+}
+
+/** A JSON file, written through a temporary file. */
+export function commentsFile(path: string): CommentPersistence {
+  return {
+    load: () => {
+      try {
+        return readFileSync(path, "utf8");
+      } catch {
+        return null;
+      }
+    },
+    save: (json) => {
+      mkdirSync(dirname(path), { recursive: true });
+      const tmp = `${path}.tmp`;
+      writeFileSync(tmp, json, "utf8");
+      renameSync(tmp, path);
+    },
+  };
+}
+
 export interface Comment {
   n: number; // unique for the life of the comments file
   id: string; // data-id of the element the comment is on
@@ -48,10 +73,16 @@ export class CommentStore {
   /** Goes up with every change, for the page's `comments` event. */
   revision = 0;
 
-  /** `log` gets one change line per change; `byUser` is false for the agent resolving a comment. */
-  constructor(readonly path: string, readonly log: (line: string, byUser: boolean) => void = () => {}) {
+  private readonly persist: CommentPersistence;
+
+  /**
+   * `where` is a JSON file's path, or a host's own storage. `log` gets one change line per change;
+   * `byUser` is false for the agent resolving a comment.
+   */
+  constructor(where: string | CommentPersistence, readonly log: (line: string, byUser: boolean) => void = () => {}) {
+    this.persist = typeof where === "string" ? commentsFile(where) : where;
     try {
-      const saved = JSON.parse(readFileSync(path, "utf8"));
+      const saved = JSON.parse(this.persist.load() ?? "");
       this.comments = saved.comments ?? [];
       this.last = saved.last ?? Math.max(0, ...this.comments.map((c) => c.n));
     } catch {
@@ -171,10 +202,7 @@ export class CommentStore {
   private save(): void {
     this.revision++;
     try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      const tmp = `${this.path}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ last: this.last, comments: this.comments }), "utf8");
-      renameSync(tmp, this.path);
+      this.persist.save(JSON.stringify({ last: this.last, comments: this.comments }));
     } catch {
       // the comments still work in memory
     }

@@ -1,10 +1,10 @@
 // Serve one HTML file for in-place editing, with live reload when it changes on disk.
 
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { hostname, tmpdir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { hostname } from "node:os";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -19,6 +19,7 @@ import { readEditorScript } from "./editor-script.js";
 import { type Author, copyOf, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
+import { type DocumentStore, FileStore } from "./store.js";
 import { type ChangeFeed } from "./wait.js";
 
 const EDITOR_PREFIX = "/__inplace/";
@@ -120,7 +121,7 @@ interface UndoStep extends Omit<UndoChange, "before" | "after"> {
 export class UndoGone extends Error {}
 export class QuoteNotFound extends Error {}
 
-/** The edited file, plus a version that changes whenever its content does. */
+/** The edited document, plus a version that changes whenever its content does. */
 export class Document {
   version = "";
   private stamp = "";
@@ -134,29 +135,36 @@ export class Document {
   private last: string | null = null;
   /** The user's recent moves, additions, removals and heading changes, oldest first, so they can be undone. */
   private undos: UndoStep[] = [];
-  /** Where set-aside edits are kept, so they survive a restart. Outside the document's folder on purpose. */
-  readonly stashPath: string;
-  /** Comments made on the page, kept next to the stash. */
+  /** Comments made on the page, kept beside the stash. */
   readonly comments: CommentStore;
-  /** The file `path` leads to, after following links: inplace reads and writes this one. */
-  readonly file: string;
+  /** Where the document, the stash and the comments are saved. */
+  readonly store: DocumentStore;
+  /** The path the document was opened by, or the store's name. */
+  readonly path: string;
 
   /**
+   * `where` is a file's path, or a store that keeps the document somewhere else. A path keeps
+   * set-aside edits and comments in `stashDir`, so they survive a restart.
+   *
    * `log` receives one line per change to the file, for the agent to read. `byUser` is false for
    * changes inplace makes on its own, such as adding ids. `ids` are the elements the user's change
    * left in the document, for the marks beside them that show the agent has seen it.
    */
   constructor(
-    readonly path: string,
+    where: string | DocumentStore,
     readonly writeIds = true,
     readonly log: (line: string, byUser: boolean, ids?: string[]) => void = () => {},
-    stashDir = join(tmpdir(), "inplace"),
+    stashDir?: string,
   ) {
-    this.file = realpathSync(path);
-    this.stashPath = join(stashDir, `stash-${digest(resolve(path))}.json`);
-    this.comments = new CommentStore(join(stashDir, `comments-${digest(resolve(path))}.json`), (line, byUser) => this.log(line, byUser));
+    this.store = typeof where === "string" ? new FileStore(where, stashDir) : where;
+    this.path = typeof where === "string" ? where : where.name;
+    const store = this.store;
+    this.comments = new CommentStore(
+      { load: () => store.loadSide("comments"), save: (json) => store.saveSide("comments", json) },
+      (line, byUser) => this.log(line, byUser),
+    );
     try {
-      this.stashed = JSON.parse(readFileSync(this.stashPath, "utf8"));
+      this.stashed = JSON.parse(store.loadSide("stash") ?? "[]");
     } catch {
       this.stashed = [];
     }
@@ -164,24 +172,11 @@ export class Document {
   }
 
   private read(): string {
-    return readFileSync(this.file, "utf8");
+    return this.store.read();
   }
 
-  /**
-   * Write through a temporary file, so nothing ever reads a half-written document. The temporary
-   * file gets the document's permissions, and goes next to the real file rather than a link to it,
-   * so links stay links. A file with other hard links is written in place, or they'd keep the old text.
-   */
   private write(text: string, by?: Author): void {
-    const { mode, nlink } = statSync(this.file);
-    if (nlink > 1) {
-      writeFileSync(this.file, text, "utf8");
-    } else {
-      const tmp = join(dirname(this.file), `.${basename(this.file)}.inplace-tmp`);
-      writeFileSync(tmp, text, "utf8");
-      chmodSync(tmp, mode & 0o7777);
-      renameSync(tmp, this.file);
-    }
+    this.store.write(text);
     this.stamp = this.statStamp();
     if (by) this.remember(text, by);
     else this.last = text;
@@ -206,8 +201,7 @@ export class Document {
   }
 
   private statStamp(): string {
-    const s = statSync(this.file);
-    return `${s.mtimeMs}:${s.size}`;
+    return this.store.stamp();
   }
 
   /**
@@ -294,8 +288,7 @@ export class Document {
 
   private saveStash(): void {
     try {
-      mkdirSync(dirname(this.stashPath), { recursive: true });
-      writeFileSync(this.stashPath, JSON.stringify(this.stashed), "utf8");
+      this.store.saveSide("stash", JSON.stringify(this.stashed));
     } catch {
       // the stash still works in memory
     }
@@ -610,16 +603,16 @@ export function isLocalHost(host: string | undefined, allowHosts: readonly strin
  * this computer. Changes also need a JSON body, which browsers only send cross-origin after
  * asking first, and, when the browser says where they come from, the page's own origin.
  */
-function refusal(req: IncomingMessage, allowHosts: readonly string[]): string | null {
+function refusal(req: IncomingMessage, hostAllowed: (host: string | undefined) => boolean): string | null {
   const host = req.headers.host;
-  if (!isLocalHost(host, allowHosts)) return "unknown host";
+  if (!hostAllowed(host)) return "unknown host";
   if (req.method !== "POST") return null;
   const origin = req.headers.origin;
   if (origin !== undefined) {
     let same = false;
     try {
       const url = new URL(origin);
-      same = url.protocol === "http:" && url.host === new URL(`http://${host}`).host;
+      same = (url.protocol === "http:" || url.protocol === "https:") && url.host === new URL(`http://${host}`).host;
     } catch {
       // "null" or garbage: not this page
     }
@@ -637,13 +630,24 @@ export interface ServerOptions {
   agent?: AgentStatus;
   /** More host names the page may be opened by, from --allow-host (see allowedHostName). */
   allowHosts?: readonly string[];
+  /**
+   * Whether a request's Host header may reach the document, in place of the check for names of
+   * this computer (isLocalHost). For a host that serves inplace under its own domain names.
+   */
+  hostAllowed?: (host: string | undefined) => boolean;
 }
 
-export function createInplaceServer(
-  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [] }: ServerOptions = {},
-): Server {
+export function createInplaceServer(doc: Document, options: ServerOptions = {}): Server {
+  return createServer(createInplaceHandler(doc, options));
+}
+
+/** The request handler createInplaceServer uses, for a host that runs its own HTTP server. */
+export function createInplaceHandler(
+  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [], hostAllowed }: ServerOptions = {},
+): (req: IncomingMessage, res: ServerResponse) => void {
+  const hostOk = hostAllowed ?? ((host: string | undefined) => isLocalHost(host, allowHosts));
   // Where the real file is, with the images and stylesheets it loads, even when it was opened through a link.
-  const rootDir = dirname(doc.file);
+  const rootDir = doc.store.dir;
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
   const editorScript = readEditorScript();
@@ -660,7 +664,7 @@ export function createInplaceServer(
     const hashes = blockHashes(text);
     const tag =
       `<script src="${EDITOR_PREFIX}editor.js" data-inplace data-version="${version}" ` +
-      `data-file="${escapeAttr(basename(doc.path))}" data-build="${escapeAttr(JSON.stringify(build))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
+      `data-file="${escapeAttr(doc.store.name)}" data-build="${escapeAttr(JSON.stringify(build))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
       `data-movable="${escapeAttr(movableIds(text).join(" "))}"${hashes ? ` data-hashes="${escapeAttr(JSON.stringify(hashes))}"` : ""}></script>`;
     const at = text.toLowerCase().lastIndexOf("</body>");
     send(res, 200, at === -1 ? text + tag : text.slice(0, at) + tag + text.slice(at), "text/html; charset=utf-8");
@@ -827,6 +831,7 @@ export function createInplaceServer(
   const hidden = (rel: string) => rel.split(sep).some((part) => part.startsWith("."));
   const staticFile = (path: string, res: ServerResponse) => {
     const notFound = () => send(res, 404, "not found", "text/plain");
+    if (rootDir === undefined) return notFound();
     const target = resolve(rootDir, "." + path);
     const rel = relative(rootDir, target);
     const type = MIME[extname(target).toLowerCase()];
@@ -841,12 +846,12 @@ export function createInplaceServer(
     }
   };
 
-  return createServer((req, res) => {
+  return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = decodeURIComponent(url.pathname);
     Promise.resolve()
       .then(() => {
-        const refused = refusal(req, allowHosts);
+        const refused = refusal(req, hostOk);
         if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
@@ -855,7 +860,7 @@ export function createInplaceServer(
             ? change(req, res)
             : json(res, 404, { error: "not found" });
         }
-        if (path === "/" || path === "/" + basename(doc.path)) return page(res);
+        if (path === "/" || path === "/" + doc.store.name) return page(res);
         if (path === EDITOR_PREFIX + "editor.js") {
           return send(res, 200, editorScript, "text/javascript; charset=utf-8");
         }
@@ -878,5 +883,5 @@ export function createInplaceServer(
         console.error(e);
         if (!res.headersSent) send(res, 500, "internal error", "text/plain");
       });
-  });
+  };
 }
