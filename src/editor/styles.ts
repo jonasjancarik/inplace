@@ -64,6 +64,7 @@ style.textContent = `
   #inplace-toolbar form{display:none;gap:4px;margin:0}
   #inplace-toolbar input{all:unset;box-sizing:border-box;width:240px;height:28px;padding:0 8px;border-radius:5px;
     background:#fff;color:#1f2a24;font:inherit}
+  #inplace-toolbar.comment-only > :not([data-comment]){display:none}
   #inplace-toolbar.linking > :not(form){display:none}
   #inplace-toolbar.linking form{display:flex}
   #inplace-corner{all:unset;box-sizing:border-box;position:fixed;left:14px;bottom:14px;z-index:2147483647;display:none;
@@ -164,6 +165,7 @@ style.textContent = `
   #inplace-changes ins{padding:0 2px;border-radius:3px;background:#ece5ff;color:#3d2a85;text-decoration:none}
   #inplace-changes .entry[data-by=you] .who,#inplace-changes .entry[data-by=you] .text{color:#5b6660}
   #inplace-changes .entry[data-by=you] ins{background:#e9eeeb;color:#1f2a24}
+  #inplace-changes .access{margin:0 0 8px;padding:9px 11px;border-radius:8px;background:#f1f3f0;color:#3d4a43}
   #inplace-changes .empty{margin:0;padding:4px 8px 10px;color:#7a8580}
   #inplace-changes .review-switch{display:flex;align-items:center;gap:5px;margin-left:auto;margin-right:4px;font-size:12px;
     color:#3d4a43;cursor:pointer;user-select:none}

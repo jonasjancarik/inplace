@@ -309,3 +309,118 @@ test("each save builds on inplace's own last write", () => {
   assert.ok(doc.history.entries.every((e) => e.by.kind === "person"));
   assert.equal(doc.source("p-1"), '<p data-id="p-1">Hello again</p>');
 });
+
+// --- what the person may do: edit, comment or only read ---
+
+/** One valid request for every action the page sends, in the order they're tried. */
+const EDIT_REQUESTS: [string, object][] = [
+  ["save", { id: "p-1", old: "Hello", new: "Changed" }],
+  ["move", { id: "p-1", target: "p-1", position: "after" }],
+  ["retag", { id: "p-1", from: "p", to: "h2" }],
+  ["insert", { id: "p-1", position: "after", tag: "p", content: "More" }],
+  ["remove", { id: "p-1" }],
+  ["undo", { id: "p-1", kind: "add" }],
+  ["stash/resolve", { n: 1, action: "discard" }],
+];
+const COMMENT_REQUESTS: object[] = [
+  { action: "add", id: "p-1", text: "Why?" },
+  { action: "edit", n: 1, text: "Why so?" },
+  { action: "answer", n: 1, text: "Because" },
+  { action: "dismiss", n: 1 },
+  { action: "delete", n: 1 },
+  { action: "clear" },
+  { action: "resolve", n: 1 },
+  { action: "add", by: "agent", id: "p-1", text: "Check this" },
+];
+
+test("below edit access, every change to the document is refused with 403 and the file stays as it was", async () => {
+  for (const level of ["comment", "view"] as const) {
+    const s = await start({ access: () => level });
+    try {
+      const host = `localhost:${s.port}`;
+      const page = { host, origin: `http://${host}`, "content-type": "application/json" };
+      const before = readFileSync(s.path, "utf8");
+      for (const [action, body] of EDIT_REQUESTS) {
+        const res = await s.send("POST", `/__inplace/${action}`, page, JSON.stringify(body));
+        assert.equal(res.status, 403, `${action} at ${level}: ${res.body}`);
+        assert.match(JSON.parse(res.body).error, /not edit/);
+      }
+      assert.equal(readFileSync(s.path, "utf8"), before);
+    } finally {
+      s.close();
+    }
+  }
+});
+
+test("at view access every comment action is refused too, and comment access allows them", async () => {
+  const view = await start({ access: () => "view" });
+  const comment = await start({ access: () => "comment" });
+  try {
+    for (const s of [view, comment]) {
+      const host = `localhost:${s.port}`;
+      const page = { host, "content-type": "application/json" };
+      for (const body of COMMENT_REQUESTS) {
+        const res = await s.send("POST", "/__inplace/comment", page, JSON.stringify(body));
+        if (s === view) {
+          assert.equal(res.status, 403, JSON.stringify(body));
+          assert.match(JSON.parse(res.body).error, /comment on it/);
+        } else assert.notEqual(res.status, 403, `${JSON.stringify(body)}: ${res.body}`);
+      }
+    }
+    assert.equal(JSON.parse((await view.send("GET", "/__inplace/comments", { host: `localhost:${view.port}` })).body).comments.length, 0);
+  } finally {
+    view.close();
+    comment.close();
+  }
+});
+
+test("at edit access, and with no access option, nothing is refused", async () => {
+  for (const options of [{ access: () => "edit" as const }, {}]) {
+    const s = await start(options);
+    try {
+      const host = `localhost:${s.port}`;
+      const page = { host, origin: `http://${host}`, "content-type": "application/json" };
+      const res = await s.send("POST", "/__inplace/save", page, JSON.stringify({ id: "p-1", old: "Hello", new: "Changed" }));
+      assert.equal(res.status, 200, res.body);
+      assert.match(readFileSync(s.path, "utf8"), />Changed</);
+      const added = await s.send("POST", "/__inplace/comment", page, JSON.stringify({ action: "add", id: "p-1", text: "Why?" }));
+      assert.equal(added.status, 200, added.body);
+    } finally {
+      s.close();
+    }
+  }
+});
+
+test("reading stays open at every level, and the access is looked up for each request", async () => {
+  let level: "edit" | "comment" | "view" = "view";
+  const s = await start({ access: () => level });
+  try {
+    const host = `localhost:${s.port}`;
+    for (const path of ["/", "/__inplace/history", "/__inplace/comments", "/__inplace/stash"]) {
+      assert.equal((await s.send("GET", path, { host })).status, 200, path);
+    }
+    const html = (await s.send("GET", "/", { host })).body;
+    assert.match(html, /data-access="view"/);
+    assert.match(html, /data-editable=""/);
+    assert.match(html, /data-movable=""/);
+    level = "edit";
+    const editable = (await s.send("GET", "/", { host })).body;
+    assert.match(editable, /data-access="edit"/);
+    assert.match(editable, /data-editable="p-1"/);
+  } finally {
+    s.close();
+  }
+});
+
+test("a path that isn't an action is not found, whatever the access", async () => {
+  const s = await start({ access: () => "view" });
+  try {
+    const host = `localhost:${s.port}`;
+    const page = { host, origin: `http://${host}`, "content-type": "application/json" };
+    for (const path of ["/__inplace/constructor", "/__inplace/nothing", "/save"]) {
+      assert.equal((await s.send("POST", path, page, "{}")).status, 404, path);
+    }
+  } finally {
+    s.close();
+  }
+});

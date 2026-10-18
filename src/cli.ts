@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
-import { get, request } from "node:http";
+import { get, type IncomingMessage, request } from "node:http";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -8,12 +8,12 @@ import { AgentStatus } from "./agent.js";
 import { AGENT_GUIDE_PATH } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
-import { allowedHostName, createInplaceServer, Document, serverUrls } from "./server.js";
+import { type Access, allowedHostName, createInplaceServer, Document, serverUrls } from "./server.js";
 import { jevTagger } from "./tags.js";
 import { ChangeFeed } from "./wait.js";
 
 const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
-                           [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
+                           [--comment-only | --view-only] [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
        inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
        inplace comments [--port 8765] [--all]
        inplace resolve <n> [--reply <text>] [--port 8765]
@@ -32,6 +32,10 @@ Edit an HTML document in the browser while an agent edits the same file.
                     also let the page be opened by this name, such as a Tailscale MagicDNS
                     name (mymac.tail1234.ts.net); repeat for more names. Without it, only
                     localhost, this computer's own name and IP addresses work
+  --comment-only    anyone who opens the page can comment on it but not edit it; your agent
+                    still edits the file. Handy with --host 0.0.0.0 to show a draft to others
+  --view-only       anyone who opens the page can only read it and its comments. Your agent's
+                    own commands (inplace comment, inplace resolve) still work
   --no-write-ids    don't add data-id attributes to the file
                     (blocks without one can't be edited or commented on precisely)
   --pause <s>       after this many seconds without a change on the page, print one
@@ -77,6 +81,8 @@ const { values, positionals } = parseArgs({
     token: { type: "string" },
     "no-write-ids": { type: "boolean", default: false },
     "no-tags": { type: "boolean", default: false },
+    "comment-only": { type: "boolean", default: false },
+    "view-only": { type: "boolean", default: false },
     pause: { type: "string", default: "5" },
     log: { type: "string" },
     "on-pause": { type: "string" },
@@ -115,6 +121,10 @@ const jevKey = values["no-tags"] ? undefined : process.env.INPLACE_JEV_KEY?.trim
 const tagger = jevKey ? jevTagger(jevKey) : undefined;
 const TAGS_NOTICE = "Comments are tagged by Jev (TypeSafe AI), which receives each comment and the text of the element it's on.";
 
+if (values["comment-only"] && values["view-only"]) {
+  console.error("inplace: use either --comment-only or --view-only, not both");
+  process.exit(2);
+}
 if (positionals[0] === "wait") {
   waitForPause();
 } else if (positionals[0] === "comments" || positionals[0] === "resolve" || positionals[0] === "comment") {
@@ -190,7 +200,12 @@ function serve(): void {
   if (tagger) doc.useTagger(tagger);
   setInterval(() => doc.poll(), 250);
 
-  const server = createInplaceServer(doc, { feed, agent, allowHosts });
+  // The agent's commands aren't sent from a browser; they can still comment, never edit.
+  const level = values["view-only"] ? "view" : "comment";
+  const access = values["comment-only"] || values["view-only"]
+    ? (req: IncomingMessage): Access => (req.headers.origin || req.headers["sec-fetch-site"] ? level : "comment")
+    : undefined;
+  const server = createInplaceServer(doc, { feed, agent, allowHosts, access });
   server.on("error", (e: NodeJS.ErrnoException) => {
     console.error(e.code === "EADDRINUSE" ? `inplace: port ${port} is already in use; try --port` : e.message);
     process.exit(1);

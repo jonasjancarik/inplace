@@ -40,6 +40,22 @@ export class ChangeFeed {
   }
 
   /**
+   * Every line after `after` (0: from the start), paused or not, and the number to continue from.
+   * Like `take`, it says so when the lines it should start with are gone.
+   */
+  since(after: number): PauseBatch {
+    const restarted = after !== 0 && (after < this.start || after > this.last);
+    const from = after === 0 || restarted ? this.start : after;
+    const lines = this.entries.filter((e) => e.n > from).map((e) => e.line);
+    if (restarted) {
+      lines.unshift("(inplace restarted since your last call, so changes from before the restart may be missing; read the document to catch up)");
+    } else if (this.entries.length && this.entries[0].n > from + 1) {
+      lines.unshift("(older changes are no longer kept here; read the document to catch up)");
+    }
+    return { next: this.last, lines };
+  }
+
+  /**
    * The lines after `after` (0: from the start) up to the latest pause among them, or null
    * if there's no pause yet.
    */

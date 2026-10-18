@@ -33,7 +33,7 @@ function chainAt(node: HTMLElement) {
   return chain.slice(0, 3);
 }
 
-const canAdd = (el: HTMLElement) => !!el.dataset?.id && INSERTABLE.has(el.tagName) && !el.closest("[data-locked]") &&
+const canAdd = (el: HTMLElement) => canEdit && !!el.dataset?.id && INSERTABLE.has(el.tagName) && !el.closest("[data-locked]") &&
   (editable.has(el.dataset.id) || el.tagName === "TR" || el.tagName === "LI");
 const ADD_LABELS: Record<string, string | undefined> = { LI: "Add an item below", TR: "Add a row below", DT: "Add a term below", DD: "Add a description below" };
 

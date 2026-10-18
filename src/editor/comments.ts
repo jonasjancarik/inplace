@@ -182,6 +182,7 @@ function commentField(value: string, submit: () => void, label = "Comment", plac
 }
 
 function startComment(el: HTMLElement | null | undefined = null) {
+  if (!canComment) return;
   let range: Range | null = null;
   if (!el) {
     const sel = getSelection()!;
@@ -254,7 +255,9 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
   const state = c.dismissed ? "Dismissed" : c.status === "done" ? "Done"
     : c.by && !c.answer ? "Waiting for your answer" : "Not done yet";
   const meta = make("div", { className: "meta" }, make("span", { textContent: `${state} · ${ago(c.created)}` }));
-  if (c.status === "open" && c.by) {
+  if (!canComment) {
+    // Read-only: the comment and its state, nothing to change.
+  } else if (c.status === "open" && c.by) {
     const sendAnswer = (value: string) => {
       if (!inList) closeBox();
       changeComment({ action: "answer", n: c.n, text: value }, "Answer sent");
@@ -321,7 +324,7 @@ function commentsGroup() {
   if (!comments.length) return null;
   const group = make("div", { className: "comments" }, make("h3", { textContent: "Comments" }));
   for (const c of [...comments].reverse()) group.append(commentView(c, { inList: true }));
-  if (comments.some((c) => c.status === "done")) {
+  if (canComment && comments.some((c) => c.status === "done")) {
     group.append(make("button", { type: "button", className: "clear", textContent: "Clear done comments",
       onclick: () => changeComment({ action: "clear" }) }));
   }
@@ -355,7 +358,7 @@ function wholeTarget(node: EventTarget | null) {
   return null;
 }
 document.addEventListener("mousemove", (e) => {
-  if (e.target === elementCommentButton || drag) return;
+  if (!canComment || e.target === elementCommentButton || drag) return;
   const el = (e.target as Element).closest?.("[data-inplace-ui]") ? null : wholeTarget(e.target);
   if (el === hovered) return;
   hovered = el;
@@ -377,7 +380,7 @@ elementCommentButton.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.code === "KeyM" && e.altKey && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+  if (canComment && e.code === "KeyM" && e.altKey && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
     e.preventDefault();
     startComment();
   } else if (e.key === "Escape" && commentBox.classList.contains("open")) closeBox();

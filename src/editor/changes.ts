@@ -147,6 +147,11 @@ async function uncover(el: HTMLElement) {
 
 function renderChanges() {
   const list = make("div", { className: "list" }, authorsSwitch());
+  if (!canEdit) {
+    list.append(make("p", { className: "access", textContent: canComment
+      ? "You can comment on this document, but not edit it."
+      : "You can read this document, but not edit it or comment on it." }));
+  }
   const agentLine = agentStatusLine();
   if (agentLine) list.append(agentLine);
   const commentList = commentsGroup();
@@ -156,7 +161,7 @@ function renderChanges() {
       make("span", { textContent: stashCount === 1
         ? "You and your agent changed the same words, so your version was set aside."
         : `You and your agent changed the same words in ${stashCount} places, so your versions were set aside.` }),
-      make("button", { type: "button", textContent: "Review", onclick: () => { closeChanges(); openStash(); } })));
+      ...(canEdit ? [make("button", { type: "button", textContent: "Review", onclick: () => { closeChanges(); openStash(); } })] : [])));
   }
   if (!historyEntries.length) list.append(make("p", { className: "empty", textContent: "Nothing has changed yet." }));
   const offered = new Set<string>(); // each change gets Undo once, on its newest entry
@@ -176,7 +181,7 @@ function renderChanges() {
       const item = make("li", {}, el
         ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change, entry.by.kind === "agent" ? "agent" : "you") }, ...body)
         : make("div", { className: "change" }, ...body));
-      const kind = isMe(entry.by) && UNDO_KINDS[change.fromTag ? "retagged" : change.kind];
+      const kind = canEdit && isMe(entry.by) && UNDO_KINDS[change.fromTag ? "retagged" : change.kind];
       if (kind && undoable.has(`${kind} ${change.id}`) && !offered.has(`${kind} ${change.id}`)) {
         offered.add(`${kind} ${change.id}`);
         item.classList.add("undoable");
