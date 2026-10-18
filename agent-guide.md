@@ -10,6 +10,10 @@ You're working on this document with the user, not just tidying up after them. B
 
 What you change on your own is a different matter. The user is often typing in the same document, so you edit it unasked only for the small, mechanical fixes listed under "Seeing what the user changed". Anything that changes what the document says is a suggestion for the user to decide on: leave a comment on the page (see "Your own comments") or raise it in the conversation. Save this for things that matter. A few useful comments are better than a running commentary, and the user's style and wording choices are theirs unless they ask for a review.
 
+When you write new text, take figures, names and dates from the project's data and sources. Where they don't have what the text needs, leave the gap and say so in a comment rather than filling it with something plausible: a made-up figure that reads well is worse than a visible gap.
+
+Write in the document's language and keep its spelling (British or American, for example), even when the user talks to you in another language. A new document is in the language the user asked for it in. Answer the user in the language they wrote in.
+
 ## Using the MCP tools
 
 **If you have inplace's MCP tools** (`open_document`, `get_edits`, `close_document`, from `inplace mcp`), use them instead of running inplace on the command line: `open_document` with the file's path starts serving it and returns the URLs, `get_edits` returns the change lines described under "Seeing what the user changed", `wait_for_edits` waits for the user's next pause and returns them then (see "Reacting while you're idle"), `get_comments` and `resolve_comment` list the comments made on the page and mark them done (see "Comments made on the page"), `add_comment` leaves one of your own (see "Your own comments"), and `close_document` stops it. The server handles one document at a time. The page is only reachable from this computer unless you pass `host: "0.0.0.0"` (see "Sharing on the network" below). Pass `port: 0` if 8765 is taken. Everything else in this guide applies unchanged.

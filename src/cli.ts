@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, statSync } from "node:fs";
 import { get, type IncomingMessage, request } from "node:http";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import { AgentStatus } from "./agent.js";
-import { AGENT_GUIDE_PATH } from "./guide.js";
+import { agentGuide } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
 import { type Access, allowedHostName, createInplaceServer, Document, serverUrls } from "./server.js";
@@ -18,7 +18,7 @@ const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--al
        inplace comments [--port 8765] [--all]
        inplace resolve <n> [--reply <text>] [--port 8765]
        inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
-       inplace guide
+       inplace guide [<topic> | all]
        inplace mcp [--allow-host <name>] [--pause 5] [--log <file>] [--no-tags]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
                           [--pause 5] [--log <file>] [--no-tags]
@@ -62,7 +62,8 @@ adds a short note the user sees under the comment. inplace comment leaves your o
 element with that data-id, for the user to answer or dismiss; --quote puts it on those words inside
 the element, and --option (up to three times) suggests an answer the user can pick with one click.
 
-inplace guide prints the instructions an agent needs to work on a document with you.
+inplace guide prints the instructions an agent needs to work on a document with you, leaving out
+the parts few sessions need. Name a part to print only that one, or all to print everything.
 
 inplace mcp runs an MCP server on stdin/stdout instead, with tools to open, read and edit a
 document and read the changes, and a Claude Code channel event at each pause. Change lines go
@@ -97,7 +98,8 @@ const { values, positionals } = parseArgs({
 });
 
 const ARGUMENTS: Record<string, number> = { resolve: 2, comment: 3 };
-if (values.help || positionals.length !== (ARGUMENTS[positionals[0]] ?? 1)) {
+const fits = positionals[0] === "guide" ? positionals.length <= 2 : positionals.length === (ARGUMENTS[positionals[0]] ?? 1);
+if (values.help || !fits) {
   console.log(USAGE);
   process.exit(values.help ? 0 : 2);
 }
@@ -130,7 +132,12 @@ if (positionals[0] === "wait") {
 } else if (positionals[0] === "comments" || positionals[0] === "resolve" || positionals[0] === "comment") {
   comments();
 } else if (positionals[0] === "guide") {
-  process.stdout.write(readFileSync(AGENT_GUIDE_PATH, "utf8"));
+  try {
+    process.stdout.write(agentGuide(positionals[1]));
+  } catch (e) {
+    console.error(`inplace: ${(e as Error).message}`);
+    process.exit(2);
+  }
 } else if (positionals[0] === "mcp" && values.http) {
   // A tunnel makes this reachable from the internet, so stay local and require a token.
   const port = Number(values.port ?? "8766");

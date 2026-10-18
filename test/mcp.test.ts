@@ -69,7 +69,7 @@ test("serves a document through MCP tools and sends one channel event per pause"
 
     const { result } = await server.request("tools/list");
     assert.deepEqual(result.tools.map((t: { name: string }) => t.name),
-      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "add_comment", "close_document"]);
+      ["open_document", "get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "add_comment", "guide", "close_document"]);
 
     assert.equal((await server.tool("get_edits")).text, "No document is open.");
     const missing = await server.tool("open_document", { path: join(dir, "nope.html") });
@@ -78,6 +78,10 @@ test("serves a document through MCP tools and sends one channel event per pause"
     const opened = await server.tool("open_document", { path, port: 0, host: "127.0.0.1" });
     assert.ok(!opened.isError, opened.text);
     assert.match(opened.text, /# Working on a document with inplace/, "the first open carries the agent guide");
+    assert.doesNotMatch(opened.text, /## Troubleshooting/, "without the parts few sessions need");
+    assert.match(opened.text, /- troubleshooting: /, "which it names");
+    assert.match((await server.tool("guide", { topic: "troubleshooting" })).text, /^## Troubleshooting\n/);
+    assert.ok((await server.tool("guide", { topic: "nope" })).isError);
     const url = opened.text.match(/http:\/\/localhost:\d+\//)![0];
     await fetch(url).then((r) => r.text()); // the first page load adds the ids
     assert.match(readFileSync(path, "utf8"), /<p data-id="p-1">Ten trees<\/p>/);
@@ -273,6 +277,13 @@ test("prints the agent guide", () => {
   const out = execFileSync(process.execPath, [CLI, "guide"], { encoding: "utf8" });
   assert.match(out, /^# Working on a document with inplace/);
   assert.match(out, /## Comments made on the page/);
+  assert.doesNotMatch(out, /## Sharing on the network/, "the parts few sessions need are left out");
+  assert.match(out, /## More when you need it/);
+  const part = execFileSync(process.execPath, [CLI, "guide", "sharing-on-the-network"], { encoding: "utf8" });
+  assert.match(part, /^## Sharing on the network\n/);
+  assert.doesNotMatch(part, /## Troubleshooting/);
+  assert.match(execFileSync(process.execPath, [CLI, "guide", "all"], { encoding: "utf8" }), /## Sharing on the network[\s\S]*## Troubleshooting/);
+  assert.throws(() => execFileSync(process.execPath, [CLI, "guide", "nope"], { stdio: "pipe" }), /no part called "nope"/);
 });
 
 test("pause events escape anything that could close the channel tag", () => {

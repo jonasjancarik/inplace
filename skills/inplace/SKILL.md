@@ -15,7 +15,13 @@ The details of working with inplace come with the tool itself, so they always ma
 npx -y github:jonasjancarik/inplace guide
 ```
 
-If you have inplace's MCP tools (`open_document`, `get_edits`, …), use them instead of the commands here: the first `open_document` call returns the same guide.
+It leaves out the parts few sessions need and lists them at the end. Print one when it comes up, and print any part again when you need it after a long conversation:
+
+```bash
+npx -y github:jonasjancarik/inplace guide troubleshooting
+```
+
+If you have inplace's MCP tools (`open_document`, `get_edits`, …), use them instead of the commands here: the first `open_document` call returns the same guide, and the `guide` tool returns one part of it.
 
 ## Starting it
 

@@ -5,17 +5,18 @@
 // `by` argument of the Document methods an agent uses, for the marks that show who wrote what.
 
 export { AgentStatus } from "./agent.js";
+export { NOT_INSTRUCTIONS, REACTING_TO_CHANGES, WORKING_WITH_USER } from "./agent-rules.js";
 export {
   type Comment, CommentNotFound, type CommentPersistence, CommentStore, COMMENT_TAGS, type CommentTag, type CommentTagger, type TagRequest,
 } from "./comments.js";
-export { AGENT_GUIDE_PATH } from "./guide.js";
+export { AGENT_GUIDE_PATH, agentGuide, guideTopics } from "./guide.js";
 export { type Author } from "./history.js";
 export { BlockConflict, BlockNotFound } from "./htmldoc.js";
 export { PauseWatcher } from "./idle.js";
 export { pauseEvent } from "./mcp.js";
 export { createMcpHandler, type HostTool, type McpHandlerOptions } from "./mcp-host.js";
 export { type ToolDefinition } from "./mcp-rpc.js";
-export { DOCUMENT_INFO_TOOL, DOCUMENT_TOOLS, type McpDocument } from "./mcp-tools.js";
+export { DOCUMENT_INFO_TOOL, DOCUMENT_TOOLS, GUIDE_TOOL, type McpDocument } from "./mcp-tools.js";
 export { type Access, type AgentName, createInplaceHandler, createInplaceServer, Document, type Person, QuoteNotFound, type ServerOptions } from "./server.js";
 export { type DocumentStore, FileStore, MemoryStore, type SideData } from "./store.js";
 export { type JevOptions, jevTagger } from "./tags.js";

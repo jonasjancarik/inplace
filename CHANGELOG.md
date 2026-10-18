@@ -6,6 +6,9 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- The agent guide an agent gets up front leaves out the parts few sessions need (sharing on the network, troubleshooting) and ends with a list of them. `inplace guide <topic>` and the new `guide` MCP tool return one part, so an agent can also read a part again after a long conversation; `inplace guide all` prints everything.
+- The rules inplace gives every agent now also say to take figures, names and dates from the sources and leave a gap with a comment where they're missing, and to write in the document's language. The MCP servers' instructions now say what to do about each kind of change line (totals, references, typos, merges and conflicts), so those rules stay with the agent after the guide has scrolled out of a long conversation.
+- For hosts with an agent of their own: `WORKING_WITH_USER`, `REACTING_TO_CHANGES` and `NOT_INSTRUCTIONS` are exported, so a system prompt can use the same rules as inplace's MCP servers, and `agentGuide()`, `guideTopics()` and `GUIDE_TOOL` give the guide and its parts.
 - For hosts that name people with `author(req)`: a person can now edit or delete only the comments they wrote, even at comment access. The server refuses anything else with 403 and the page hides Edit and Delete on other people's comments. Answering or dismissing the agent's comments is still open to everyone who can comment, and nothing changes without `author(req)`, as in the CLI.
 - Fixed: on a page that can only be commented on, triple-clicking the last paragraph before the page's own controls said "Crossed-out text is no longer in the document…" instead of offering Comment.
 

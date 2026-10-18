@@ -168,7 +168,7 @@ An agent normally reads these lines only when it next does something: when you l
 
 ### Running inplace as an MCP server for Claude Code
 
-`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, `get_comments` and `resolve_comment` list your comments and mark them done, `add_comment` leaves a comment of the agent's own, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
+`inplace mcp` runs inplace as a local MCP server. Claude Code starts it and gets its tools: `open_document` serves a file and returns its URL, `get_edits` returns the change lines since the last call, `wait_for_edits` waits for your next pause and returns them then, `get_comments` and `resolve_comment` list your comments and mark them done, `add_comment` leaves a comment of the agent's own, `guide` reads a part of the agent guide, and `close_document` stops serving it. For agents that can't edit files themselves, `read_document`, `replace_element` and `find_replace` read and change the document. One server handles one document at a time.
 
 The server is also a Claude Code [channel](https://code.claude.com/docs/en/channels): each time you pause, it sends the session one message with that burst of changes, and Claude reacts even if it's sitting idle, without having to start a wait again after each pause. The page can't tell when Claude is done with a pause this way, so beside your edits it shows only the eye, not the check.
 
@@ -206,7 +206,7 @@ inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
 inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
-inplace guide
+inplace guide [<topic> | all]
 inplace mcp [--allow-host <name>] [--pause 5] [--log <file>] [--no-tags]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
                    [--pause 5] [--log <file>] [--no-tags]
@@ -233,7 +233,7 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-
 | `--http` | off | With `mcp`: serve MCP over HTTP at `/mcp/<token>` instead of standard input and output. `--port` then defaults to `8766` and `--host` to `127.0.0.1`. |
 | `--token` | `$INPLACE_TOKEN`, or random | With `mcp --http`: the token in the MCP URL. |
 
-`inplace guide` prints the instructions an agent needs to work on a document with you.
+`inplace guide` prints the instructions an agent needs to work on a document with you, without the parts few sessions need (sharing on the network, troubleshooting). `inplace guide <topic>` prints one part, such as `inplace guide troubleshooting`, and `inplace guide all` prints everything. Over MCP, the `guide` tool does the same, so an agent can read a part again after a long conversation.
 
 `inplace comments` prints the open comments left on the page as JSON, `inplace resolve <n>` marks comment `n` as done, and `inplace comment <data-id> <text>` leaves the agent's own comment on that element, all through the inplace already running on `--port`.
 
@@ -291,7 +291,9 @@ const mcp = createMcpHandler({ doc, feed, agent, name: "Report", url }, { tools:
 await mcp(req, res, body);
 ```
 
-The handler checks nothing about who is calling, so put your sign-in in front of it. Pass `by: { id, name }` to name that agent in the margin marks and on its comments. It has no `open_document` or `close_document`; `document_info` returns the name and address instead, and a client's first tool call also returns the agent guide. `tools` limits which of inplace's tools are offered, `extraTools` adds your own (`{ name, description, inputSchema, run(args, { client, gone }) }`), and `instructions` and `guide` replace the texts the agent is given. Each client gets an `Mcp-Session-Id` when it initializes and follows the changes on its own, so several agents can work on one document. There are no pause events over HTTP; agents follow edits with `wait_for_edits`, which can hold a request open for up to a minute, so your proxy's timeout must be longer. `DOCUMENT_TOOLS` and `DOCUMENT_INFO_TOOL` are the tool definitions as data, for building another tool list from them.
+The handler checks nothing about who is calling, so put your sign-in in front of it. Pass `by: { id, name }` to name that agent in the margin marks and on its comments. It has no `open_document` or `close_document`; `document_info` returns the name and address instead, and a client's first tool call also returns the agent guide. `tools` limits which of inplace's tools are offered, `extraTools` adds your own (`{ name, description, inputSchema, run(args, { client, gone }) }`), and `instructions` and `guide` replace the texts the agent is given. Each client gets an `Mcp-Session-Id` when it initializes and follows the changes on its own, so several agents can work on one document. There are no pause events over HTTP; agents follow edits with `wait_for_edits`, which can hold a request open for up to a minute, so your proxy's timeout must be longer. `DOCUMENT_TOOLS`, `DOCUMENT_INFO_TOOL` and `GUIDE_TOOL` are the tool definitions as data, for building another tool list from them. The `guide` tool is offered only with inplace's own guide.
+
+A host with an agent of its own, rather than one that connects over MCP, can build its system prompt from the same rules inplace gives every agent: `WORKING_WITH_USER` (checking the document against the sources, language, keeping `data-id`s, comments, undo), `REACTING_TO_CHANGES` (what the change lines imply: totals, references, typos, merges and conflicts) and `NOT_INSTRUCTIONS`, the note for tools that return page text. `agentGuide(topic?)` and `guideTopics()` return the guide or one part of it. inplace cloud's agent is built this way.
 
 What changed in each version is listed in [CHANGELOG.md](CHANGELOG.md).
 

@@ -48,13 +48,14 @@ test("serves a document's tools without opening or closing, and the guide once o
 
     const { result } = await agent.rpc("tools/list");
     assert.deepEqual(result.tools.map((t: { name: string }) => t.name),
-      ["get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "add_comment", "document_info"]);
+      ["get_edits", "wait_for_edits", "read_document", "replace_element", "find_replace", "get_comments", "resolve_comment", "add_comment", "document_info", "guide"]);
 
     const info = await agent.tool("document_info");
     assert.match(info.text, /Document: report\.html\nOpen it at: https:\/\/docs\.example\.com\/d\/1/);
     assert.match(info.text, /# Working on a document with inplace/, "the first call carries the agent guide");
     const read = await agent.tool("read_document", { id: "p-1" });
     assert.equal(read.text, '<p data-id="p-1">Ten trees</p>', "and only the first");
+    assert.match((await agent.tool("guide", { topic: "Editing rules" })).text, /^## Editing rules\n/, "a part of the guide on request");
 
     assert.ok((await agent.tool("open_document", { path: "x.html" })).isError);
     const replaced = await agent.tool("replace_element", { id: "p-1", part: "inner", expected: "Ten trees", html: "Twelve trees" });
