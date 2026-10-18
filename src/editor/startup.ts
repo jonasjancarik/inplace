@@ -18,3 +18,8 @@ events.addEventListener("version", (e) => {
 });
 events.onerror = () => showStatus("Lost connection to the editor server. Reconnecting…", "error", true);
 events.onopen = () => { if (pill.dataset.kind === "error" && pill.textContent.startsWith("Lost")) showStatus("Reconnected"); };
+
+// A page that shows this document in a frame, such as inplace cloud, can ask it to print itself.
+window.addEventListener("message", (e) => {
+  if (e.source === window.parent && window.parent !== window && (e.data as { type?: unknown } | null)?.type === "inplace:print") window.print();
+});
