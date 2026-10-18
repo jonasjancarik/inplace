@@ -67,12 +67,12 @@ style.textContent = `
   #inplace-toolbar.linking > :not(form){display:none}
   #inplace-toolbar.linking form{display:flex}
   #inplace-corner{all:unset;box-sizing:border-box;position:fixed;left:14px;bottom:14px;z-index:2147483647;display:none;
-    align-items:center;justify-content:center;width:36px;height:36px;border-radius:18px;background:#1f2a24;color:#e8ece9;
+    align-items:center;justify-content:center;gap:7px;height:36px;padding:0 13px 0 9px;border-radius:18px;background:#1f2a24;color:#e8ece9;font-weight:600;
     font:12px/1.3 -apple-system,system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 12px #0003}
   #inplace-corner.shown{display:flex}
   #inplace-corner:hover{background:#34433a}
   #inplace-corner:focus-visible{outline:2px solid #4a7bd4;outline-offset:2px}
-  #inplace-corner svg{width:18px;height:18px}
+  #inplace-corner svg{width:20px;height:20px}
   #inplace-corner .dot{position:absolute;top:0;right:0;width:9px;height:9px;border-radius:50%;background:#b39cff;
     box-shadow:0 0 0 2px #fff,0 0 8px #9b7bff}
   #inplace-corner.stash{width:auto;height:auto;padding:7px 12px;border-radius:7px;background:#9c3b1c;color:#fff}
@@ -85,6 +85,7 @@ style.textContent = `
   #inplace-changes h2{all:unset;font-size:14px;font-weight:600}
   #inplace-changes .x{all:unset;cursor:pointer;color:#7a8580;font-size:20px;line-height:1;padding:2px 7px 4px;border-radius:6px}
   #inplace-changes .x:hover{background:#eef1ef;color:#1f2a24}
+  #inplace-changes footer{padding:8px 16px;border-top:1px solid #e4e8e5;color:#7a8580;font-size:11.5px;user-select:text;word-break:break-all}
   #inplace-changes .list{overflow:auto;padding:0 8px 8px}
   #inplace-changes .agent-status{margin:0 8px 8px;color:#56615b}
   ::highlight(inplace-comment){background-color:#ffe08a}

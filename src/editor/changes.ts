@@ -1,5 +1,5 @@
 // --- the list of changes ---
-const HISTORY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7.5V12l3 2"/></svg>';
+const LOGO = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor"/><path d="M9 9h14M9 15h14M9 21h8" stroke="#1f2a24" stroke-width="2.4" stroke-linecap="round"/><path d="M21 19v7" stroke="#e9b949" stroke-width="2.4" stroke-linecap="round"/></svg>';
 const SEEN_KEY = `${STATE_KEY}:seen-changes`;
 let historyEntries: HistoryEntry[] = [];
 let undoable = new Set<string>(); // "kind id" of the user's changes that can still be undone
@@ -10,16 +10,16 @@ const latestByAgent = () => historyEntries.reduce((n, e) => (e.by === "agent" ? 
 
 function updateCorner() {
   corner.classList.toggle("stash", stashCount > 0);
-  corner.classList.toggle("shown", stashCount > 0 || historyEntries.length > 0 || comments.length > 0);
+  corner.classList.add("shown");
   if (stashCount) {
     corner.removeAttribute("aria-label");
     corner.removeAttribute("title");
     corner.textContent = stashCount === 1 ? "1 edit set aside" : `${stashCount} edits set aside`;
     return;
   }
-  corner.setAttribute("aria-label", "Changes");
-  corner.title = "Changes";
-  corner.innerHTML = historyEntries.length || comments.length ? HISTORY_ICON : "";
+  corner.setAttribute("aria-label", "inplace: changes and version");
+  corner.title = "Changes and version";
+  corner.innerHTML = LOGO + "<span>inplace</span>";
   if (latestByAgent() > (seenChanges ?? 0)) corner.append(make("span", { className: "dot" }));
 }
 
@@ -183,7 +183,16 @@ function renderChanges() {
   changesPanel.replaceChildren(
     make("header", {}, make("h2", { textContent: "Changes" }), reviewSwitch(),
       make("button", { type: "button", className: "x", textContent: "\u00d7", ariaLabel: "Close", onclick: closeChanges })),
-    list);
+    list, versionLine());
+}
+
+/** Which inplace this is, so it's clear whether a restart is needed to get the latest. */
+function versionLine() {
+  let build: { version: string; branch?: string; commit?: string; dirty?: boolean } | null = null;
+  try { build = JSON.parse(script.dataset.build || "null"); } catch {}
+  if (!build) return make("footer");
+  const where = build.commit ? ` \u00b7 ${build.branch ? build.branch + " @ " : ""}${build.commit}${build.dirty ? " (uncommitted changes)" : ""}` : "";
+  return make("footer", { textContent: `inplace ${build.version}${where}`, title: "The version of inplace serving this page" });
 }
 
 function openChanges() {

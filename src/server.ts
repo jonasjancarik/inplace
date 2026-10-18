@@ -12,6 +12,7 @@ import {
   patchBlock, putChunk, removeBlock, replaceElement, retagBlock,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
+import { readBuildInfo } from "./build-info.js";
 import { buildContext, findQuote } from "./anchor.js";
 import { BadOptions, type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
 import { readEditorScript } from "./editor-script.js";
@@ -646,6 +647,7 @@ export function createInplaceServer(
   // Read once, so a running server always serves the editor that matches its
   // own endpoints, even after the checkout is updated underneath it.
   const editorScript = readEditorScript();
+  const build = readBuildInfo();
   // The page imports the comment anchoring helpers from the same compiled code the server runs.
   const anchorScript = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "anchor.js"), "utf8")
     .replace(/\n\/\/# sourceMappingURL=.*\n?$/, "\n");
@@ -658,7 +660,7 @@ export function createInplaceServer(
     const hashes = blockHashes(text);
     const tag =
       `<script src="${EDITOR_PREFIX}editor.js" data-inplace data-version="${version}" ` +
-      `data-file="${escapeAttr(basename(doc.path))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
+      `data-file="${escapeAttr(basename(doc.path))}" data-build="${escapeAttr(JSON.stringify(build))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
       `data-movable="${escapeAttr(movableIds(text).join(" "))}"${hashes ? ` data-hashes="${escapeAttr(JSON.stringify(hashes))}"` : ""}></script>`;
     const at = text.toLowerCase().lastIndexOf("</body>");
     send(res, 200, at === -1 ? text + tag : text.slice(0, at) + tag + text.slice(at), "text/html; charset=utf-8");
