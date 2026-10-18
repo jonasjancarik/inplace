@@ -263,3 +263,26 @@ footer.site{padding:36px 0 56px;color:var(--ink-3);font-size:14px;display:flex;f
 #move-stack.animated .ghost.show{opacity:1}
 #move-stack .lift{position:relative;z-index:1}
 .fine+.fine{margin-top:10px}
+
+/* the diagram of how an edit reaches the agent */
+.flow{margin:48px 0 0;max-width:860px}
+.flow-scroll{overflow-x:auto}
+.flow svg{display:block;width:100%;min-width:640px;height:auto;font-family:var(--sans)}
+.flow .area{fill:none;stroke:var(--ink-3);stroke-width:1;stroke-dasharray:5 5}
+.flow .area.inner{fill:var(--paper-2);stroke:var(--line);stroke-dasharray:none}
+.flow .area-label{fill:var(--ink-3);font-size:13px}
+.flow .box rect{fill:var(--sheet);stroke:var(--line);stroke-width:1}
+.flow .box text{fill:var(--ink);font-size:15px;font-weight:500}
+.flow .box text.sub,.flow text.sub{fill:var(--ink-3);font-size:12.5px;font-weight:400}
+.flow .box.you rect,.flow .box.agent rect{stroke:var(--accent);stroke-width:1.3}
+.flow .box.file text:first-of-type{font-family:var(--mono);font-size:14px}
+.flow .arr{fill:none;stroke:var(--ink-2);stroke-width:1.3}
+.flow .arr.faint{stroke:var(--ink-3);stroke-dasharray:3 3}
+.flow .step circle{fill:var(--accent)}
+.flow .step text{fill:var(--accent-ink);font-size:12.5px;font-weight:600}
+.flow .steps{margin:28px 0 0;padding:0;list-style:none;counter-reset:step;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 32px}
+.flow .steps li{counter-increment:step;position:relative;padding-left:34px;color:var(--ink-2)}
+.flow .steps li::before{content:counter(step);position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:600 12.5px/22px var(--sans);text-align:center}
+.flow code,.flow-note code{font-size:.88em;background:var(--paper-2);padding:1px 5px;border-radius:4px}
+.flow-note{margin:24px 0 0;color:var(--ink-2)}
+@media (max-width:760px){.flow .steps{grid-template-columns:minmax(0,1fr)}}

@@ -109,6 +109,8 @@ Apart from the ids, the file only changes when you make a change on the page, an
 
 ## How the agent finds out about your edits
 
+For a diagram of how one edit travels from the page to your agent and back, see [How inplace works](https://jonasjancarik.github.io/inplace/how-it-works.html#flow).
+
 While it runs, inplace prints one line for every change made on the page:
 
 ```text

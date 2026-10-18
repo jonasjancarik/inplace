@@ -55,10 +55,58 @@
       <h2>How your agent hears about your edits</h2>
       <p>While it runs, inplace prints one line for every change made on the page, showing only the part that changed. The skill has your agent start inplace in the background and read these lines before it handles a comment or touches the file.</p>
       <p>That way it notices a changed amount and fixes the totals and charts that depend on it, or a moved section and the “see the table below” that now points the wrong way. You can also just tell it to check your edits.</p>
-      <p>When you stop typing for a few seconds, inplace sums up what you changed. Claude Code watches for that, or gets it as a message when it runs inplace as an MCP server, and catches up straight away. Codex can check in every few minutes, and any agent with a headless mode can be started by inplace itself.</p>
+      <p>When you stop typing for a few seconds, inplace sums up what you changed, and an agent that&rsquo;s following along picks it up straight away. The diagram below shows how that works when your agent waits for your pauses, as Claude Code and Codex do.</p>
     </div>
     <pre class="diff changelog" aria-label="Example of inplace's change log"><span><i>16:34:18</i> edited p-1: "…proposes shared raised…" → "…proposes &lt;strong&gt;shared&lt;/strong&gt; raised…"</span><span><i>16:34:40</i> edited td-4: "€1,150" → "€1,350"</span><span><i>16:34:52</i> changed p-3 from &lt;p&gt; to &lt;h2&gt;</span><span><i>16:35:21</i> moved li-1 before li-3 (inside ul-1)</span><span><i>16:36:02</i> added p-5 &lt;p&gt; after p-2: "A structural survey last autumn confirmed…"</span><span><i>16:36:07</i> paused after 5 changes: edited p-1, edited td-4, changed p-3, moved li-1, added p-5</span></pre>
   </div>
+
+  <figure class="flow" id="flow">
+    <div class="flow-scroll">
+    <svg viewBox="0 0 760 420" role="img" aria-labelledby="flow-title flow-desc">
+      <title id="flow-title">How an edit reaches your agent</title>
+      <desc id="flow-desc">Everything runs on your computer. The page in your browser sends each edit to inplace, which writes that block into the HTML file and, once you stop typing, answers your agent&rsquo;s waiting request. The agent edits the file and starts its next wait, and inplace shows an eye and then a check on the page.</desc>
+      <defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+      <rect class="area" x="10" y="10" width="740" height="400" rx="18"/>
+      <text class="area-label" x="30" y="36">Your computer</text>
+      <rect class="area inner" x="250" y="48" width="240" height="346" rx="14"/>
+      <text class="area-label" x="370" y="68" text-anchor="middle">inplace (a Node process)</text>
+
+      <g class="box you"><rect x="40" y="82" width="170" height="56" rx="9"/><text x="125" y="104" text-anchor="middle">The page</text><text class="sub" x="125" y="123" text-anchor="middle">In your browser</text></g>
+      <g class="box"><rect x="270" y="82" width="200" height="52" rx="9"/><text x="370" y="103" text-anchor="middle">Saves your edit</text><text class="sub" x="370" y="121" text-anchor="middle">Only that block</text></g>
+      <g class="box"><rect x="270" y="162" width="200" height="52" rx="9"/><text x="370" y="183" text-anchor="middle">Waits for a pause</text><text class="sub" x="370" y="201" text-anchor="middle">5 seconds with no edits</text></g>
+      <g class="box"><rect x="270" y="242" width="200" height="52" rx="9"/><text x="370" y="263" text-anchor="middle">List of your changes</text><text class="sub" x="370" y="281" text-anchor="middle">Numbered, in order</text></g>
+      <g class="box"><rect x="270" y="322" width="200" height="52" rx="9"/><text x="370" y="343" text-anchor="middle">Follows the agent</text><text class="sub" x="370" y="361" text-anchor="middle">Picked up? Done?</text></g>
+      <g class="box file"><rect x="540" y="82" width="180" height="56" rx="9"/><text x="630" y="104" text-anchor="middle">document.html</text><text class="sub" x="630" y="123" text-anchor="middle">The only copy</text></g>
+      <g class="box agent"><rect x="540" y="242" width="180" height="56" rx="9"/><text x="630" y="264" text-anchor="middle">Your agent</text><text class="sub" x="630" y="283" text-anchor="middle">Runs inplace wait</text></g>
+
+      <line class="arr" x1="210" y1="110" x2="266" y2="110" marker-end="url(#flow-arrow)"/>
+      <line class="arr" x1="470" y1="110" x2="536" y2="110" marker-end="url(#flow-arrow)"/>
+      <line class="arr faint" x1="370" y1="134" x2="370" y2="158" marker-end="url(#flow-arrow)"/>
+      <line class="arr" x1="370" y1="214" x2="370" y2="238" marker-end="url(#flow-arrow)"/>
+      <line class="arr" x1="470" y1="270" x2="536" y2="270" marker-end="url(#flow-arrow)"/>
+      <line class="arr" x1="630" y1="242" x2="630" y2="142" marker-end="url(#flow-arrow)"/>
+      <path class="arr" d="M630 298 L630 348 L474 348" marker-end="url(#flow-arrow)"/>
+      <path class="arr" d="M270 348 L125 348 L125 142" marker-end="url(#flow-arrow)"/>
+      <text class="sub" x="198" y="338" text-anchor="middle">eye, then check</text>
+
+      <g class="step"><circle cx="238" cy="92" r="11"/><text x="238" y="96.5" text-anchor="middle">1</text></g>
+      <g class="step"><circle cx="503" cy="92" r="11"/><text x="503" y="96.5" text-anchor="middle">2</text></g>
+      <g class="step"><circle cx="390" cy="226" r="11"/><text x="390" y="230.5" text-anchor="middle">3</text></g>
+      <g class="step"><circle cx="503" cy="252" r="11"/><text x="503" y="256.5" text-anchor="middle">4</text></g>
+      <g class="step"><circle cx="650" cy="192" r="11"/><text x="650" y="196.5" text-anchor="middle">5</text></g>
+      <g class="step"><circle cx="555" cy="332" r="11"/><text x="555" y="336.5" text-anchor="middle">6</text></g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>You type in a paragraph, and the page sends just that block to inplace.</li>
+      <li>inplace writes the block into your file and leaves the rest of it as it was.</li>
+      <li>Every edit restarts a short countdown. Once you&rsquo;ve stopped for 5 seconds, inplace sums up the burst as one pause and adds it to its list of changes.</li>
+      <li>Your agent has had a request open the whole time: <code>inplace wait</code>. inplace answers it with the pause, so your agent wakes up with exactly what you changed, and an eye appears beside each block you edited.</li>
+      <li>If something needs fixing, such as a total that depends on the amount you changed, the agent edits the file directly. Every open page reloads and highlights what it changed.</li>
+      <li>When it&rsquo;s done, the agent opens its next <code>inplace wait</code>. That tells inplace it has finished, so the eye turns into a check and fades. If you paused again in the meantime, the new request gets that pause straight away, so nothing is missed.</li>
+    </ol>
+    <p class="flow-note">Other ways of following your edits skip some of these steps. When Claude Code runs inplace as an MCP server, it can get each pause as a message instead of waiting for it; the page then shows the eye but not the check, because inplace can&rsquo;t tell when the agent is done. An agent that only reads inplace&rsquo;s output or log file gets your edits too, but inplace can&rsquo;t see it, so the page shows no marks. And any agent with a headless mode, such as <code>claude -p</code> or <code>codex exec</code>, can be started by inplace itself at each pause.</p>
+  </figure>
 </section>
 
 <section>
