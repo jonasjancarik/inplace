@@ -321,6 +321,9 @@ const EDIT_REQUESTS: [string, object][] = [
   ["remove", { id: "p-1" }],
   ["undo", { id: "p-1", kind: "add" }],
   ["stash/resolve", { n: 1, action: "discard" }],
+  ["suggestion/undo", { id: "p-1" }],
+  ["suggestion/keep", { id: "p-1" }],
+  ["suggestion/keep-all", {}],
 ];
 const COMMENT_REQUESTS: object[] = [
   { action: "add", id: "p-1", text: "Why?" },
@@ -388,6 +391,35 @@ test("at edit access, and with no access option, nothing is refused", async () =
     } finally {
       s.close();
     }
+  }
+});
+
+test("the agent's changes are listed with the history, and the page can undo or keep them", async () => {
+  const s = await start();
+  try {
+    const host = `localhost:${s.port}`;
+    const page = { host, origin: `http://${host}`, "content-type": "application/json" };
+    const history = async () => JSON.parse((await s.send("GET", "/__inplace/history", { host })).body);
+    await history(); // inplace has seen the file
+    writeFileSync(s.path, readFileSync(s.path, "utf8").replace("Hello", "Hello there"));
+    const { pending } = await history();
+    assert.deepEqual(pending.map((p: { kind: string; id: string; before: string; undoable: boolean }) => [p.kind, p.id, p.before, p.undoable]),
+      [["changed", "p-1", "Hello", true]]);
+    const undone = await s.send("POST", "/__inplace/suggestion/undo", page, JSON.stringify({ id: "p-1" }));
+    assert.equal(undone.status, 200, undone.body);
+    assert.ok(JSON.parse(undone.body).editable.includes("p-1"));
+    assert.match(readFileSync(s.path, "utf8"), /<p data-id="p-1">Hello<\/p>/);
+    assert.deepEqual((await history()).pending, []);
+    const again = await s.send("POST", "/__inplace/suggestion/undo", page, JSON.stringify({ id: "p-1" }));
+    assert.equal(again.status, 409);
+    assert.match(JSON.parse(again.body).error, /kept or undone already/);
+    writeFileSync(s.path, readFileSync(s.path, "utf8").replace("Hello", "Hi"));
+    assert.equal((await history()).pending.length, 1);
+    assert.equal((await s.send("POST", "/__inplace/suggestion/keep-all", page, "{}")).status, 200);
+    assert.deepEqual((await history()).pending, []);
+    assert.match(readFileSync(s.path, "utf8"), />Hi</);
+  } finally {
+    s.close();
   }
 });
 

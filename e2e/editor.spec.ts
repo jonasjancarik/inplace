@@ -523,6 +523,11 @@ test.describe("showing who wrote what", () => {
     const bars = editor.locator("#inplace-authors-layer .bar");
     await expect(bars).toHaveCount(0);
     await editor.getByRole("switch", { name: "Show who wrote what" }).check();
+    // While the change is still to review, its own bar takes the place of this one.
+    await expect(editor.locator("#inplace-pending-layer .bar")).toHaveCount(1);
+    await expect(bars).toHaveCount(0);
+    await editor.getByRole("button", { name: "Keep: Edited paragraph" }).click();
+    await expect(editor.locator("#inplace-pending-layer .bar")).toHaveCount(0);
     await expect(bars).toHaveCount(1);
     await expect(bars.first()).toHaveAttribute("title", /^Your agent changed this /);
     // The choice is remembered for this document.
@@ -532,6 +537,53 @@ test.describe("showing who wrote what", () => {
     await expect(bars).toHaveCount(1);
     await editor.emulateMedia({ media: "print" });
     await expect(editor.locator("#inplace-authors-layer")).toBeHidden();
+  });
+});
+
+test.describe("reviewing the agent's changes", () => {
+  test("undo one rewrite and an added paragraph, keep the other rewrite, and the file follows", async ({ editor, doc }) => {
+    const original = doc.read();
+    // One write that rewrites two paragraphs and adds one, as an agent's edit might.
+    writeFileSync(doc.path, original
+      .replace("last autumn confirmed", "last October confirmed")
+      .replace("raising monthly contributions", "raising the monthly contributions")
+      .replace(/(<p data-id="p-\d+">The association)/, "<p>The beds arrive in April.</p>\n$1"));
+    const bars = editor.locator("#inplace-pending-layer .bar");
+    await expect(bars).toHaveCount(3);
+
+    // Pointing at a changed paragraph offers Keep and Undo beside it.
+    const survey = block(editor, "p", "The roof is already used");
+    await survey.hover();
+    const actions = editor.locator("#inplace-pending-actions");
+    await expect(actions).toBeVisible();
+    await actions.getByRole("button", { name: "Undo your agent's change to this paragraph" }).click();
+    await expect(survey).toContainText("last autumn confirmed");
+    await expect(bars).toHaveCount(2);
+    // The undone change is the user's, so it isn't highlighted as the agent's.
+    await expect(survey).not.toHaveClass(/inplace-changed/);
+
+    // The list of changes has the rest, with the new paragraph.
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const review = editor.locator("#inplace-changes .to-review");
+    await expect(review.getByRole("heading")).toHaveText("Your agent’s changes to review (2)");
+    await review.getByRole("button", { name: "Undo: New paragraph" }).click();
+    await expect(block(editor, "p", "The beds arrive in April")).toHaveCount(0);
+    await expect(bars).toHaveCount(1);
+    // Never printed.
+    await editor.emulateMedia({ media: "print" });
+    await expect(bars.first()).toBeHidden();
+    await editor.emulateMedia({ media: "screen" });
+    await expect(bars.first()).toBeVisible();
+
+    await editor.getByRole("button", { name: "Changes" }).click(); // closes the list
+    await block(editor, "p", "The association").hover();
+    await actions.getByRole("button", { name: "Keep your agent's change to this paragraph" }).click();
+    await expect(bars).toHaveCount(0);
+    await expect(actions).toBeHidden();
+
+    expect(doc.read()).toBe(original.replace("raising monthly contributions", "raising the monthly contributions"));
+    await expect.poll(() => doc.output).toMatch(/undid the agent's change to p-\d+: .*October.* → .*autumn/);
+    await expect.poll(() => doc.output).toMatch(/undid the agent's addition of p-\d+, so it's gone again: "The beds arrive in April\."/);
   });
 });
 
@@ -661,7 +713,7 @@ test.describe("working alongside an agent", () => {
     await expect(tip).toHaveText("Added by your agent");
   });
 
-  test("hovering works after the tint has faded, until the next reload", async ({ editor, doc }) => {
+  test("hovering works after the tint has faded, and after a reload until the change is kept", async ({ editor, doc }) => {
     doc.edit("last autumn confirmed", "last October confirmed");
     await expect(block(editor, "p", "last October confirmed")).toBeVisible();
     await expect.poll(() => highlighted(editor), { timeout: 8_000 }).toEqual([]);
@@ -672,6 +724,11 @@ test.describe("working alongside an agent", () => {
     await editor.mouse.move(1, 1);
     doc.edit("Two beds stay open", "Three beds stay open");
     await expect(block(editor, "li", "Three beds stay open")).toBeVisible();
+    await hoverWord(editor, "October");
+    await expect(tip).toHaveText("Was: autumn");
+    await expect.poll(() => highlighted(editor)).not.toContain("October");
+    await editor.getByRole("button", { name: "Keep your agent's change to this paragraph" }).click();
+    await editor.mouse.move(1, 1);
     await hoverWord(editor, "October");
     await editor.waitForTimeout(200);
     await expect(tip).toBeHidden();
@@ -861,7 +918,7 @@ test.describe("pages with unusual styles and parts", () => {
       doc.edit("Beta panel text", "Beta panel words");
       await expect(page.locator("#inplace-status")).toContainText("One is out of view.");
       await page.getByRole("button", { name: "Changes" }).click();
-      await page.getByRole("dialog", { name: "Changes" }).getByRole("button", { name: /Edited paragraph/ }).click();
+      await page.getByRole("dialog", { name: "Changes" }).locator(".entry").getByRole("button", { name: /Edited paragraph/ }).click();
       await expect(block(page, "p", "Beta panel words")).toBeVisible();
       await expect.poll(() => highlighted(page)).toContain("words");
     });

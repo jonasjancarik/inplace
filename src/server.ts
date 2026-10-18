@@ -20,6 +20,7 @@ import { readEditorScript } from "./editor-script.js";
 import { AGENT, type Author, copyOf, diffBlocks, History, type Place, placeOf, YOU } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
+import { CantUndo, PendingChanges, reverseChange } from "./pending.js";
 import { type DocumentStore, FileStore } from "./store.js";
 import { type ChangeFeed } from "./wait.js";
 
@@ -156,6 +157,9 @@ export class Document {
   private undos: UndoStep[] = [];
   /** Who wrote each block last, kept beside the stash. */
   private authors!: Authorship;
+  /** The agent's changes the user hasn't kept or undone yet, kept beside the stash. */
+  private pending!: PendingChanges;
+  private pendingListeners = new Set<() => void>();
   /** Comments made on the page, kept beside the stash. */
   readonly comments: CommentStore;
   /** Where the document, the stash and the comments are saved. */
@@ -189,7 +193,9 @@ export class Document {
     } catch {
       this.stashed = [];
     }
-    this.authors = new Authorship(store.loadSide("authors"), this.refresh());
+    const text = this.refresh();
+    this.authors = new Authorship(store.loadSide("authors"), text);
+    this.pending = new PendingChanges(store.loadSide("pending"), text);
   }
 
   private read(): string {
@@ -211,6 +217,7 @@ export class Document {
     if (this.last !== null && this.last !== text) {
       const changes = diffBlocks(this.last, text);
       if (this.authors.record(changes, by, text)) this.saveAuthors();
+      if (this.pending.record(changes, by, this.last, text)) this.savePending(false);
       if (this.history.add(by, changes)) for (const listener of this.historyListeners) listener();
     }
     this.last = text;
@@ -222,6 +229,60 @@ export class Document {
     } catch {
       // the marks still work in memory
     }
+  }
+
+  /** `notify` is false while a write is being recorded, which tells the page itself. */
+  private savePending(notify = true): void {
+    try {
+      this.store.saveSide("pending", JSON.stringify(this.pending));
+    } catch {
+      // the list still works in memory
+    }
+    if (notify) for (const listener of this.pendingListeners) listener();
+  }
+
+  /** The agent's changes still to review, for the page. */
+  pendingChanges() {
+    return this.pending.summary();
+  }
+
+  /** Goes up whenever the history or the list of changes to review does, for the page to fetch both again. */
+  get changesRevision(): number {
+    return this.history.revision + this.pending.revision;
+  }
+
+  onPendingChange(listener: () => void): () => void {
+    this.pendingListeners.add(listener);
+    return () => this.pendingListeners.delete(listener);
+  }
+
+  /** Keep the agent's change to this block, or all of them: it only leaves the list. */
+  keepAgentChange(id?: string): void {
+    this.refresh();
+    if (this.pending.clear(id)) this.savePending();
+  }
+
+  /**
+   * Undo the agent's change to this block, written as the person who asked, so the agent reads in
+   * the change lines that it wasn't wanted. Throws CantUndo when that no longer fits the file.
+   */
+  undoAgentChange(id: string, who?: Person): string {
+    const text = this.load().text;
+    const p = this.pending.get(id);
+    if (!p) throw new CantUndo("This change has been kept or undone already.");
+    const reversed = reverseChange(p, text);
+    if (reversed.text !== text) this.write(reversed.text, personAuthor(who));
+    this.pending.clear(id);
+    this.savePending();
+    const line = {
+      changed: () => `undid the agent's change to ${id}${named(who)}: ${describeEdit(reversed.from!, reversed.to!)}` +
+        (reversed.where ? `, and moved it back ${reversed.where}` : ""),
+      added: () => `undid the agent's addition of ${id}${named(who)}, so it's gone again: ${JSON.stringify(clip(plain(p.after?.html ?? ""), 200))}`,
+      removed: () => `undid the agent's removal of ${id}${named(who)}: put it back ${reversed.where}`,
+      moved: () => `undid the agent's move of ${id}${named(who)}: moved it back ${reversed.where}`,
+    }[p.kind]();
+    this.log(`${time()} ${line}`, true, p.kind === "added" ? [] : [id]);
+    return this.version;
   }
 
   /** Who last wrote each block, for the page's margin marks. */
@@ -683,6 +744,7 @@ const LEVEL: Record<Access, number> = { view: 0, comment: 1, edit: 2 };
  */
 const NEEDS: Record<string, Access> = {
   save: "edit", move: "edit", retag: "edit", insert: "edit", remove: "edit", undo: "edit", "stash/resolve": "edit",
+  "suggestion/keep": "edit", "suggestion/keep-all": "edit", "suggestion/undo": "edit",
   comment: "comment",
 };
 
@@ -762,7 +824,7 @@ export function createInplaceHandler(
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
     const push = (version: string) => res.write(`event: version\ndata: ${version}\n\n`);
     const pushStash = () => res.write(`event: stash\ndata: ${doc.stashCount}\n\n`);
-    const pushHistory = () => res.write(`event: history\ndata: ${doc.history.revision}\n\n`);
+    const pushHistory = () => res.write(`event: history\ndata: ${doc.changesRevision}\n\n`);
     const pushAgent = () => res.write(`event: agent\ndata: ${JSON.stringify(agent.summary())}\n\n`);
     const pushComments = () => res.write(`event: comments\ndata: ${doc.comments.revision}\n\n`);
     push(doc.version);
@@ -773,6 +835,7 @@ export function createInplaceHandler(
     const off = doc.onChange(push);
     const offStash = doc.onStashChange(pushStash);
     const offHistory = doc.onHistoryChange(pushHistory);
+    const offPending = doc.onPendingChange(pushHistory);
     const offAgent = agent.onChange(pushAgent);
     const offComments = doc.comments.onChange(pushComments);
     const ping = setInterval(() => res.write(": ping\n\n"), 15_000);
@@ -782,6 +845,7 @@ export function createInplaceHandler(
       off();
       offStash();
       offHistory();
+      offPending();
       offAgent();
       offComments();
       clearInterval(ping);
@@ -815,6 +879,12 @@ export function createInplaceHandler(
       apply = () => doc.insertBlock(id, body.position as "before" | "after", str("tag")!, str("content")!, split, who);
     } else if (path === "undo" && id && ["move", "add", "remove", "retag"].includes(body.kind as string)) {
       apply = () => doc.undo(body.kind as UndoKind, id, who);
+    } else if (path === "suggestion/undo" && id) {
+      apply = () => doc.undoAgentChange(id, who);
+    } else if (path === "suggestion/keep" && id) {
+      apply = () => (doc.keepAgentChange(id), {});
+    } else if (path === "suggestion/keep-all") {
+      apply = () => (doc.keepAgentChange(), {});
     } else if (path === "remove" && id) {
       apply = () => (doc.removeBlock(id, who), {});
     } else if (path === "stash/resolve" && typeof body.n === "number" &&
@@ -825,7 +895,7 @@ export function createInplaceHandler(
     try {
       const result = apply();
       // Structure changed: send the page the new lists of editable and movable elements.
-      const lists = path === "insert" || path === "remove" || path === "undo" || path === "stash/resolve"
+      const lists = path === "insert" || path === "remove" || path === "undo" || path === "stash/resolve" || path === "suggestion/undo"
         ? (() => { const { text } = doc.load(); return { editable: editableIds(text), movable: movableIds(text) }; })()
         : {};
       json(res, 200, { ...(typeof result === "string" ? {} : result), ...lists, version: doc.version });
@@ -835,7 +905,7 @@ export function createInplaceHandler(
       }
       if (e instanceof BlockNotFound) return json(res, 404, { error: "block not found", version: doc.version });
       if (e instanceof UnsafeLink) return json(res, 400, { error: e.message, version: doc.version });
-      if (e instanceof UndoGone) return json(res, 409, { error: e.message, version: doc.version });
+      if (e instanceof UndoGone || e instanceof CantUndo) return json(res, 409, { error: e.message, version: doc.version });
       throw e;
     }
   };
@@ -970,7 +1040,7 @@ export function createInplaceHandler(
           // `me` is the person asking, so the page can tell "you" from other people.
           return json(res, 200, {
             entries: doc.history.entries, revision: doc.history.revision, undoable: doc.undoable(),
-            authors: doc.authorMarks(), ...(whoSent(req) ? { me: whoSent(req)!.id } : {}),
+            authors: doc.authorMarks(), pending: doc.pendingChanges(), ...(whoSent(req) ? { me: whoSent(req)!.id } : {}),
           });
         }
         return staticFile(path, res);

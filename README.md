@@ -82,6 +82,14 @@ Everything else structural is the agent's job: adding sections, figures, tables 
 
 To keep part of a document out of reach on the page, for example figures that are calculated from data, add `data-locked` to the element. It can't be typed into or moved, but it can still be commented on. Text that the page's own scripts fill in, such as a total added up from a table, is kept out of reach automatically: hovering over it explains that your agent has to change it.
 
+## Reviewing what the agent changed
+
+Your agent edits the file directly, so its changes are already in the document when the page reloads. Each block it changed gets a thin blue bar in the left margin until you've looked at it. Point at the block and Keep and Undo appear beside it; hovering a changed word shows the word it replaced. The list of changes (the inplace button at the bottom left) has all of them at the top, under "Your agent's changes to review", with Keep and Undo for each and Keep all.
+
+Keep only takes the change off the list. Undo puts back what was there before the agent's first change to the block: its old text, or a removed or moved block in its old place, and a block the agent added is removed again. If you've typed in the block since, only the agent's words are undone and yours stay; when your edit and the agent's touch the same words, the undo is refused and the page says why. A block the agent added can only be removed this way while nobody has changed it.
+
+Several changes by the agent to the same block count as one, and so does everything inside a new table or list. An undo is written as your own edit, so your agent sees which changes you didn't want and knows not to make them again. The list of changes to review is kept beside the document, not in it, so it's still there after a restart, and the bars are never printed.
+
 ## Comments
 
 For a change you'd rather leave to the agent, select the text it's about and click **Comment** in the toolbar that appears, or press ⌘⌥M / Ctrl+Alt+M. Write what should change and press Enter (Shift+Enter starts a new line). For a chart, figure, table, row or list as a whole, hover over it and click the **Comment** button next to it.
@@ -247,7 +255,7 @@ Once anything has changed, a button in the bottom-left corner opens a list of ch
 
 To read the whole document with every change in place, turn on **Show what changed** at the top of the list. The page then shows the agent's changes since inplace started the way a word processor's tracked changes do: removed words crossed out, new words marked, new rows and paragraphs tinted, and removed ones crossed out where they used to be. A small note in the margin points out a block that was moved or turned from a paragraph into a heading. Untick "Only the agent's changes" to see your own edits too. Editing is paused while this view is on, the view stays on when the agent saves again, and it also prints with the marks. Click Done or press Escape to go back to editing; nothing in this view is ever written to the file. For a very long paragraph, only changes in roughly its first 600 characters are marked.
 
-To see who wrote each part, turn on **Show who wrote what** in the list of changes. A thin bar appears in the margin beside every block that was changed while inplace has been watching, green for you and blue for your agent. Hover over it for the details, such as "Your agent changed this 20 minutes ago". Blocks nobody has changed yet, and blocks edited in the file while inplace wasn't running, get no bar, because inplace can't tell who wrote them. The bars are off by default, are remembered for each document in your browser, and are never printed or shown in the review view. Who wrote what is kept beside the document, not in it.
+To see who wrote each part, turn on **Show who wrote what** in the list of changes. A thin bar appears in the margin beside every block that was changed while inplace has been watching, green for you and blue for your agent. Hover over it for the details, such as "Your agent changed this 20 minutes ago". Blocks nobody has changed yet, and blocks edited in the file while inplace wasn't running, get no bar, because inplace can't tell who wrote them. The bars are off by default, are remembered for each document in your browser, and are never printed or shown in the review view. Who wrote what is kept beside the document, not in it. A block with an agent's change you haven't kept or undone yet shows the bar for reviewing it instead (see "Reviewing what the agent changed").
 
 ## Limitations
 

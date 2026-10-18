@@ -1,5 +1,5 @@
 // What the server sends the page, as the editor uses it. These follow the server's own types:
-// BlockChange and HistoryEntry in src/history.ts, Comment in src/comments.ts, the agent summary
+// BlockChange and HistoryEntry in src/history.ts, PendingSummary in src/pending.ts, Comment in src/comments.ts, the agent summary
 // in src/agent.ts, StashEntry and the replies in src/server.ts, and src/anchor.ts.
 
 /** Who made a change; see Author in src/history.ts. */
@@ -36,6 +36,17 @@ interface HistoryEntry {
 }
 
 type UndoKind = "move" | "add" | "remove" | "retag";
+
+/** One of the agent's changes the user hasn't kept or undone yet; see PendingSummary in src/pending.ts. */
+interface ToReview {
+  id: string;
+  kind: "added" | "removed" | "changed" | "moved";
+  tag: string;
+  moved?: boolean;
+  before?: string;
+  since: string;
+  undoable: boolean;
+}
 
 /** A comment on the page. Named so it doesn't clash with the DOM's Comment node. */
 interface PageComment {

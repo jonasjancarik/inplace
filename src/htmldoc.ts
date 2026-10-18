@@ -633,6 +633,27 @@ export function cutChunk(source: string, blockId: string): string {
   return source.slice(cutStart(source, node), node.end);
 }
 
+/** Take an element out whatever it holds, with the line break in front of it, as removeBlock does. */
+export function cutElement(source: string, blockId: string): string {
+  const node = findBlock(parse(source), blockId);
+  if (!node || !node.parent) throw new BlockNotFound(blockId);
+  return source.slice(0, cutStart(source, node)) + source.slice(node.end);
+}
+
+/** The line break and indentation cutElement takes out in front of an element. */
+export function leadOf(source: string, blockId: string): string {
+  const node = findBlock(parse(source), blockId);
+  if (!node || !node.parent) throw new BlockNotFound(blockId);
+  return source.slice(cutStart(source, node), node.start);
+}
+
+/** Put markup in as the last thing inside the element with `parentId`. */
+export function putLast(source: string, chunk: string, parentId: string): string {
+  const parent = findBlock(parse(source), parentId);
+  if (!parent) throw new BlockNotFound(parentId);
+  return source.slice(0, parent.innerEnd) + chunk + source.slice(parent.innerEnd);
+}
+
 /** Put markup cut out with cutChunk back in, right before or after the element with `anchorId`. */
 export function putChunk(source: string, chunk: string, anchorId: string, position: "before" | "after"): string {
   const anchor = findBlock(parse(source), anchorId);

@@ -1,4 +1,5 @@
-// Where a document and what inplace keeps beside it (set-aside edits, comments) are saved.
+// Where a document and what inplace keeps beside it (set-aside edits, comments, who wrote what,
+// the agent's changes still to review) are saved.
 // The CLI keeps them in files; a host that embeds inplace can keep them anywhere else,
 // such as a database, by passing its own DocumentStore to Document.
 
@@ -8,7 +9,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 /** What inplace keeps beside a document. */
-export type SideData = "stash" | "comments" | "authors";
+export type SideData = "stash" | "comments" | "authors" | "pending";
 
 export interface DocumentStore {
   /** The document's name, such as its file name, for the page and the change lines. */
