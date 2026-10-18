@@ -181,13 +181,28 @@ function commentField(value: string, submit: () => void, label = "Comment", plac
   return field;
 }
 
+/**
+ * A triple-click on the last paragraph before the page's own controls (the toolbar, the comment
+ * markers) ends the selection inside them. Pull such an end back to the edge of the paragraph it
+ * started in, so only selections that really take in crossed-out text are refused.
+ */
+function trimOutsideUi(range: Range) {
+  const block = (node: Node) => (node.nodeType === 1 ? node as Element : node.parentElement)?.closest<HTMLElement>("[data-id]");
+  const stray = (node: Node) => inUi(node) && !block(node);
+  const start = stray(range.startContainer) ? block(range.endContainer) : block(range.startContainer);
+  if (!start || stray(range.startContainer) && stray(range.endContainer)) return;
+  if (stray(range.endContainer)) range.setEnd(start, start.childNodes.length);
+  if (stray(range.startContainer)) range.setStart(start, 0);
+}
+
 function startComment(el: HTMLElement | null | undefined = null) {
   if (!canComment) return;
   let range: Range | null = null;
   if (!el) {
     const sel = getSelection()!;
     if (!sel.rangeCount) return;
-    range = sel.getRangeAt(0);
+    range = sel.getRangeAt(0).cloneRange();
+    trimOutsideUi(range);
     if (inUi(range.startContainer) || inUi(range.endContainer))
       return showStatus("Crossed-out text is no longer in the document, so it can't be commented on.", "info", 4000);
     const node = range.commonAncestorContainer;
