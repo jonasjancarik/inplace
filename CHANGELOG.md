@@ -6,6 +6,9 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- **Show who wrote what** in the list of changes draws a thin bar beside each block, green for you and blue for your agent, with hover text such as "Your agent changed this 20 minutes ago". It's off by default, remembered for each document, and never printed. Blocks changed while inplace wasn't running show no bar. Nothing is written into the HTML file.
+- For hosts running inplace inside their own server: `createInplaceHandler` takes an `author(req)` option to name the person behind each edit and comment, and `replaceElement`, `findReplace` and `addAgentComment` take an optional name for the agent. `Author` is now an object, and comments carry it too (`by` on an agent's comment is `{ "kind": "agent" }`, no longer the string `"agent"`).
+
 - Comments can be tagged with the kind of change they ask for (small fix, rewrite, content, question or layout), so the agent can group them and make the small fixes in one go. It's off unless you set `INPLACE_JEV_KEY` to a key for Jev, TypeSafe AI's classification model, which then receives each comment and the text it's on. `--no-tags` turns it off for one run. See "Tagging comments" in the README.
 - inplace can run inside another Node.js server: the package now exports `Document`, `createInplaceHandler` and the rest, and a document can be kept anywhere through a `DocumentStore` instead of a file. The README's "Using inplace inside another server" explains how.
 - Claude Code now follows your edits by running `inplace wait` in the background instead of watching the log file, so the page can show it picking up your changes.
