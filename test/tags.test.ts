@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { AGENT } from "../src/history.js";
 
 import { type CommentTag, CommentStore, type TagRequest } from "../src/comments.js";
 import { PauseWatcher } from "../src/idle.js";
@@ -73,7 +74,7 @@ test("the agent's own comments and deleted comments aren't tagged", async () => 
   const comments = store();
   const { asked, tagger } = controlled();
   comments.tagger = tagger;
-  comments.add({ id: "p-1", text: "Shall I fix this?", by: "agent" });
+  comments.add({ id: "p-1", text: "Shall I fix this?", by: AGENT });
   assert.equal(asked.length, 0);
   comments.add({ id: "p-1", text: "Typo" });
   comments.delete(2);

@@ -139,3 +139,18 @@ test("the exported tool definitions are what the handler offers", async () => {
     host.close();
   }
 });
+
+test("the by option names the agent in the marks and on its comments", async () => {
+  const host = await mount({ by: { id: "agent-7", name: "Maya's agent" } });
+  try {
+    const agent = host.client();
+    await agent.init();
+    await agent.tool("replace_element", { id: "p-1", part: "inner", expected: "Ten trees", html: "Twelve trees" });
+    const named = { kind: "agent", id: "agent-7", name: "Maya's agent" };
+    assert.deepEqual(host.target.doc.authorMarks()["p-1"].by, named);
+    await agent.tool("add_comment", { id: "p-2", text: "Is it two or three?" });
+    assert.deepEqual(host.target.doc.comments.list()[0].by, named);
+  } finally {
+    host.close();
+  }
+});

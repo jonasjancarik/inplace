@@ -2,11 +2,13 @@
 const LOGO = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor"/><path d="M9 9h14M9 15h14M9 21h8" stroke="#1f2a24" stroke-width="2.4" stroke-linecap="round"/><path d="M21 19v7" stroke="#e9b949" stroke-width="2.4" stroke-linecap="round"/></svg>';
 const SEEN_KEY = `${STATE_KEY}:seen-changes`;
 let historyEntries: HistoryEntry[] = [];
+let authorMarks: Record<string, AuthorMark> = {}; // who wrote each block last
+let meId: string | undefined; // the id the host gave this person, if it did
 let undoable = new Set<string>(); // "kind id" of the user's changes that can still be undone
 const UNDO_KINDS: Record<string, UndoKind | undefined> = { moved: "move", added: "add", removed: "remove", retagged: "retag" };
 let seenChanges: number | null = null;
 try { seenChanges = JSON.parse(sessionStorage.getItem(SEEN_KEY) || "null"); } catch {}
-const latestByAgent = () => historyEntries.reduce((n, e) => (e.by === "agent" ? Math.max(n, e.n) : n), 0);
+const latestByAgent = () => historyEntries.reduce((n, e) => (e.by.kind === "agent" ? Math.max(n, e.n) : n), 0);
 
 function updateCorner() {
   corner.classList.toggle("stash", stashCount > 0);
@@ -25,9 +27,11 @@ function updateCorner() {
 
 async function loadHistory() {
   try {
-    const data: { entries: HistoryEntry[]; undoable?: { kind: UndoKind; id: string }[] } =
+    const data: { entries: HistoryEntry[]; undoable?: { kind: UndoKind; id: string }[]; authors?: Record<string, AuthorMark>; me?: string } =
       await (await fetch("/__inplace/history")).json();
     historyEntries = data.entries;
+    authorMarks = data.authors || {};
+    meId = data.me;
     undoable = new Set((data.undoable || []).map((u) => `${u.kind} ${u.id}`));
   } catch {
     return;
@@ -35,6 +39,7 @@ async function loadHistory() {
   // A newly opened page starts with nothing new to point out.
   if (seenChanges === null) markChangesSeen();
   updateCorner();
+  paintAuthors();
   if (changesPanel.classList.contains("open")) renderChanges();
 }
 
@@ -97,6 +102,10 @@ function ago(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// The words for an author: "you" for this person, "your agent", or a name the host gave.
+const isMe = (a: Author) => a.kind === "person" && (!a.id || !meId || a.id === meId);
+const byWords = (a: Author) => (a.kind === "agent" ? (a.name ? a.name : "your agent") : isMe(a) ? "you" : a.name || "someone else");
+
 async function goTo(el: HTMLElement, change: BlockChange, by: "you" | "agent") {
   if (matchMedia("(max-width: 600px)").matches) closeChanges();
   if (!(await uncover(el))) return showStatus(HIDDEN_CHANGE, "info", 4000);
@@ -137,7 +146,7 @@ async function uncover(el: HTMLElement) {
 }
 
 function renderChanges() {
-  const list = make("div", { className: "list" });
+  const list = make("div", { className: "list" }, authorsSwitch());
   if (!canEdit) {
     list.append(make("p", { className: "access", textContent: canComment
       ? "You can comment on this document, but not edit it."
@@ -158,11 +167,11 @@ function renderChanges() {
   const offered = new Set<string>(); // each change gets Undo once, on its newest entry
   for (const entry of [...historyEntries].reverse()) {
     const who = make("div", { className: "who" });
-    if (entry.by === "agent") {
+    if (entry.by.kind === "agent") {
       const icon = make("span", { className: "star" });
       icon.innerHTML = STAR;
-      who.append(icon, "Your agent");
-    } else who.append("You");
+      who.append(icon, entry.by.name || "Your agent");
+    } else who.append(isMe(entry.by) ? "You" : entry.by.name || "Someone else");
     who.append(make("span", { className: "when", textContent: ago(entry.at) }));
     const items = make("ul");
     for (const change of entry.changes) {
@@ -170,9 +179,9 @@ function renderChanges() {
       const body = [make("span", { className: "kind", textContent: describe(change) }),
         make("span", { className: "text" }, ...snippet(change))];
       const item = make("li", {}, el
-        ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change, entry.by) }, ...body)
+        ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change, entry.by.kind === "agent" ? "agent" : "you") }, ...body)
         : make("div", { className: "change" }, ...body));
-      const kind = canEdit && entry.by === "you" && UNDO_KINDS[change.fromTag ? "retagged" : change.kind];
+      const kind = canEdit && isMe(entry.by) && UNDO_KINDS[change.fromTag ? "retagged" : change.kind];
       if (kind && undoable.has(`${kind} ${change.id}`) && !offered.has(`${kind} ${change.id}`)) {
         offered.add(`${kind} ${change.id}`);
         item.classList.add("undoable");
@@ -182,7 +191,7 @@ function renderChanges() {
       items.append(item);
     }
     const node = make("div", { className: "entry" }, who, items);
-    node.dataset.by = entry.by;
+    node.dataset.by = entry.by.kind === "agent" ? "agent" : "you";
     list.append(node);
   }
   changesPanel.replaceChildren(

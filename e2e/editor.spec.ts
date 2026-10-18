@@ -515,6 +515,26 @@ async function hoverWord(page: Page, word: string): Promise<void> {
   await page.mouse.move(box.x, box.y);
 }
 
+test.describe("showing who wrote what", () => {
+  test("a bar beside each changed block says who changed it, once the switch is on", async ({ editor, doc }) => {
+    writeFileSync(doc.path, doc.read().replace("last autumn confirmed", "last October confirmed"));
+    await expect(block(editor, "p", "October confirmed")).toBeVisible();
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const bars = editor.locator("#inplace-authors-layer .bar");
+    await expect(bars).toHaveCount(0);
+    await editor.getByRole("switch", { name: "Show who wrote what" }).check();
+    await expect(bars).toHaveCount(1);
+    await expect(bars.first()).toHaveAttribute("title", /^Your agent changed this /);
+    // The choice is remembered for this document.
+    await editor.reload();
+    await editor.getByRole("button", { name: "Changes" }).click();
+    await expect(editor.getByRole("switch", { name: "Show who wrote what" })).toBeChecked();
+    await expect(bars).toHaveCount(1);
+    await editor.emulateMedia({ media: "print" });
+    await expect(editor.locator("#inplace-authors-layer")).toBeHidden();
+  });
+});
+
 test.describe("working alongside an agent", () => {
   test("an edit to the file on disk reloads the page", async ({ editor, doc }) => {
     doc.edit("Two beds stay open", "Three beds stay open");

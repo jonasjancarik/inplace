@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { AGENT } from "../src/history.js";
 
 import { CommentNotFound, CommentStore, NotTheirs } from "../src/comments.js";
 import { Document } from "../src/server.js";
@@ -70,8 +71,8 @@ test("the agent's comments are answered or dismissed by the user, never edited o
   const dir = mkdtempSync(join(tmpdir(), "inplace-comments-"));
   const lines: [string, boolean][] = [];
   const store = new CommentStore(join(dir, "comments.json"), (line, byUser) => lines.push([strip(line), byUser]));
-  store.add({ id: "td-4", text: "results.csv has 1,240.", quote: "1,420", prefix: "", suffix: "", by: "agent" });
-  store.add({ id: "p-2", text: "This contradicts section 2.", by: "agent" });
+  store.add({ id: "td-4", text: "results.csv has 1,240.", quote: "1,420", prefix: "", suffix: "", by: AGENT });
+  store.add({ id: "p-2", text: "This contradicts section 2.", by: AGENT });
   store.add({ id: "p-3", text: "Shorter, please." });
 
   assert.throws(() => store.edit(1, "Something else"), NotTheirs);
@@ -91,8 +92,8 @@ test("the agent's comments are answered or dismissed by the user, never edited o
     ['comment #1 marked done by the agent: "Corrected both."', false],
   ]);
   assert.deepEqual(store.list().map((c) => [c.n, c.by, c.answer, c.dismissed, c.status]), [
-    [1, "agent", "Yes, and fix the total.", undefined, "done"],
-    [2, "agent", undefined, true, "done"],
+    [1, AGENT, "Yes, and fix the total.", undefined, "done"],
+    [2, AGENT, undefined, true, "done"],
     [3, undefined, undefined, undefined, "open"],
   ]);
 });

@@ -11,6 +11,5 @@ All the plans from that review are done and merged: entering text with an input 
 These came from looking at [Proof](https://github.com/EveryInc/proof-sdk) (MIT, by Every), an editor where people and agents write together. As with human-review, the plans take ideas that fit inplace's model, not its design: Proof owns its editor and document format, while inplace keeps the HTML file as the document.
 
 - [Accept or reject the agent's changes](agent-suggestions.md): Keep or Undo for each block the agent changed.
-- [Show who wrote each part of the document](authorship.md): a margin mark per block for its last author, with a way for hosts to name the people.
 
 Accounts and sharing themselves are inplace cloud's to do, in its own `plans/` folder.

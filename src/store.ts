@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 /** What inplace keeps beside a document. */
-export type SideData = "stash" | "comments";
+export type SideData = "stash" | "comments" | "authors";
 
 export interface DocumentStore {
   /** The document's name, such as its file name, for the page and the change lines. */

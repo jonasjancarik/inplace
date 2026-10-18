@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { AGENT_GUIDE_PATH } from "./guide.js";
+import type { AgentName } from "./server.js";
 import { type McpBackend, mcpHandler, type Message, parseError, type ToolDefinition } from "./mcp-rpc.js";
 import { DOCUMENT_INFO_TOOL, DOCUMENT_TOOLS, DocumentTools, type McpDocument, WORKING_WITH_USER } from "./mcp-tools.js";
 
@@ -25,6 +26,8 @@ export interface McpHandlerOptions {
   tools?: string[];
   /** Tools of the host's own. */
   extraTools?: HostTool[];
+  /** Who this agent is, recorded with its edits and comments for the marks that show who wrote what. */
+  by?: AgentName;
 }
 
 /** The most clients whose first call is remembered at once, so a stream of new ones can't grow it without end. */
@@ -68,7 +71,7 @@ export function createMcpHandler(
   ];
   const offered = new Set(listed.map((t) => t.name));
 
-  const tools = new DocumentTools(target, { join: "now" });
+  const tools = new DocumentTools(target, { join: "now", by: options.by });
   const guided = new Set<string>();
   const backend: McpBackend = {
     instructions: options.instructions ?? defaultInstructions(target.name, offered.has("document_info")),
