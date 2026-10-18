@@ -6,6 +6,7 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- A server that holds documents itself can now offer inplace's MCP tools for one of them with `createMcpHandler`, so people can connect their own agent to it. Several agents can follow one document at the same time, each getting every change. The tool definitions are exported as `DOCUMENT_TOOLS` too. See "inplace as a library" in the README.
 - Comments can be tagged with the kind of change they ask for (small fix, rewrite, content, question or layout), so the agent can group them and make the small fixes in one go. It's off unless you set `INPLACE_JEV_KEY` to a key for Jev, TypeSafe AI's classification model, which then receives each comment and the text it's on. `--no-tags` turns it off for one run. See "Tagging comments" in the README.
 - inplace can run inside another Node.js server: the package now exports `Document`, `createInplaceHandler` and the rest, and a document can be kept anywhere through a `DocumentStore` instead of a file. The README's "Using inplace inside another server" explains how.
 - Claude Code now follows your edits by running `inplace wait` in the background instead of watching the log file, so the page can show it picking up your changes.
