@@ -126,7 +126,9 @@ test("jevTagger asks Jev and maps its choice to a tag when it's sure enough", as
   assert.equal(body.questions.kind.type, "choice");
   assert.deepEqual(Object.keys(body.questions.kind.criteria), ["small_fix", "rewrite", "content", "question", "layout"]);
 
-  const unsure = fakeFetch(() => jevAnswer("rewrite", 0.6));
+  const fairlySure = fakeFetch(() => jevAnswer("question", 0.82));
+  assert.equal(await jevTagger("k", { fetch: fairlySure.fetch })({ text: "Why May?", element: "" }), "question");
+  const unsure = fakeFetch(() => jevAnswer("rewrite", 0.79));
   assert.equal(await jevTagger("k", { fetch: unsure.fetch })({ text: "Hmm", element: "" }), undefined);
 });
 

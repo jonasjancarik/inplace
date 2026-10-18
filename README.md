@@ -106,7 +106,7 @@ export INPLACE_JEV_KEY=your-typesafe-key
 
 With the key set, every comment you leave, the words you selected and the text of the element it's on are sent to TypeSafe's servers. Your document as a whole isn't sent, and neither are the agent's comments or your answers to them. inplace says when tagging is on as it starts. To leave it off for one document while the key is set, start inplace with `--no-tags`.
 
-Tags are only a hint for the agent. If Jev isn't sure, is slow or can't be reached, the comment simply has no tag, and the agent still reads every comment in full.
+Tags are only a hint for the agent. If Jev is less than 80% sure, doesn't answer within two seconds or can't be reached, the comment simply has no tag, and the agent still reads every comment in full.
 
 ## What inplace changes in your file
 

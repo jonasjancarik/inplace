@@ -19,9 +19,9 @@ const CRITERIA: Record<string, { tag: CommentTag; description: string }> = {
 };
 
 export interface JevOptions {
-  /** Give up on a comment after this long, leaving it untagged (default 1000 ms). */
+  /** Give up on a comment after this long, leaving it untagged (default 2000 ms). */
   timeoutMs?: number;
-  /** Store a tag only when Jev is at least this sure (default 0.9). */
+  /** Store a tag only when Jev is at least this sure (default 0.8). */
   minConfidence?: number;
   model?: string;
   /** Told once, the first time a request fails. */
@@ -34,7 +34,7 @@ const clip = (text: string, max: number) => (text.length <= max ? text : text.sl
 /** A tagger that asks Jev. It never rejects: on any failure the comment stays untagged. */
 export function jevTagger(key: string, options: JevOptions = {}): CommentTagger {
   const {
-    timeoutMs = 1000, minConfidence = 0.9, model = "jev-latest",
+    timeoutMs = 2000, minConfidence = 0.8, model = "jev-latest",
     warn = (message) => process.stderr.write(message + "\n"), fetch = globalThis.fetch,
   } = options;
   let warned = false;
