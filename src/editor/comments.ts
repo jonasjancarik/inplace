@@ -253,7 +253,8 @@ async function changeComment(payload: object, done?: string) {
 }
 
 // A comment as shown in the box and in the list of changes. While it's open, the user's own
-// comments have Edit and Delete, and the agent's have Answer and Dismiss.
+// comments have Edit and Delete (not other people's, where the host names people), and the
+// agent's have Answer and Dismiss.
 function commentView(c: PageComment, { inList = false }: { inList?: boolean } = {}) {
   const place = commentPlaces.get(c.n);
   const node = make("div", { className: `comment ${c.status}${c.by ? " agent" : ""}` });
@@ -303,6 +304,8 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
         if (!inList) closeBox();
         changeComment({ action: "dismiss", n: c.n }, "Comment dismissed");
       } }));
+  } else if (c.status === "open" && meId && c.from?.id && c.from.id !== meId) {
+    // Someone else's comment: it can be read, and only its writer changes it.
   } else if (c.status === "open") {
     meta.append(
       make("button", { type: "button", textContent: "Edit", onclick: () => {

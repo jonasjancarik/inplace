@@ -377,6 +377,59 @@ test("at view access every comment action is refused too, and comment access all
   }
 });
 
+test("with named people, only the one who wrote a comment edits or deletes it, and anyone may answer the agent's", async () => {
+  const people: Record<string, { id: string; name: string }> = { ann: { id: "u1", name: "Ann" }, bo: { id: "u2", name: "Bo" } };
+  const s = await start({
+    access: () => "comment",
+    author: (req) => people[String(req.headers["x-person"])],
+  });
+  try {
+    const call = async (who: string, body: object, extra: Record<string, string> = {}) =>
+      s.send("POST", "/__inplace/comment", { host: `localhost:${s.port}`, "content-type": "application/json", "x-person": who, ...extra }, JSON.stringify(body));
+    const list = async () => JSON.parse((await s.send("GET", "/__inplace/comments", { host: `localhost:${s.port}` })).body).comments;
+    assert.equal((await call("ann", { action: "add", id: "p-1", text: "Ann's note" })).status, 200);
+    assert.deepEqual((await list())[0].from, { kind: "person", id: "u1", name: "Ann" });
+
+    // Bo can't touch Ann's comment, and it stays as it was.
+    for (const body of [{ action: "edit", n: 1, text: "Hijacked" }, { action: "delete", n: 1 }]) {
+      const res = await call("bo", body);
+      assert.equal(res.status, 403, JSON.stringify(body));
+      assert.match(JSON.parse(res.body).error, /your own comments/);
+    }
+    assert.equal((await list())[0].text, "Ann's note");
+
+    // Ann can edit and delete her own.
+    assert.equal((await call("ann", { action: "edit", n: 1, text: "Better note" })).status, 200);
+    assert.equal((await list())[0].text, "Better note");
+    assert.equal((await call("bo", { action: "add", id: "p-1", text: "Bo's note" })).status, 200);
+    assert.equal((await call("ann", { action: "delete", n: 2 })).status, 403);
+    assert.equal((await call("bo", { action: "delete", n: 2 })).status, 200);
+
+    // The agent's comments can be answered or dismissed by anyone at comment level.
+    const asAgent = { host: `localhost:${s.port}`, "content-type": "application/json" };
+    for (const text of ["First?", "Second?"]) {
+      await s.send("POST", "/__inplace/comment", asAgent, JSON.stringify({ action: "add", by: "agent", id: "p-1", text }));
+    }
+    assert.equal((await call("bo", { action: "answer", n: 3, text: "Yes" })).status, 200);
+    assert.equal((await call("ann", { action: "dismiss", n: 4 })).status, 200);
+  } finally {
+    s.close();
+  }
+});
+
+test("without named people, anyone may edit or delete any comment", async () => {
+  const s = await start({ access: () => "comment" });
+  try {
+    const call = (body: object) =>
+      s.send("POST", "/__inplace/comment", { host: `localhost:${s.port}`, "content-type": "application/json" }, JSON.stringify(body));
+    await call({ action: "add", id: "p-1", text: "A note" });
+    assert.equal((await call({ action: "edit", n: 1, text: "Changed" })).status, 200);
+    assert.equal((await call({ action: "delete", n: 1 })).status, 200);
+  } finally {
+    s.close();
+  }
+});
+
 test("at edit access, and with no access option, nothing is refused", async () => {
   for (const options of [{ access: () => "edit" as const }, {}]) {
     const s = await start(options);
