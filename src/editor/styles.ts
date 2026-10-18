@@ -176,6 +176,26 @@ style.textContent = `
   #inplace-authors-layer .bar{position:absolute;width:10px;cursor:default;pointer-events:auto}
   #inplace-authors-layer .bar::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:3px;border-radius:2px;background:var(--by)}
   html.inplace-reviewing #inplace-authors-layer{display:none}
+  #inplace-pending-layer{position:absolute;top:0;left:0;width:0;height:0;z-index:2147483644}
+  #inplace-pending-layer .bar{position:absolute;width:10px;cursor:default;pointer-events:auto}
+  #inplace-pending-layer .bar::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:3px;border-radius:2px;background:#4a7bd4}
+  #inplace-pending-actions{position:absolute;z-index:2147483646;display:none;gap:2px;padding:2px;border-radius:7px;background:#fff;
+    box-shadow:0 1px 4px #0002,0 0 0 1px #d9e0dc;font:12px/1.2 -apple-system,system-ui,sans-serif}
+  #inplace-pending-actions button{all:unset;padding:3px 9px;border-radius:5px;cursor:pointer;color:#1f2a24;font-weight:600}
+  #inplace-pending-actions button:hover{background:#eaf0fb}
+  #inplace-pending-actions button:focus-visible{outline:2px solid #4a7bd4}
+  #inplace-pending-actions button:disabled{color:#a0a8a4;cursor:default;background:none}
+  html.inplace-reviewing #inplace-pending-layer,html.inplace-reviewing #inplace-pending-actions{display:none!important}
+  #inplace-changes .to-review{margin:0 0 8px;padding:0 0 8px;border-bottom:1px solid #eef1ef}
+  #inplace-changes .to-review .head{display:flex;align-items:baseline;gap:8px;padding:2px 8px 4px}
+  #inplace-changes .to-review h3{all:unset;margin-right:auto;font-size:12px;font-weight:600}
+  #inplace-changes .to-review li{display:flex;align-items:flex-start}
+  #inplace-changes .to-review .keep-all,#inplace-changes .to-review .act{all:unset;flex:none;padding:0 5px;border-radius:5px;cursor:pointer;
+    font-size:12px;font-weight:600;color:#2d4f8f;text-decoration:underline}
+  #inplace-changes .to-review .act{margin-top:5px}
+  #inplace-changes .to-review .keep-all:hover,#inplace-changes .to-review .act:hover{background:#eaf0fb}
+  #inplace-changes .to-review .keep-all:focus-visible,#inplace-changes .to-review .act:focus-visible{outline:2px solid #4a7bd4}
+  #inplace-changes .to-review .act:disabled{color:#a0a8a4;text-decoration:none;cursor:default;background:none}
   #inplace-review-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;flex-wrap:wrap;align-items:center;
     gap:6px 16px;padding:9px 16px;background:#1f2a24;color:#fff;font:13px/1.35 -apple-system,system-ui,sans-serif;
     box-shadow:0 2px 10px #0003}
@@ -198,7 +218,7 @@ style.textContent = `
   .inplace-ghost td{text-align:start}
   ol > li.inplace-ghost{display:block}
   [data-id].inplace-review-new{background-color:#c4b2ff38!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  @media print{#inplace-review-bar,#inplace-review-spacer,#inplace-review-layer,#inplace-authors-layer{display:none!important}}
+  @media print{#inplace-review-bar,#inplace-review-spacer,#inplace-review-layer,#inplace-authors-layer,#inplace-pending-layer,#inplace-pending-actions{display:none!important}}
   #inplace-changes li.undoable{display:flex;align-items:flex-start}
   #inplace-changes .undo{all:unset;flex:none;margin:5px 4px 0;padding:0 6px;border-radius:5px;cursor:pointer;font-size:12px;
     font-weight:600;color:#3d2a85;text-decoration:underline}

@@ -5,6 +5,7 @@ let historyEntries: HistoryEntry[] = [];
 let authorMarks: Record<string, AuthorMark> = {}; // who wrote each block last
 let meId: string | undefined; // the id the host gave this person, if it did
 let undoable = new Set<string>(); // "kind id" of the user's changes that can still be undone
+let toReview: ToReview[] = []; // the agent's changes the user hasn't kept or undone yet
 const UNDO_KINDS: Record<string, UndoKind | undefined> = { moved: "move", added: "add", removed: "remove", retagged: "retag" };
 let seenChanges: number | null = null;
 try { seenChanges = JSON.parse(sessionStorage.getItem(SEEN_KEY) || "null"); } catch {}
@@ -27,12 +28,15 @@ function updateCorner() {
 
 async function loadHistory() {
   try {
-    const data: { entries: HistoryEntry[]; undoable?: { kind: UndoKind; id: string }[]; authors?: Record<string, AuthorMark>; me?: string } =
+    const data: {
+      entries: HistoryEntry[]; undoable?: { kind: UndoKind; id: string }[]; authors?: Record<string, AuthorMark>; me?: string; pending?: ToReview[];
+    } =
       await (await fetch("/__inplace/history")).json();
     historyEntries = data.entries;
     authorMarks = data.authors || {};
     meId = data.me;
     undoable = new Set((data.undoable || []).map((u) => `${u.kind} ${u.id}`));
+    toReview = data.pending || [];
   } catch {
     return;
   }
@@ -40,6 +44,7 @@ async function loadHistory() {
   if (seenChanges === null) markChangesSeen();
   updateCorner();
   paintAuthors();
+  paintToReview();
   if (changesPanel.classList.contains("open")) renderChanges();
 }
 
@@ -152,6 +157,8 @@ function renderChanges() {
       ? "You can comment on this document, but not edit it."
       : "You can read this document, but not edit it or comment on it." }));
   }
+  const reviewList = toReviewGroup();
+  if (reviewList) list.append(reviewList);
   const agentLine = agentStatusLine();
   if (agentLine) list.append(agentLine);
   const commentList = commentsGroup();

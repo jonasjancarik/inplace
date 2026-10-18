@@ -43,6 +43,8 @@ function paintAuthors() {
   if (!showAuthors || !Object.keys(authorMarks).length) return authorLayer.remove();
   if (!authorLayer.isConnected) document.body.append(authorLayer);
   for (const [id, mark] of Object.entries(authorMarks)) {
+    // A change still to review has its own bar, which says more.
+    if (reviewOn() && toReviewFor(id)) continue;
     const el = byId(id);
     if (!el || !isShown(el)) continue;
     const r = el.getBoundingClientRect();
