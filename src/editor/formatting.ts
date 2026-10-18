@@ -292,8 +292,23 @@ function showToolbar(range: Range) {
   formatToolbar.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
 }
 
+// Where the person can't edit, selecting text offers only Comment.
+function updateCommentToolbar() {
+  const sel = getSelection()!;
+  const range = canComment && sel.rangeCount && !sel.isCollapsed && !drag ? sel.getRangeAt(0) : null;
+  const node = range?.commonAncestorContainer;
+  const inText = (node?.nodeType === 1 ? node as Element : node?.parentElement)?.closest?.("[data-id]");
+  if (!range || !inText || inText.closest("[data-inplace-ui]")) {
+    formatToolbar.style.display = "none";
+    return;
+  }
+  formatToolbar.classList.add("comment-only");
+  showToolbar(range);
+}
+
 function updateToolbar() {
   if (linking) return;
+  if (!canEdit) return updateCommentToolbar();
   const ctx = selectionInBlock();
   if (!ctx || ctx.range.collapsed || drag) {
     formatToolbar.style.display = "none";

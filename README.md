@@ -193,7 +193,7 @@ ChatGPT on the web can use inplace's MCP tools through a tunnel, without opening
 
 ```text
 inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
-                    [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
+                    [--comment-only | --view-only] [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
@@ -209,6 +209,8 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-
 | `--port` | `8765` | Port to listen on. |
 | `--host` | `127.0.0.1` | Address to listen on. By default only this computer can open the page. Use `0.0.0.0` to open it on other devices on your network, such as a tablet, or to edit it with people on the same Wi-Fi; or just ask your agent to share it on your network. There's no login, so anyone on that network with the address can edit the document. |
 | `--allow-host` | none | Another name the page may be opened by, such as your computer's Tailscale name (`mymac.tail1234.ts.net`). Without it, only `localhost`, your computer's own name and IP addresses work. Repeat it for more names. With `mcp`, it applies to every document the agent opens. |
+| `--comment-only` | off | Everyone who opens the page can select text and comment on it, but can't type, move, add or remove anything. Your agent still edits the file. Useful with `--host 0.0.0.0` to show a draft to others. |
+| `--view-only` | off | Everyone who opens the page can only read it and its comments. Your agent's own `inplace comment` and `inplace resolve` commands still work. |
 | `--no-write-ids` | off | Don't add `data-id` attributes to the file. |
 | `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
 | `--log` | none | Also append every change line to this file. |
@@ -248,6 +250,7 @@ To read the whole document with every change in place, turn on **Show what chang
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so only share it on your network (`--host 0.0.0.0`) when you trust the people on it.
+- `--comment-only` and `--view-only` limit what the page lets people do. They don't hide the document: anyone who can reach the address can still read it, so they don't replace trusting the network.
 - Other websites open in your browser can't change the document: inplace only accepts changes sent from its own page. It also only answers to `localhost`, your computer's own name (and its `.local` form) and IP addresses, so open it by one of those. Other names, such as a custom DNS name or a Tailscale MagicDNS name, are refused unless you list them with `--allow-host`.
 - On the page you can change text, add simple formatting, add and remove paragraphs, list items and rows, and reorder elements among their neighbours. New sections, tables or lists, moving something into a different container, layout and styling go through the agent.
 - Nothing recalculates by itself. If you change a number that feeds a total or a chart, the agent has to update those (the skill tells it to).
@@ -266,7 +269,7 @@ The script that does the editing in the page lives in `src/editor/`. Its files a
 
 ### Using inplace inside another server
 
-inplace can also run inside your own Node.js server, for example to keep documents in a database instead of files. Import it as a package (`import { Document, createInplaceHandler } from "inplace-html"`), give `Document` a `DocumentStore` that reads and writes the document and the comments wherever you keep them (`MemoryStore` is a ready-made one with callbacks for saving), and pass the requests for that document to `createInplaceHandler(doc, { hostAllowed })`. The page's own requests go to paths starting with `/__inplace/`, so serve each document at the root of its own origin, such as a subdomain per document. That also keeps one document's scripts away from the others and from your app. `hostAllowed` decides which `Host` names may reach the document, in place of the check for names of this computer. Change lines reach the `log` callback you give `Document`, as they do for the CLI, and `PauseWatcher` turns them into pauses. To tag comments, call `doc.useTagger(jevTagger(key))`, or pass your own function that returns a tag, and give `PauseWatcher` `(label) => doc.comments.withTag(label)` as its third argument so pauses show the tags.
+inplace can also run inside your own Node.js server, for example to keep documents in a database instead of files. Import it as a package (`import { Document, createInplaceHandler } from "inplace-html"`), give `Document` a `DocumentStore` that reads and writes the document and the comments wherever you keep them (`MemoryStore` is a ready-made one with callbacks for saving), and pass the requests for that document to `createInplaceHandler(doc, { hostAllowed })`. To let some people only comment or read, add `access: (req) => "edit" | "comment" | "view"`, which is asked for every request: below `"edit"` the server refuses changes to the text and the page shows no editing, and at `"view"` it refuses comments too. The page's own requests go to paths starting with `/__inplace/`, so serve each document at the root of its own origin, such as a subdomain per document. That also keeps one document's scripts away from the others and from your app. `hostAllowed` decides which `Host` names may reach the document, in place of the check for names of this computer. Change lines reach the `log` callback you give `Document`, as they do for the CLI, and `PauseWatcher` turns them into pauses. To tag comments, call `doc.useTagger(jevTagger(key))`, or pass your own function that returns a tag, and give `PauseWatcher` `(label) => doc.comments.withTag(label)` as its third argument so pauses show the tags.
 
 What changed in each version is listed in [CHANGELOG.md](CHANGELOG.md).
 

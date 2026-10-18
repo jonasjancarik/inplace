@@ -14,6 +14,4 @@ These came from looking at [Proof](https://github.com/EveryInc/proof-sdk) (MIT, 
 - [Show who wrote each part of the document](authorship.md): a margin mark per block for its last author, with a way for hosts to name the people.
 - [Let a host serve the MCP tools for a document it already has](mcp-for-hosts.md): what inplace cloud needs so people can connect their own agent to a document there.
 
-- [Pages that can only be read or commented on](page-access.md): what inplace cloud needs to share a document with people who may only comment or read.
-
 Accounts and sharing themselves are inplace cloud's to do, in its own `plans/` folder.

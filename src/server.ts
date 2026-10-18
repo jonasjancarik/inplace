@@ -632,6 +632,26 @@ function refusal(req: IncomingMessage, hostAllowed: (host: string | undefined) =
   return null;
 }
 
+/** What a person may do on the page: change it, only comment on it, or only read it. */
+export type Access = "edit" | "comment" | "view";
+
+const LEVEL: Record<Access, number> = { view: 0, comment: 1, edit: 2 };
+
+/**
+ * The lowest access each action from the page needs. Anything listed here is refused below it;
+ * reading (the page, history, comments, events) needs none. A new action is one line here.
+ */
+const NEEDS: Record<string, Access> = {
+  save: "edit", move: "edit", retag: "edit", insert: "edit", remove: "edit", undo: "edit", "stash/resolve": "edit",
+  comment: "comment",
+};
+
+const REFUSED: Record<Access, string> = {
+  edit: "",
+  comment: "You can comment on this document, but not edit it.",
+  view: "You can read this document, but not edit it or comment on it.",
+};
+
 export interface ServerOptions {
   /** The change lines and pauses, for `/__inplace/wait`. Leave it out when pauses are turned off. */
   feed?: ChangeFeed;
@@ -644,6 +664,11 @@ export interface ServerOptions {
    * this computer (isLocalHost). For a host that serves inplace under its own domain names.
    */
   hostAllowed?: (host: string | undefined) => boolean;
+  /**
+   * What the person sending this request may do. Left out, everyone may edit. Below "edit" the
+   * changes to the text and structure are refused; at "view" so is commenting. Reading is always allowed.
+   */
+  access?: (req: IncomingMessage) => Access;
 }
 
 export function createInplaceServer(doc: Document, options: ServerOptions = {}): Server {
@@ -652,7 +677,7 @@ export function createInplaceServer(doc: Document, options: ServerOptions = {}):
 
 /** The request handler createInplaceServer uses, for a host that runs its own HTTP server. */
 export function createInplaceHandler(
-  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [], hostAllowed }: ServerOptions = {},
+  doc: Document, { feed, agent = new AgentStatus(), allowHosts = [], hostAllowed, access }: ServerOptions = {},
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const hostOk = hostAllowed ?? ((host: string | undefined) => isLocalHost(host, allowHosts));
   // Where the real file is, with the images and stylesheets it loads, even when it was opened through a link.
@@ -668,13 +693,17 @@ export function createInplaceHandler(
     if (doc.history.entries.at(-1)?.by === "agent") agent.agentWrote();
   });
 
-  const page = (res: ServerResponse) => {
+  const page = (req: IncomingMessage, res: ServerResponse) => {
+    const level = access?.(req) ?? "edit";
     const { text, version } = doc.load();
+    // Below "edit" nothing on the page is editable or movable, whatever the file says.
+    const editing = level === "edit";
     const hashes = blockHashes(text);
     const tag =
       `<script src="${EDITOR_PREFIX}editor.js" data-inplace data-version="${version}" ` +
-      `data-file="${escapeAttr(doc.store.name)}" data-build="${escapeAttr(JSON.stringify(build))}" data-editable="${escapeAttr(editableIds(text).join(" "))}" ` +
-      `data-movable="${escapeAttr(movableIds(text).join(" "))}"${hashes ? ` data-hashes="${escapeAttr(JSON.stringify(hashes))}"` : ""}></script>`;
+      `data-file="${escapeAttr(doc.store.name)}" data-build="${escapeAttr(JSON.stringify(build))}" data-access="${level}" ` +
+      `data-editable="${escapeAttr(editing ? editableIds(text).join(" ") : "")}" ` +
+      `data-movable="${escapeAttr(editing ? movableIds(text).join(" ") : "")}"${hashes ? ` data-hashes="${escapeAttr(JSON.stringify(hashes))}"` : ""}></script>`;
     const at = text.toLowerCase().lastIndexOf("</body>");
     send(res, 200, at === -1 ? text + tag : text.slice(0, at) + tag + text.slice(at), "text/html; charset=utf-8");
   };
@@ -864,12 +893,13 @@ export function createInplaceHandler(
         if (refused) return json(res, 403, { error: refused });
         if (req.method === "POST") {
           const action = path.slice(EDITOR_PREFIX.length);
-          if (action === "comment") return comment(req, res);
-          return path.startsWith(EDITOR_PREFIX) && ["save", "move", "retag", "insert", "remove", "undo", "stash/resolve"].includes(action)
-            ? change(req, res)
-            : json(res, 404, { error: "not found" });
+          const needs = path.startsWith(EDITOR_PREFIX) && Object.hasOwn(NEEDS, action) ? NEEDS[action] : undefined;
+          if (!needs) return json(res, 404, { error: "not found" });
+          const level = access?.(req) ?? "edit";
+          if (LEVEL[level] < LEVEL[needs]) return json(res, 403, { error: REFUSED[level] });
+          return action === "comment" ? comment(req, res) : change(req, res);
         }
-        if (path === "/" || path === "/" + doc.store.name) return page(res);
+        if (path === "/" || path === "/" + doc.store.name) return page(req, res);
         if (path === EDITOR_PREFIX + "editor.js") {
           return send(res, 200, editorScript, "text/javascript; charset=utf-8");
         }

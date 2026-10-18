@@ -12,7 +12,7 @@ test.describe("opening a document", () => {
     await expect(block(editor, "td", "Raised beds")).toHaveAttribute("contenteditable", "true");
     await expect(editor.locator("table")).toHaveAttribute("data-id", /^table-/);
     await expect(editor.locator("table")).not.toHaveAttribute("contenteditable", "true");
-    await expect(editor.locator("svg")).not.toHaveAttribute("contenteditable", "true");
+    await expect(editor.locator("svg[data-id]")).not.toHaveAttribute("contenteditable", "true");
     expect(await editor.locator("svg text[contenteditable]").count()).toBe(0);
   });
 
@@ -558,7 +558,7 @@ test.describe("working alongside an agent", () => {
 
   test("the corner button lists your changes and the agent's, and stays open while the agent works", async ({ editor, doc }) => {
     const corner = editor.locator("#inplace-corner");
-    await expect(corner).toBeHidden();
+    await expect(corner).toBeVisible();
     const mine = block(editor, "p", "The roof is already used");
     await caretAfter(mine, "drying laundry");
     await editor.keyboard.type(" daily");
@@ -1073,4 +1073,74 @@ test("an agent waiting for pauses gets an eye beside the block you edited, then 
   } finally {
     doc.stop();
   }
+});
+
+test.describe("pages that can only be commented on or read", () => {
+  const open = async (page: import("@playwright/test").Page, flag: string) => {
+    const doc = await startDoc(undefined, undefined, [flag]);
+    await page.goto(doc.url);
+    await page.waitForFunction(() => document.querySelector("#inplace-toolbar"));
+    return doc;
+  };
+
+  test("--comment-only: you can comment on selected words, but not type, move or add", async ({ page }) => {
+    const doc = await open(page, "--comment-only");
+    try {
+      const para = block(page, "p", "The roof is already used");
+      await expect(page.locator("[contenteditable]")).toHaveCount(0);
+      const before = doc.read();
+      await para.click();
+      await page.keyboard.type("nope");
+      await hoverBlock(page, para);
+      await expect(page.locator("#inplace-ui button")).toHaveCount(0);
+      expect(doc.read()).toBe(before);
+
+      // Selecting words offers Comment and nothing else.
+      await selectText(para, "drying laundry");
+      const toolbar = page.locator("#inplace-toolbar");
+      await expect(toolbar.getByRole("button", { name: "Comment" })).toBeVisible();
+      await expect(toolbar.getByRole("button", { name: "Bold" })).toBeHidden();
+      await expect(toolbar.locator("[data-format]").first()).toBeHidden();
+      await toolbar.getByRole("button", { name: "Comment" }).click();
+      const box = page.getByRole("dialog", { name: "Comment" });
+      await box.getByRole("textbox").fill("Which buildings share it?");
+      await box.getByRole("button", { name: "Add comment" }).click();
+      await expect.poll(() => doc.output).toContain(`at "drying laundry": "Which buildings share it?"`);
+      await expect(page.locator("#inplace-comment-layer .marker")).toHaveCount(1);
+
+      // The list of changes says what this page allows.
+      await page.locator("#inplace-corner").click();
+      await expect(page.getByRole("dialog", { name: "Changes" })).toContainText("You can comment on this document, but not edit it.");
+      expect(doc.read()).toBe(before);
+    } finally {
+      doc.stop();
+    }
+  });
+
+  test("--view-only: you can read the page and its comments, and nothing else", async ({ page }) => {
+    const doc = await open(page, "--view-only");
+    try {
+      const para = block(page, "p", "The roof is already used");
+      const id = await idOf(para);
+      execFileSync(process.execPath, [CLI, "comment", id, "Is this right?", "--port", new URL(doc.url).port]);
+      await expect(page.locator("#inplace-comment-layer .marker")).toHaveCount(1);
+      await expect(page.locator("[contenteditable]")).toHaveCount(0);
+
+      await selectText(para, "drying laundry");
+      await expect(page.locator("#inplace-toolbar")).toBeHidden();
+      await page.keyboard.press("Control+Alt+KeyM");
+      await expect(page.getByRole("dialog", { name: "Comment" })).toBeHidden();
+
+      // The comment can be read but not changed.
+      await page.locator("#inplace-comment-layer .marker").click();
+      const box = page.getByRole("dialog", { name: "Comment" });
+      await expect(box).toContainText("Is this right?");
+      await expect(box.getByRole("button", { name: /Answer|Dismiss|Edit|Delete/ })).toHaveCount(0);
+
+      await page.locator("#inplace-corner").click();
+      await expect(page.getByRole("dialog", { name: "Changes" })).toContainText("You can read this document, but not edit it or comment on it.");
+    } finally {
+      doc.stop();
+    }
+  });
 });
