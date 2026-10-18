@@ -2,6 +2,20 @@
 // BlockChange and HistoryEntry in src/history.ts, Comment in src/comments.ts, the agent summary
 // in src/agent.ts, StashEntry and the replies in src/server.ts, and src/anchor.ts.
 
+/** Who made a change; see Author in src/history.ts. */
+interface Author {
+  kind: "person" | "agent";
+  id?: string;
+  name?: string;
+}
+
+/** The last author of a block, from the server's authors map. */
+interface AuthorMark {
+  by: Author;
+  at: string;
+  addedBy?: Author;
+}
+
 /** A change to one block, as recorded in the history. */
 interface BlockChange {
   id: string;
@@ -15,7 +29,7 @@ interface BlockChange {
 
 interface HistoryEntry {
   n: number;
-  by: "you" | "agent";
+  by: Author;
   started: string;
   at: string;
   changes: BlockChange[];
@@ -31,7 +45,8 @@ interface PageComment {
   prefix?: string;
   suffix?: string;
   text: string;
-  by?: "agent";
+  by?: Author;
+  from?: Author;
   options?: string[];
   answer?: string;
   dismissed?: boolean;

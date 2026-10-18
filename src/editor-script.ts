@@ -32,6 +32,7 @@ export const EDITOR_PARTS = [
   "comments",
   "changes",
   "review",
+  "authors",
   "startup",
 ];
 

@@ -18,7 +18,7 @@ interface CombinedChange extends BlockChange {
 function combinedChanges(onlyAgent: boolean) {
   const out = new Map<string, CombinedChange>();
   for (const entry of historyEntries) {
-    if (onlyAgent && entry.by !== "agent") continue;
+    if (onlyAgent && entry.by.kind !== "agent") continue;
     for (const c of entry.changes) {
       const prev = out.get(c.id);
       if (!prev) {

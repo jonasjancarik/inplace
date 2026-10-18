@@ -168,6 +168,12 @@ style.textContent = `
   #inplace-changes .review-switch{display:flex;align-items:center;gap:5px;margin-left:auto;margin-right:4px;font-size:12px;
     color:#3d4a43;cursor:pointer;user-select:none}
   #inplace-changes .review-switch input{margin:0;accent-color:#6a52c9}
+  #inplace-changes .authors-switch{display:flex;align-items:center;gap:6px;margin:0 8px 8px;font-size:12px;color:#3d4a43;cursor:pointer;user-select:none}
+  #inplace-changes .authors-switch input{margin:0;accent-color:#3f8f5c}
+  #inplace-authors-layer{position:absolute;top:0;left:0;width:0;height:0;z-index:2147483644}
+  #inplace-authors-layer .bar{position:absolute;width:10px;cursor:default;pointer-events:auto}
+  #inplace-authors-layer .bar::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:3px;border-radius:2px;background:var(--by)}
+  html.inplace-reviewing #inplace-authors-layer{display:none}
   #inplace-review-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;flex-wrap:wrap;align-items:center;
     gap:6px 16px;padding:9px 16px;background:#1f2a24;color:#fff;font:13px/1.35 -apple-system,system-ui,sans-serif;
     box-shadow:0 2px 10px #0003}
@@ -190,7 +196,7 @@ style.textContent = `
   .inplace-ghost td{text-align:start}
   ol > li.inplace-ghost{display:block}
   [data-id].inplace-review-new{background-color:#c4b2ff38!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  @media print{#inplace-review-bar,#inplace-review-spacer,#inplace-review-layer{display:none!important}}
+  @media print{#inplace-review-bar,#inplace-review-spacer,#inplace-review-layer,#inplace-authors-layer{display:none!important}}
   #inplace-changes li.undoable{display:flex;align-items:flex-start}
   #inplace-changes .undo{all:unset;flex:none;margin:5px 4px 0;padding:0 6px;border-radius:5px;cursor:pointer;font-size:12px;
     font-weight:600;color:#3d2a85;text-decoration:underline}
