@@ -15,7 +15,12 @@ export class PauseWatcher {
   private lines: string[] = [];
   private timer: NodeJS.Timeout | undefined;
 
-  constructor(readonly delayMs: number, readonly onPause: (summary: string, lines: string[]) => void) {}
+  /** `describe` can add to a label in the summary, such as a comment's tag. */
+  constructor(
+    readonly delayMs: number,
+    readonly onPause: (summary: string, lines: string[]) => void,
+    readonly describe: (label: string) => string = (label) => label,
+  ) {}
 
   record(line: string): void {
     this.lines.push(line);
@@ -32,7 +37,7 @@ export class PauseWatcher {
   private flush(): void {
     const lines = this.lines;
     this.lines = [];
-    const labels = [...new Set(lines.map(label))];
+    const labels = [...new Set(lines.map(label))].map(this.describe);
     const count = `${lines.length} change${lines.length === 1 ? "" : "s"}`;
     this.onPause(`${new Date().toTimeString().slice(0, 8)} paused after ${count}: ${labels.join(", ")}`, lines);
   }

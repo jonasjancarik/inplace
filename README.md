@@ -94,6 +94,20 @@ The agent can comment too. When it notices something that's for you to decide, s
 
 This works in any browser, also on a tablet or for other people on your network. If your agent's own browser has a comment tool, as Claude's and Codex's do, you can keep using that too.
 
+### Tagging comments (optional)
+
+When you leave many comments at once, inplace can tag each one with the kind of change it asks for: a small fix, a rewrite, content, a question or layout. The agent then sees, for example, `comment #3 (small fix)` and can group similar requests and make all the small fixes in one go. The tags come from [Jev](https://docs.typesafe.ai/api), a fast classification model from TypeSafe AI, so you need your own TypeSafe API key. Without one, nothing changes and nothing is sent anywhere.
+
+To turn it on, set the key before starting inplace:
+
+```bash
+export INPLACE_JEV_KEY=your-typesafe-key
+```
+
+With the key set, every comment you leave, the words you selected and the text of the element it's on are sent to TypeSafe's servers. Your document as a whole isn't sent, and neither are the agent's comments or your answers to them. inplace says when tagging is on as it starts. To leave it off for one document while the key is set, start inplace with `--no-tags`.
+
+Tags are only a hint for the agent. If Jev isn't sure, is slow or can't be reached, the comment simply has no tag, and the agent still reads every comment in full.
+
 ## What inplace changes in your file
 
 The first time the page is opened, inplace adds a `data-id` attribute to each block and container that doesn't have one yet:
@@ -179,15 +193,15 @@ ChatGPT on the web can use inplace's MCP tools through a tunnel, without opening
 
 ```text
 inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
-                    [--pause 5] [--log <file>] [--on-pause <command>]
+                    [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
 inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
 inplace guide
-inplace mcp [--allow-host <name>] [--pause 5] [--log <file>]
+inplace mcp [--allow-host <name>] [--pause 5] [--log <file>] [--no-tags]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
-                   [--pause 5] [--log <file>]
+                   [--pause 5] [--log <file>] [--no-tags]
 ```
 
 | Option | Default | |
@@ -199,6 +213,7 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-
 | `--pause` | `5` | Seconds without a change on the page before inplace prints a `paused after` line. `0` turns it off. |
 | `--log` | none | Also append every change line to this file. |
 | `--on-pause` | none | Shell command to run at each pause, with that pause's change lines on standard input. |
+| `--no-tags` | off | Don't tag comments, even when `INPLACE_JEV_KEY` is set (see "Tagging comments"). |
 | `--timeout` | none | With `wait`: give up after this many seconds, print `{"status":"timeout"}` and exit with code 3. |
 | `--after` | where the last wait stopped | With `wait`: return the changes after this line number, the `next` that the previous `inplace wait` printed. If inplace has restarted since, it returns the changes since the restart, with a line saying so. |
 | `--all` | off | With `comments`: also list comments already marked done. |
@@ -251,7 +266,7 @@ The script that does the editing in the page lives in `src/editor/`. Its files a
 
 ### Using inplace inside another server
 
-inplace can also run inside your own Node.js server, for example to keep documents in a database instead of files. Import it as a package (`import { Document, createInplaceHandler } from "inplace-html"`), give `Document` a `DocumentStore` that reads and writes the document and the comments wherever you keep them (`MemoryStore` is a ready-made one with callbacks for saving), and pass the requests for that document to `createInplaceHandler(doc, { hostAllowed })`. The page's own requests go to paths starting with `/__inplace/`, so serve each document at the root of its own origin, such as a subdomain per document. That also keeps one document's scripts away from the others and from your app. `hostAllowed` decides which `Host` names may reach the document, in place of the check for names of this computer. Change lines reach the `log` callback you give `Document`, as they do for the CLI, and `PauseWatcher` turns them into pauses.
+inplace can also run inside your own Node.js server, for example to keep documents in a database instead of files. Import it as a package (`import { Document, createInplaceHandler } from "inplace-html"`), give `Document` a `DocumentStore` that reads and writes the document and the comments wherever you keep them (`MemoryStore` is a ready-made one with callbacks for saving), and pass the requests for that document to `createInplaceHandler(doc, { hostAllowed })`. The page's own requests go to paths starting with `/__inplace/`, so serve each document at the root of its own origin, such as a subdomain per document. That also keeps one document's scripts away from the others and from your app. `hostAllowed` decides which `Host` names may reach the document, in place of the check for names of this computer. Change lines reach the `log` callback you give `Document`, as they do for the CLI, and `PauseWatcher` turns them into pauses. To tag comments, call `doc.useTagger(jevTagger(key))`, or pass your own function that returns a tag, and give `PauseWatcher` `(label) => doc.comments.withTag(label)` as its third argument so pauses show the tags.
 
 What changed in each version is listed in [CHANGELOG.md](CHANGELOG.md).
 

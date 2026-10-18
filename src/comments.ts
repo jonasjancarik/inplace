@@ -46,7 +46,22 @@ export interface Comment {
   created: string; // ISO time
   resolved?: string;
   reply?: string; // the agent's note to the user when it resolved the comment
+  tag?: CommentTag; // what kind of request the user's comment is, when a tagger is set and was sure
 }
+
+/** The kinds of request a user's comment can be tagged with, for the agent to plan its work by. */
+export const COMMENT_TAGS = ["small fix", "rewrite", "content", "question", "layout"] as const;
+export type CommentTag = (typeof COMMENT_TAGS)[number];
+
+/** What a tagger reads: the comment, the words it's on, and the text of the element it's on. */
+export interface TagRequest {
+  text: string;
+  quote?: string;
+  element: string;
+}
+
+/** Tags a user's comment, or resolves to undefined when it's unsure or couldn't ask. */
+export type CommentTagger = (request: TagRequest) => Promise<CommentTag | undefined>;
 
 export class CommentNotFound extends Error {}
 export class NotTheirs extends Error {}
@@ -72,6 +87,8 @@ export class CommentStore {
   private listeners = new Set<() => void>();
   /** Goes up with every change, for the page's `comments` event. */
   revision = 0;
+  /** Tags the user's comments in the background; see Document.useTagger. */
+  tagger?: (comment: Comment) => Promise<CommentTag | undefined>;
 
   private readonly persist: CommentPersistence;
 
@@ -117,7 +134,30 @@ export class CommentStore {
     this.save();
     const by = comment.by ? " by the agent" : "";
     this.log(`${time()} comment #${comment.n}${by} on ${comment.id}${quote ? ` at ${quoted(quote, 80)}` : ""}: ${quoted(text, TEXT_MAX)}`, !comment.by);
+    if (!comment.by) this.tag(comment);
     return comment;
+  }
+
+  /** Ask the tagger about the user's comment, after its change line has gone out, so a slow or failing tagger delays nothing. */
+  private tag(comment: Comment): void {
+    if (!this.tagger) return;
+    const text = comment.text;
+    this.tagger(comment).then(
+      (tag) => {
+        // Deleted, or edited again while the tagger was working.
+        if (!tag || comment.text !== text || !this.comments.includes(comment)) return;
+        comment.tag = tag;
+        this.save();
+      },
+      () => {},
+    );
+  }
+
+  /** A pause summary's `comment #3`, with the comment's tag if it has one: `comment #3 (small fix)`. */
+  withTag(label: string): string {
+    const n = /^comment #(\d+)$/.exec(label)?.[1];
+    const tag = n === undefined ? undefined : this.comments.find((c) => c.n === Number(n))?.tag;
+    return tag ? `${label} (${tag})` : label;
   }
 
   /** The user's comment, which only the user changes. */
@@ -140,8 +180,10 @@ export class CommentStore {
     if (!text.trim()) throw new EmptyComment();
     if (comment.text === text.trim()) return comment;
     comment.text = text.trim();
+    delete comment.tag;
     this.save();
     this.log(`${time()} comment #${n} edited: ${quoted(comment.text, TEXT_MAX)}`, true);
+    this.tag(comment);
     return comment;
   }
 

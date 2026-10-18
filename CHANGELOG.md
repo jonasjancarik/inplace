@@ -6,6 +6,7 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- Comments can be tagged with the kind of change they ask for (small fix, rewrite, content, question or layout), so the agent can group them and make the small fixes in one go. It's off unless you set `INPLACE_JEV_KEY` to a key for Jev, TypeSafe AI's classification model, which then receives each comment and the text it's on. `--no-tags` turns it off for one run. See "Tagging comments" in the README.
 - inplace can run inside another Node.js server: the package now exports `Document`, `createInplaceHandler` and the rest, and a document can be kept anywhere through a `DocumentStore` instead of a file. The README's "Using inplace inside another server" explains how.
 - Claude Code now follows your edits by running `inplace wait` in the background instead of watching the log file, so the page can show it picking up your changes.
 - A small eye beside each block you changed shows that the agent has picked up your edit, and turns into a check that fades once the agent is done with it, so you can tell it's following along without it writing anything in its chat. This works with `inplace wait`, `wait_for_edits` and `--on-pause`; a Claude Code channel shows the eye only, and agents reading the terminal or the log file get no marks.

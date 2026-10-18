@@ -14,7 +14,7 @@ import {
 import { AgentStatus } from "./agent.js";
 import { readBuildInfo } from "./build-info.js";
 import { buildContext, findQuote } from "./anchor.js";
-import { BadOptions, type Comment, CommentNotFound, CommentStore, EmptyComment, NotTheirs } from "./comments.js";
+import { BadOptions, type Comment, CommentNotFound, CommentStore, type CommentTagger, EmptyComment, NotTheirs } from "./comments.js";
 import { readEditorScript } from "./editor-script.js";
 import { type Author, copyOf, diffBlocks, History, type Place, placeOf } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
@@ -507,6 +507,15 @@ export class Document {
     const found = findQuote(plain, { quote: quote.trim(), prefix: "", suffix: "" });
     if (!found) throw new QuoteNotFound(`${id} doesn't contain the text ${JSON.stringify(quote.trim())}`);
     return this.comments.add({ id, text, ...buildContext(plain, found.start, found.end), by: "agent", options });
+  }
+
+  /**
+   * Tag the user's comments with `tagger` as they come in, for the agent to plan its work by. The
+   * tagger reads the comment, the words it's on and the element's text, never the whole document.
+   */
+  useTagger(tagger: CommentTagger): void {
+    this.comments.tagger = (c) =>
+      tagger({ text: c.text, ...(c.quote ? { quote: c.quote } : {}), element: elementText(this.load().text, c.id) ?? "" });
   }
 
   /** An agent's edit through tools rather than the file; see replaceElement. */

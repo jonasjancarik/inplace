@@ -9,18 +9,19 @@ import { AGENT_GUIDE_PATH } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
 import { allowedHostName, createInplaceServer, Document, serverUrls } from "./server.js";
+import { jevTagger } from "./tags.js";
 import { ChangeFeed } from "./wait.js";
 
 const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
-                           [--pause 5] [--log <file>] [--on-pause <command>]
+                           [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
        inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
        inplace comments [--port 8765] [--all]
        inplace resolve <n> [--reply <text>] [--port 8765]
        inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
        inplace guide
-       inplace mcp [--allow-host <name>] [--pause 5] [--log <file>]
+       inplace mcp [--allow-host <name>] [--pause 5] [--log <file>] [--no-tags]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
-                          [--pause 5] [--log <file>]
+                          [--pause 5] [--log <file>] [--no-tags]
 
 Edit an HTML document in the browser while an agent edits the same file.
 
@@ -38,6 +39,10 @@ Edit an HTML document in the browser while an agent edits the same file.
   --log <file>      also append every change line to this file
   --on-pause <cmd>  run this shell command each time the user pauses, with that pause's
                     change lines on stdin
+  --no-tags         don't tag comments, even when $INPLACE_JEV_KEY is set. With that key, each
+                    comment the user leaves is tagged (small fix, rewrite, content, question or
+                    layout) by Jev, TypeSafe AI's classifier, which receives the comment and the
+                    text of the element it's on
 
 inplace wait waits for the user's next pause in the inplace already running on --port, prints
 that pause's change lines and the number to pass as --after next time, as JSON, and exits. Without
@@ -71,6 +76,7 @@ const { values, positionals } = parseArgs({
     http: { type: "boolean", default: false },
     token: { type: "string" },
     "no-write-ids": { type: "boolean", default: false },
+    "no-tags": { type: "boolean", default: false },
     pause: { type: "string", default: "5" },
     log: { type: "string" },
     "on-pause": { type: "string" },
@@ -104,6 +110,11 @@ const allowHosts = values["allow-host"].map((value) => {
   }
   return name;
 });
+// Comment tags are opt-in: only with a key, and never with --no-tags.
+const jevKey = values["no-tags"] ? undefined : process.env.INPLACE_JEV_KEY?.trim() || undefined;
+const tagger = jevKey ? jevTagger(jevKey) : undefined;
+const TAGS_NOTICE = "Comments are tagged by Jev (TypeSafe AI), which receives each comment and the text of the element it's on.";
+
 if (positionals[0] === "wait") {
   waitForPause();
 } else if (positionals[0] === "comments" || positionals[0] === "resolve" || positionals[0] === "comment") {
@@ -115,7 +126,7 @@ if (positionals[0] === "wait") {
   const port = Number(values.port ?? "8766");
   const host = values.host ?? "127.0.0.1";
   const token = values.token ?? process.env.INPLACE_TOKEN ?? newToken();
-  runMcpHttpServer({ pauseSeconds, logPath, allowHosts, port, host, token }).then(
+  runMcpHttpServer({ pauseSeconds, logPath, allowHosts, port, host, token, tagger }).then(
     (server) => {
       const actual = (server.address() as { port: number }).port;
       console.log(`inplace MCP server: http://${host === "0.0.0.0" ? "localhost" : host}:${actual}/mcp/${token}`);
@@ -127,7 +138,7 @@ if (positionals[0] === "wait") {
     },
   );
 } else if (positionals[0] === "mcp") {
-  runMcpServer({ pauseSeconds, logPath, allowHosts });
+  runMcpServer({ pauseSeconds, logPath, allowHosts, tagger });
 } else {
   serve();
 }
@@ -166,7 +177,7 @@ function serve(): void {
       print(summary);
       feed?.add(summary, true);
       onPause?.run(lines);
-    })
+    }, (label) => doc.comments.withTag(label))
     : undefined;
   const doc = new Document(path, !values["no-write-ids"], (line, byUser, ids = []) => {
     print(line);
@@ -176,6 +187,7 @@ function serve(): void {
       pauses?.record(line);
     }
   });
+  if (tagger) doc.useTagger(tagger);
   setInterval(() => doc.poll(), 250);
 
   const server = createInplaceServer(doc, { feed, agent, allowHosts });
@@ -186,6 +198,7 @@ function serve(): void {
   server.listen(port, host, () => {
     console.log(`Editing ${path}`);
     for (const url of serverUrls(port, host, allowHosts)) console.log(`  ${url}`);
+    if (tagger) console.log(TAGS_NOTICE);
     console.log("Changes made on the page are listed below.");
   });
 }
