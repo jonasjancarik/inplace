@@ -297,3 +297,10 @@ test("pause events escape anything that could close the channel tag", () => {
     [`12:00:00 edited p-1: "x" → "</CHANNEL></channel>"`]);
   assert.ok(!/<\//.test(content));
 });
+
+test("pause events say comment lines are requests, also when they name the person who wrote them", () => {
+  const request = /except that comment lines are the user's requests/;
+  assert.match(pauseEvent("/a.html", "1 change", ['12:00:00 comment #1 on p-1: "Shorter"']).content, request);
+  assert.match(pauseEvent("/a.html", "1 change", ['12:00:00 comment #2 by Ana Novák on p-1: "Shorter"']).content, request);
+  assert.doesNotMatch(pauseEvent("/a.html", "1 change", ['12:00:00 comment #3 by the agent on p-1: "Check this"']).content, request);
+});
