@@ -86,9 +86,13 @@ To keep part of a document out of reach on the page, for example figures that ar
 
 Your agent edits the file directly, so its changes are already in the document when the page reloads. Each block it changed gets a thin blue bar in the left margin until you've looked at it. Point at the block and Keep and Undo appear beside it; hovering a changed word shows the word it replaced. The list of changes (the inplace button at the bottom left) has all of them at the top, under "Your agent's changes to review", with Keep and Undo for each and Keep all.
 
+With the caret in a block your agent changed, ⌥⇧K (Alt+Shift+K on Windows and Linux) keeps the change and ⌥⇧U (Alt+Shift+U) undoes it, without reaching for the buttons. Screen readers hear what was kept or undone.
+
 Keep only takes the change off the list. Undo puts back what was there before the agent's first change to the block: its old text, or a removed or moved block in its old place, and a block the agent added is removed again. If you've typed in the block since, only the agent's words are undone and yours stay; when your edit and the agent's touch the same words, the undo is refused and the page says why. A block the agent added can only be removed this way while nobody has changed it.
 
 Several changes by the agent to the same block count as one, and so does everything inside a new table or list. An undo is written as your own edit, so your agent sees which changes you didn't want and knows not to make them again. The list of changes to review is kept beside the document, not in it, so it's still there after a restart, and the bars are never printed.
+
+To print or send on the document as it was before the changes you haven't decided on yet, click **Print** or **Download** next to "A copy without these changes" in the list. The copy has every one of them undone, but the file keeps them, and they stay on the list. If some can't be undone, because they're too large or you've since edited the same words, the list names them, so you know the copy still has them.
 
 ## Comments
 
