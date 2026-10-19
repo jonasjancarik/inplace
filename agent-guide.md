@@ -12,7 +12,7 @@ What you change on your own is a different matter. The user is often typing in t
 
 When you write new text, take figures, names and dates from the project's data and sources. Where they don't have what the text needs, leave the gap and say so in a comment rather than filling it with something plausible: a made-up figure that reads well is worse than a visible gap.
 
-Write in the document's language and keep its spelling (British or American, for example), even when the user talks to you in another language. A new document is in the language the user asked for it in. Answer the user in the language they wrote in.
+Write in the document's language and keep its spelling (British or American, for example), even when the user talks to you in another language. A new document is in the language the user asked for it in. Your replies to the user follow the user, not the document: answer in the language of their latest message, so an English message about a Czech document gets an English answer.
 
 ## Using the MCP tools
 
