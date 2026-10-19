@@ -15,6 +15,7 @@ import { ChangeFeed } from "./wait.js";
 const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
                            [--comment-only | --view-only] [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
        inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
+       inplace pending [--port 8765]
        inplace comments [--port 8765] [--all]
        inplace resolve <n> [--reply <text>] [--port 8765]
        inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
@@ -55,6 +56,10 @@ that pause's change lines and the number to pass as --after next time, as JSON, 
   --timeout <s>     give up after this many seconds: print {"status":"timeout"} and exit with code 3
   --after <n>       return the lines after line n (the "next" a previous wait printed); if
                     inplace has restarted since, the lines since the restart
+
+inplace pending prints, without waiting, the comments the user left and the pauses they made since
+you last waited or checked, or nothing when there's nothing new. Run it between the steps of a long
+task, or from a hook (see the README for Codex).
 
 inplace comments prints the open comments the user left on the page, as JSON (--all: also
 those marked done). inplace resolve marks comment n as done once you've dealt with it; --reply
@@ -129,6 +134,8 @@ if (values["comment-only"] && values["view-only"]) {
 }
 if (positionals[0] === "wait") {
   waitForPause();
+} else if (positionals[0] === "pending") {
+  pending();
 } else if (positionals[0] === "comments" || positionals[0] === "resolve" || positionals[0] === "comment") {
   comments();
 } else if (positionals[0] === "guide") {
@@ -198,7 +205,7 @@ function serve(): void {
     : undefined;
   const doc = new Document(path, !values["no-write-ids"], (line, byUser, ids = []) => {
     print(line);
-    feed?.add(line);
+    feed?.add(line, false, byUser);
     if (byUser) {
       agent.edited(ids);
       pauses?.record(line);
@@ -290,6 +297,34 @@ function waitForPause(): void {
   }
 
   attempt();
+}
+
+/** `inplace pending`: what the user did since the agent last looked, without waiting for a pause. */
+function pending(): void {
+  const port = Number(values.port ?? "8765");
+  const host = values.host ?? "127.0.0.1";
+  const req = get({ host, port, path: "/__inplace/news", headers: { host: `localhost:${port}` } }, (res) => {
+    let body = "";
+    res.setEncoding("utf8");
+    res.on("data", (d: string) => (body += d));
+    res.on("end", () => {
+      let reply: { error?: string; note?: string };
+      try {
+        reply = JSON.parse(body);
+      } catch {
+        reply = {};
+      }
+      if (res.statusCode !== 200) {
+        console.error(`inplace: ${reply.error ?? `the server answered ${res.statusCode}`}`);
+        process.exit(1);
+      }
+      if (reply.note) process.stdout.write(reply.note + "\n", () => process.exit(0));
+    });
+  });
+  req.on("error", (e) => {
+    console.error(`inplace: can't reach inplace on port ${port} (${e.message}). Is it running?`);
+    process.exit(1);
+  });
 }
 
 /** `inplace comments`, `inplace resolve` and `inplace comment`: one request to the running server. */

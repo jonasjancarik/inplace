@@ -15,14 +15,14 @@ import { AgentStatus } from "./agent.js";
 import { Authorship } from "./authorship.js";
 import { readBuildInfo } from "./build-info.js";
 import { buildContext, findQuote } from "./anchor.js";
-import { BadOptions, type Comment, CommentNotFound, CommentStore, type CommentTagger, EmptyComment, NotTheirs } from "./comments.js";
+import { BadOptions, type Comment, CommentNotFound, CommentStore, type CommentTagger, EmptyComment, isCommentLine, NotTheirs } from "./comments.js";
 import { readEditorScript } from "./editor-script.js";
 import { AGENT, type Author, copyOf, diffBlocks, History, type Place, placeOf, YOU } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
 import { CantUndo, PendingChanges, reverseChange } from "./pending.js";
 import { type DocumentStore, FileStore } from "./store.js";
-import { type ChangeFeed } from "./wait.js";
+import { type ChangeFeed, newsNote } from "./wait.js";
 
 const EDITOR_PREFIX = "/__inplace/";
 
@@ -1000,6 +1000,18 @@ export function createInplaceHandler(
     });
   };
 
+  // What the agent should hear about mid-task (`inplace pending`). With for=codex-hook, the answer
+  // is a Codex PostToolUse hook's output, or nothing at all, so a hook can be a single curl.
+  const news = (req: IncomingMessage, res: ServerResponse, query: URLSearchParams) => {
+    if (req.headers.origin || req.headers["sec-fetch-site"]) return json(res, 403, { error: "not for browsers" });
+    const lines = feed ? feed.news(isCommentLine) : [];
+    agent.checked();
+    const note = newsNote(lines, req.socket.localPort);
+    if (query.get("for") !== "codex-hook") return json(res, 200, { lines, ...(note ? { note } : {}) });
+    if (!note) return send(res, 204, "", "text/plain");
+    json(res, 200, { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: note } });
+  };
+
   // Files next to the document, such as its images and stylesheets. Not hidden files or folders
   // (.env, .git), nothing a link leads to outside the folder, and only the kinds of file pages load.
   const hidden = (rel: string) => rel.split(sep).some((part) => part.startsWith("."));
@@ -1047,6 +1059,7 @@ export function createInplaceHandler(
           return json(res, 200, { comments: doc.comments.list(url.searchParams.get("open") !== "1"), revision: doc.comments.revision });
         }
         if (path === EDITOR_PREFIX + "wait") return wait(req, res, url.searchParams);
+        if (path === EDITOR_PREFIX + "news") return news(req, res, url.searchParams);
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
         if (path === EDITOR_PREFIX + "history") {
           doc.poll();

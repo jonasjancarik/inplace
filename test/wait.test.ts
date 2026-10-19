@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
-import { ChangeFeed } from "../src/wait.js";
+import { isCommentLine } from "../src/comments.js";
+import { ChangeFeed, newsNote } from "../src/wait.js";
 
 const CLI = resolve(import.meta.dirname, "..", "src", "cli.js");
 
@@ -21,6 +22,25 @@ test("numbers the lines and answers straight away when a pause is already there"
   assert.deepEqual(await feed.wait(0), { next: 2, lines: ["16:34:18 edited p-1", "16:34:23 paused after 1 change: edited p-1"] });
   assert.equal(feed.delivered, 2);
   assert.equal(feed.take(2), null, "the line after the pause waits for the next one");
+});
+
+test("news gives the user's comments and pauses once, and leaves the next wait its whole pause", async () => {
+  const feed = new ChangeFeed(500, 0);
+  feed.add("16:34:18 edited p-1", false, true);
+  feed.add('16:34:19 comment #1 on p-1: "Name the trees."', false, true);
+  feed.add('16:34:20 comment #2 by the agent on p-1: "Which ones?"');
+  assert.deepEqual(feed.news(isCommentLine), ['16:34:19 comment #1 on p-1: "Name the trees."'], "not the edit, nor the agent's own comment");
+  assert.deepEqual(feed.news(isCommentLine), [], "nothing twice");
+  feed.add("16:34:24 paused after 2 changes: edited p-1, comment #1", true);
+  assert.deepEqual(feed.news(isCommentLine), ["16:34:24 paused after 2 changes: edited p-1, comment #1"]);
+  assert.equal((await feed.wait(0))?.lines.length, 4, "the wait still gets every line of the pause");
+  feed.add('16:34:30 comment #1 edited: "Name the oaks."', false, true);
+  feed.add("16:34:35 paused after 1 change: comment #1", true);
+  await feed.wait(feed.delivered);
+  assert.deepEqual(feed.news(isCommentLine), [], "nor what a wait already gave the agent");
+  assert.equal(newsNote([]), undefined);
+  assert.match(newsNote(["a line"])!, /^inplace: .*\n  a line\n/);
+  assert.match(newsNote(["a line"], 8765)!, /^inplace: /, "the default port goes unsaid");
 });
 
 test("a wait resolves at the next pause, and with null after its timeout", async () => {
@@ -173,6 +193,46 @@ test("inplace wait --after carries on after inplace restarts, from the restart",
 test("inplace wait gives up when no server is running", async () => {
   const { code } = await run(["wait", "--port", String(await freePort()), "--timeout", "0.5"]);
   assert.equal(code, 1);
+});
+
+test("inplace pending and the Codex hook answer report a new comment once, without waiting", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-pending-"));
+  const path = join(dir, "doc.html");
+  writeFileSync(path, '<html><body><p data-id="p-1">Ten trees</p></body></html>');
+  const port = await freePort();
+  const server = spawn(process.execPath, [CLI, path, "--port", String(port), "--pause", "0.3"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await new Promise<void>((ok) => server.stdout.on("data", (d) => String(d).includes("localhost") && ok()));
+    const hook = () => fetch(`http://localhost:${port}/__inplace/news?for=codex-hook`);
+    assert.deepEqual(await run(["pending", "--port", String(port)]), { code: 0, out: "" });
+    const quiet = await hook();
+    assert.equal(quiet.status, 204);
+    assert.equal(await quiet.text(), "");
+
+    await fetch(`http://localhost:${port}/__inplace/comment`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", id: "p-1", text: "Name the trees." }),
+    });
+    const told = await hook();
+    assert.equal(told.status, 200);
+    const output = await told.json();
+    assert.equal(output.hookSpecificOutput.hookEventName, "PostToolUse");
+    assert.match(output.hookSpecificOutput.additionalContext, /comment #1 on p-1: "Name the trees\."/);
+    assert.match(output.hookSpecificOutput.additionalContext, new RegExp(`^inplace \\(on --port ${port}\\)`));
+    assert.equal((await run(["pending", "--port", String(port)])).out, "", "not twice");
+
+    // The pause after it comes once more, and a wait still returns all of it.
+    await new Promise((r) => setTimeout(r, 700));
+    assert.match((await run(["pending", "--port", String(port)])).out, /paused after 1 change: comment #1/);
+    const waited = JSON.parse((await run(["wait", "--port", String(port), "--timeout", "5"])).out);
+    assert.equal(waited.status, "pause");
+    assert.match(waited.lines[0], /comment #1 on p-1/);
+
+    const res = await fetch(`http://localhost:${port}/__inplace/news`, { headers: { origin: "https://evil.example" } });
+    assert.equal(res.status, 403);
+  } finally {
+    server.kill();
+  }
 });
 
 test("inplace comments lists the open comments and inplace resolve marks one done", async () => {

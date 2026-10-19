@@ -52,6 +52,9 @@ export interface Comment {
   tag?: CommentTag; // what kind of request the user's comment is, when a tagger is set and was sure
 }
 
+/** Whether a change line is about a comment (left, edited, answered, deleted, dismissed or marked done). */
+export const isCommentLine = (line: string) => /^\S+ comment #\d+ /.test(line);
+
 /** The kinds of request a user's comment can be tagged with, for the agent to plan its work by. */
 export const COMMENT_TAGS = ["small fix", "rewrite", "content", "question", "layout"] as const;
 export type CommentTag = (typeof COMMENT_TAGS)[number];

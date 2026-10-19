@@ -18,11 +18,13 @@ export interface PauseBatch {
  * waiting for the count to catch up.
  */
 export class ChangeFeed {
-  private entries: { n: number; line: string; pause: boolean }[] = [];
+  private entries: { n: number; line: string; pause: boolean; user: boolean }[] = [];
   private last: number;
   private waiters = new Set<() => void>();
   /** The `next` handed out most recently, where a wait without `after` continues from (0: from the start). */
   delivered = 0;
+  /** The newest line the agent has been given in any way, by a wait, a pull or a check for news. */
+  private read = 0;
 
   constructor(readonly keep = 500, readonly start = Date.now()) {
     this.last = start;
@@ -33,8 +35,9 @@ export class ChangeFeed {
     return this.last;
   }
 
-  add(line: string, pause = false): void {
-    this.entries.push({ n: ++this.last, line, pause });
+  /** `user`: the line is about something a person did on the page (a pause summary always is). */
+  add(line: string, pause = false, user = pause): void {
+    this.entries.push({ n: ++this.last, line, pause, user });
     if (this.entries.length > this.keep) this.entries.splice(0, this.entries.length - this.keep);
     if (pause) for (const wake of [...this.waiters]) wake();
   }
@@ -52,7 +55,20 @@ export class ChangeFeed {
     } else if (this.entries.length && this.entries[0].n > from + 1) {
       lines.unshift("(older changes are no longer kept here; read the document to catch up)");
     }
+    this.read = Math.max(this.read, this.last);
     return { next: this.last, lines };
+  }
+
+  /**
+   * What the agent hasn't been given yet that it should hear about mid-task: the user's lines
+   * that `pick` chooses (their comments) and the pause summaries. Never returns a line twice,
+   * nor one a wait or a pull already gave the agent, and leaves where waits continue from alone,
+   * so the agent's next wait still returns the whole pause.
+   */
+  news(pick: (line: string) => boolean): string[] {
+    const from = Math.max(this.read, this.delivered, this.start);
+    this.read = Math.max(this.read, this.last);
+    return this.entries.filter((e) => e.n > from && e.user && (e.pause || pick(e.line))).map((e) => e.line);
   }
 
   /**
@@ -75,6 +91,7 @@ export class ChangeFeed {
       lines.unshift("(older changes are no longer kept here; read the document to catch up)");
     }
     this.delivered = Math.max(this.delivered, newer[end].n);
+    this.read = Math.max(this.read, newer[end].n);
     return { next: newer[end].n, lines };
   }
 
@@ -102,4 +119,19 @@ export class ChangeFeed {
       this.waiters.add(wake);
     });
   }
+}
+
+/**
+ * The note an agent gets mid-task about what `news` returned (`inplace pending`, the Codex
+ * hook), or undefined when there's nothing. `port` names a port other than the default, for the
+ * agent's next inplace command.
+ */
+export function newsNote(lines: string[], port?: number): string | undefined {
+  if (!lines.length) return undefined;
+  return [
+    `inplace${port && port !== 8765 ? ` (on --port ${port})` : ""}: while you were working, the user did this on the page:`,
+    ...lines.map((line) => `  ${line}`),
+    "Finish the step you're on, then deal with new comments as usual and mark each one done when you have. " +
+      "Your next inplace wait (or wait_for_edits) still returns these edits in full, so act on them now only if they touch what you're changing.",
+  ].join("\n");
 }

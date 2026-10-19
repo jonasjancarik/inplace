@@ -116,9 +116,9 @@ class Session {
     const agent = new AgentStatus({
       channel: this.channel, unseenReaders: this.logFile || (this.notify !== undefined && !this.channel),
     });
-    const record = (line: string, pause = false) => {
+    const record = (line: string, pause = false, byUser = pause) => {
       this.log(line);
-      feed.add(line, pause);
+      feed.add(line, pause, byUser);
     };
     const pauses = this.pauseMs
       ? new PauseWatcher(this.pauseMs, (summary, lines) => {
@@ -132,7 +132,7 @@ class Session {
       }, (label) => doc.comments.withTag(label))
       : undefined;
     const doc = new Document(path, true, (line, byUser, ids = []) => {
-      record(line);
+      record(line, false, byUser);
       if (byUser) {
         agent.edited(ids);
         pauses?.record(line);
