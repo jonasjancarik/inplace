@@ -160,6 +160,7 @@ An agent normally reads these lines only when it next does something: when you l
 - **Claude Code** can run inplace as an MCP server and get a message each time you pause, through a channel (see below). Without that, it runs `inplace wait` in the background, which wakes it at your next pause, and starts it again once it has dealt with your changes. Either way, after you change an amount, the total is usually fixed a few seconds after you stop typing.
 - **Codex** can check in on a schedule with a heartbeat, which keeps the conversation's context. Ask it to check your inplace edits every few minutes. It reads the log file (`--log`) and stops straight away when nothing has changed.
 - **Any agent that can run commands**, such as Codex or Cursor, can run `inplace wait` during its turn. The command waits for your next pause, prints the changes, and exits, and the agent acts on them and runs it again. This works only while the agent is still working on your request: once it ends its turn, it stops following your edits until you write to it again. Through MCP, the same is the `wait_for_edits` tool.
+- **Codex, while it's busy with something else**: Codex runs `inplace wait` only between jobs, so a comment you leave while it's reworking a layout usually waits until that job is done. A Codex hook gets around this by passing your comments to Codex right after the step it's on (see "Passing comments to Codex while it works" below).
 - **Any agent with a headless mode**, such as `claude -p` or `codex exec`, can be started by inplace itself with `--on-pause`. The command gets the changes on standard input and the document's path in `INPLACE_FILE`:
 
   ```bash
@@ -167,6 +168,35 @@ An agent normally reads these lines only when it next does something: when you l
   ```
 
   The headless agent doesn't know your conversation with your main agent, and both could edit the file at the same time, so keep its job narrow. Runs never overlap: changes made while one is running go to the next run.
+
+### Passing comments to Codex while it works
+
+Add this to `~/.codex/hooks.json`, next to any hooks already there:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sf --max-time 1 'http://localhost:8765/__inplace/news?for=codex-hook' || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+After each of Codex's tool calls, the hook asks inplace whether you've left a comment or paused since Codex last looked. If you have, Codex gets a short note listing them as soon as that tool call is done, and deals with your comments once it finishes the step it's on. If not, the hook prints nothing, and when inplace isn't running, it fails quietly, so you can leave it installed. Codex runs a new hook only after you've approved it, so approve this one when Codex says a hook needs review.
+
+Each comment and pause is reported once, and nothing that an `inplace wait` already returned. Your edits still come in full with Codex's next wait, as before. If inplace runs on another port, change `8765` in the URL. The hook works for every Codex conversation, so if two of them are working at once, the note goes to whichever one makes the next tool call.
+
+The hook needs `curl`, which comes with macOS, Linux and Windows 10 and later. Without a hook, `inplace pending` prints the same note, and an agent can run it between the steps of a longer task.
 
 ### Running inplace as an MCP server for Claude Code
 
@@ -205,6 +235,7 @@ ChatGPT on the web can use inplace's MCP tools through a tunnel, without opening
 inplace <file.html> [--port 8765] [--host 127.0.0.1] [--allow-host <name>] [--no-write-ids]
                     [--comment-only | --view-only] [--pause 5] [--log <file>] [--on-pause <command>] [--no-tags]
 inplace wait [--port 8765] [--timeout <seconds>] [--after <n>]
+inplace pending [--port 8765]
 inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
 inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
@@ -240,6 +271,8 @@ inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-
 `inplace comments` prints the open comments left on the page as JSON, `inplace resolve <n>` marks comment `n` as done, and `inplace comment <data-id> <text>` leaves the agent's own comment on that element, all through the inplace already running on `--port`.
 
 `inplace wait` waits until you pause editing in the inplace already running on `--port`, then prints that pause's change lines as JSON and exits.
+
+`inplace pending` returns straight away. It prints the comments you left and the pauses you made since the agent last waited or checked, or nothing when there's nothing new. It doesn't change what the next `inplace wait` returns.
 
 Images, stylesheets, fonts, scripts and other files a page loads are served from the document's folder too, so relative links keep working. Hidden files and folders (such as `.env` or `.git`), other kinds of files, and anything a link in the folder leads to outside it are not.
 
