@@ -82,13 +82,15 @@ style.textContent = `
     width:min(380px,calc(100vw - 28px));max-height:min(70vh,560px);overflow:hidden;border-radius:12px;background:#fff;color:#1f2a24;
     box-shadow:0 12px 40px #0003,0 0 0 1px #0000000f;font:13px/1.45 -apple-system,system-ui,sans-serif;text-align:left}
   #inplace-changes.open{display:flex}
-  #inplace-changes header{display:flex;align-items:center;justify-content:space-between;padding:12px 10px 6px 16px}
+  #inplace-changes header{all:unset;display:block;padding:12px 10px 0 16px;border-bottom:1px solid #e4e8e5}
+  #inplace-changes header .title{display:flex;align-items:center;justify-content:space-between}
+  #inplace-changes .views{display:flex;flex-wrap:wrap;gap:4px 16px;padding:6px 0 10px}
   #inplace-changes h2{all:unset;font-size:14px;font-weight:600}
   #inplace-changes .x{all:unset;cursor:pointer;color:#7a8580;font-size:20px;line-height:1;padding:2px 7px 4px;border-radius:6px}
   #inplace-changes .x:hover{background:#eef1ef;color:#1f2a24}
   #inplace-changes footer{padding:8px 16px;border-top:1px solid #e4e8e5;color:#7a8580;font-size:11.5px;user-select:text;word-break:break-all}
-  #inplace-changes .list{overflow:auto;padding:0 8px 8px}
-  #inplace-changes .agent-status{margin:0 8px 8px;color:#56615b}
+  #inplace-changes .list{overflow:auto;padding:8px 8px 8px}
+  #inplace-changes .agent-status{margin:0;padding-right:6px;font-size:12px;color:#7a8580}
   ::highlight(inplace-comment){background-color:#ffe08a}
   ::highlight(inplace-comment-draft){background-color:#ffe08a}
   ::highlight(inplace-agent-comment){background-color:#cfe0fb}
@@ -139,7 +141,7 @@ style.textContent = `
   #inplace-comment-box .meta button:hover,#inplace-changes .comment .meta button:hover,#inplace-changes .comments .clear:hover,
     #inplace-comment-box .meta button:focus-visible,#inplace-changes .comment .meta button:focus-visible{color:#1f2a24;text-decoration:underline}
   #inplace-changes .comments{margin:0 0 8px;padding:0 8px 8px;border-bottom:1px solid #eef1ef}
-  #inplace-changes .comments h3{all:unset;display:block;margin:2px 0 6px;font-size:12px;font-weight:600}
+  #inplace-changes .comments h3{all:unset;display:block;margin:4px 0 4px;font-size:12px;font-weight:600;color:#56615b}
   #inplace-changes .comment{padding:6px 0}
   #inplace-changes .comment.done{opacity:.6}
   #inplace-changes .comments .clear{display:block;margin-top:4px;font-size:12px}
@@ -167,10 +169,9 @@ style.textContent = `
   #inplace-changes .entry[data-by=you] ins{background:#e9eeeb;color:#1f2a24}
   #inplace-changes .access{margin:0 0 8px;padding:9px 11px;border-radius:8px;background:#f1f3f0;color:#3d4a43}
   #inplace-changes .empty{margin:0;padding:4px 8px 10px;color:#7a8580}
-  #inplace-changes .review-switch{display:flex;align-items:center;gap:5px;margin-left:auto;margin-right:4px;font-size:12px;
-    color:#3d4a43;cursor:pointer;user-select:none}
+  #inplace-changes .review-switch{display:flex;align-items:center;gap:6px;font-size:12px;color:#3d4a43;cursor:pointer;user-select:none}
   #inplace-changes .review-switch input{margin:0;accent-color:#6a52c9}
-  #inplace-changes .authors-switch{display:flex;align-items:center;gap:6px;margin:0 8px 8px;font-size:12px;color:#3d4a43;cursor:pointer;user-select:none}
+  #inplace-changes .authors-switch{display:flex;align-items:center;gap:6px;font-size:12px;color:#3d4a43;cursor:pointer;user-select:none}
   #inplace-changes .authors-switch input{margin:0;accent-color:#3f8f5c}
   #inplace-authors-layer{position:absolute;top:0;left:0;width:0;height:0;z-index:2147483644}
   #inplace-authors-layer .bar{position:absolute;width:10px;cursor:default;pointer-events:auto}
@@ -187,15 +188,18 @@ style.textContent = `
   #inplace-pending-actions button:disabled{color:#a0a8a4;cursor:default;background:none}
   html.inplace-reviewing #inplace-pending-layer,html.inplace-reviewing #inplace-pending-actions{display:none!important}
   #inplace-changes .to-review{margin:0 0 8px;padding:0 0 8px;border-bottom:1px solid #eef1ef}
-  #inplace-changes .to-review .head{display:flex;align-items:baseline;gap:8px;padding:2px 8px 4px}
-  #inplace-changes .to-review h3{all:unset;margin-right:auto;font-size:12px;font-weight:600}
-  #inplace-changes .to-review li{display:flex;align-items:flex-start}
-  #inplace-changes .to-review .keep-all,#inplace-changes .to-review .act{all:unset;flex:none;padding:0 5px;border-radius:5px;cursor:pointer;
-    font-size:12px;font-weight:600;color:#2d4f8f;text-decoration:underline}
-  #inplace-changes .to-review .act{margin-top:5px}
-  #inplace-changes .to-review .keep-all:hover,#inplace-changes .to-review .act:hover{background:#eaf0fb}
-  #inplace-changes .to-review .keep-all:focus-visible,#inplace-changes .to-review .act:focus-visible{outline:2px solid #4a7bd4}
-  #inplace-changes .to-review .act:disabled{color:#a0a8a4;text-decoration:none;cursor:default;background:none}
+  #inplace-changes .to-review .head{display:flex;align-items:center;gap:8px;padding:0 8px 4px}
+  #inplace-changes .to-review h3{all:unset;margin-right:auto;font-size:12px;font-weight:600;color:#56615b}
+  #inplace-changes .to-review li{position:relative}
+  #inplace-changes .to-review .kind{padding-right:104px;line-height:20px}
+  #inplace-changes .to-review .acts{position:absolute;top:5px;right:8px;display:flex;gap:4px}
+  #inplace-changes .to-review .keep-all,#inplace-changes .to-review .act{all:unset;flex:none;padding:1px 9px;border-radius:6px;cursor:pointer;
+    font-size:12px;line-height:16px;font-weight:500;color:#1f2a24;background:#fff;box-shadow:inset 0 0 0 1px #d4dad6}
+  #inplace-changes .to-review .keep-all{background:#4a7bd4;color:#fff;box-shadow:none}
+  #inplace-changes .to-review .keep-all:hover{background:#3d6bc0}
+  #inplace-changes .to-review .act:hover{background:#f1f4f2}
+  #inplace-changes .to-review .keep-all:focus-visible,#inplace-changes .to-review .act:focus-visible{outline:2px solid #4a7bd4;outline-offset:1px}
+  #inplace-changes .to-review .act:disabled{color:#a0a8a4;cursor:default;background:#fff}
   #inplace-review-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;flex-wrap:wrap;align-items:center;
     gap:6px 16px;padding:9px 16px;background:#1f2a24;color:#fff;font:13px/1.35 -apple-system,system-ui,sans-serif;
     box-shadow:0 2px 10px #0003}

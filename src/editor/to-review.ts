@@ -142,9 +142,10 @@ function toReviewGroup() {
     items.append(make("li", {},
       el ? make("button", { type: "button", className: "change", title: "Show in the document", onclick: () => goTo(el, change, "agent") }, ...body)
         : make("div", { className: "change" }, ...body),
-      make("button", { type: "button", className: "act", textContent: "Keep", ariaLabel: `Keep: ${reviewWords(p)}`, onclick: () => keepAgentChange(p.id) }),
-      make("button", { type: "button", className: "act", textContent: "Undo", ariaLabel: `Undo: ${reviewWords(p)}`, disabled: !p.undoable,
-        title: p.undoable ? "" : TOO_LARGE, onclick: () => undoAgentChange(p.id) })));
+      make("div", { className: "acts" },
+        make("button", { type: "button", className: "act keep", textContent: "Keep", ariaLabel: `Keep: ${reviewWords(p)}`, onclick: () => keepAgentChange(p.id) }),
+        make("button", { type: "button", className: "act", textContent: "Undo", ariaLabel: `Undo: ${reviewWords(p)}`, disabled: !p.undoable,
+          title: p.undoable ? "" : TOO_LARGE, onclick: () => undoAgentChange(p.id) }))));
   }
   return make("div", { className: "to-review" },
     make("div", { className: "head" },

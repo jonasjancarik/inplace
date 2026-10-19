@@ -151,7 +151,7 @@ async function uncover(el: HTMLElement) {
 }
 
 function renderChanges() {
-  const list = make("div", { className: "list" }, authorsSwitch());
+  const list = make("div", { className: "list" });
   if (!canEdit) {
     list.append(make("p", { className: "access", textContent: canComment
       ? "You can comment on this document, but not edit it."
@@ -159,8 +159,6 @@ function renderChanges() {
   }
   const reviewList = toReviewGroup();
   if (reviewList) list.append(reviewList);
-  const agentLine = agentStatusLine();
-  if (agentLine) list.append(agentLine);
   const commentList = commentsGroup();
   if (commentList) list.append(commentList);
   if (stashCount) {
@@ -202,8 +200,11 @@ function renderChanges() {
     list.append(node);
   }
   changesPanel.replaceChildren(
-    make("header", {}, make("h2", { textContent: "Changes" }), reviewSwitch(),
-      make("button", { type: "button", className: "x", textContent: "\u00d7", ariaLabel: "Close", onclick: closeChanges })),
+    make("header", {},
+      make("div", { className: "title" }, make("h2", { textContent: "Changes" }),
+        make("button", { type: "button", className: "x", textContent: "\u00d7", ariaLabel: "Close", onclick: closeChanges })),
+      ...[agentStatusLine()].filter((x) => x !== null),
+      make("div", { className: "views" }, reviewSwitch(), authorsSwitch())),
     list, versionLine());
 }
 
