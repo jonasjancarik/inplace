@@ -216,6 +216,7 @@ function reloadAsIs() {
     sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: Math.max(0, scrollY - (spacer?.offsetHeight ?? 0)),
       changes: changesPanel.classList.contains("open") }));
   } catch {}
+  rememberWriting();
   location.reload();
 }
 

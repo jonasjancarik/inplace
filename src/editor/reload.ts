@@ -59,6 +59,7 @@ async function reload(skip: string[] = []) {
     sessionStorage.setItem(STATE_KEY, JSON.stringify({ x: scrollX, y: scrollY, focus: active?.dataset.id, blocks, skip, unseen,
       texts, changes: changesPanel.classList.contains("open") }));
   } catch {}
+  rememberWriting();
   location.reload();
 }
 

@@ -78,6 +78,7 @@ async function loadComments() {
   placeComments();
   updateCorner();
   if (changesPanel.classList.contains("open")) renderChanges();
+  if (writtenBeforeReload) reopenWriting();
 }
 
 function placeComments() {
@@ -219,10 +220,14 @@ function startComment(el: HTMLElement | null | undefined = null) {
     const trail = text.slice(start, end).match(/\s*$/)![0].length;
     if (end - trail > start + lead) ctx = anchoring.buildContext(text, start + lead, end - trail);
   }
-  const quoteRange = ctx.quote ? range!.cloneRange() : null;
+  openDraft(el, ctx, ctx.quote ? range!.cloneRange() : null);
+}
+
+// The box for a new comment on an element, or on the quoted words in it when they were found.
+function openDraft(el: HTMLElement, ctx: QuoteContext, quoteRange: Range | null, text = "", caret?: [number, number]) {
   draft = { id: el.dataset.id!, ...ctx };
   if (canHighlight && quoteRange) CSS.highlights.set("inplace-comment-draft", new Highlight(quoteRange));
-  const field = commentField("", () => addComment(field.value));
+  const field = commentField(text, () => addComment(field.value));
   const heading = ctx.quote
     ? make("p", { className: "quote", textContent: clipText(ctx.quote, 120) })
     : make("p", { className: "about", textContent: `Comment on this ${commentNoun(el)}` });
@@ -232,6 +237,7 @@ function startComment(el: HTMLElement | null | undefined = null) {
       make("button", { type: "button", className: "primary", textContent: "Add comment", onclick: () => addComment(field.value) })));
   formatToolbar.style.display = "none";
   field.focus();
+  if (caret) field.setSelectionRange(...caret);
 }
 
 async function addComment(text: string) {
@@ -250,6 +256,33 @@ async function changeComment(payload: object, done?: string) {
   if (!res.ok) return showStatus("Couldn't change the comment. Is inplace still running?", "error", 5000);
   if (done) showStatus(done);
   loadComments();
+}
+
+// Comments being changed or answered, by where and what ("list:edit:3"), with the words written
+// so far. The list of changes is drawn anew whenever something changes, and the page reloads
+// when the agent edits the file; neither should throw those words away.
+const writing = new Map<string, string>();
+/** The field being typed in, and where in it. */
+type WritingFocus = { key: string; start: number; end: number };
+let writingFocus: WritingFocus | null = null;
+function keepWriting(scope: Element) {
+  for (const field of scope.querySelectorAll<HTMLTextAreaElement>("textarea[data-writing]")) {
+    writing.set(field.dataset.writing!, field.value);
+    if (field === document.activeElement) writingFocus = { key: field.dataset.writing!, start: field.selectionStart, end: field.selectionEnd };
+  }
+}
+// Opens the field again, with what was written in it, if it was open before.
+function resumeWriting(key: string, open: () => HTMLTextAreaElement) {
+  const text = writing.get(key);
+  if (text === undefined) return;
+  writing.delete(key);
+  const field = open();
+  field.value = text;
+  const at = writingFocus?.key === key ? writingFocus : null;
+  if (!at) return;
+  writingFocus = null;
+  // Once the comment is on the page.
+  queueMicrotask(() => { field.focus(); field.setSelectionRange(at.start, at.end); });
 }
 
 // A comment as shown in the box and in the list of changes. While it's open, the user's own
@@ -271,6 +304,8 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
   const state = c.dismissed ? "Dismissed" : c.status === "done" ? "Done"
     : c.by && !c.answer ? "Waiting for your answer" : "Not done yet";
   const meta = make("div", { className: "meta" }, make("span", { textContent: `${state} · ${ago(c.created)}` }));
+  const where = `${inList ? "list" : "box"}:`;
+  let resume: (() => void) | null = null;
   if (!canComment) {
     // Read-only: the comment and its state, nothing to change.
   } else if (c.status === "open" && c.by) {
@@ -286,7 +321,12 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
     if (choices) text.after(choices);
     const writeAnswer = () => {
       const field = commentField(c.answer ?? "", () => save(), "Answer", "Your answer");
-      const save = () => field.value.trim() && sendAnswer(field.value);
+      field.dataset.writing = `${where}answer:${c.n}`;
+      const save = () => {
+        if (!field.value.trim()) return;
+        delete field.dataset.writing;
+        sendAnswer(field.value);
+      };
       const shown = answer ?? choices;
       if (shown) shown.replaceWith(field);
       else text.after(field);
@@ -295,7 +335,9 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
       });
       meta.replaceChildren(make("button", { type: "button", textContent: "Send", onclick: save }));
       field.focus();
+      return field;
     };
+    resume = () => resumeWriting(`${where}answer:${c.n}`, writeAnswer);
     // With suggestions, writing an answer is the last of them; otherwise it's a link next to Dismiss.
     if (choices) choices.append(make("button", { type: "button", className: "own", textContent: "Write your own", onclick: writeAnswer }));
     else meta.append(make("button", { type: "button", textContent: c.answer ? "Change answer" : "Answer", onclick: writeAnswer }));
@@ -307,15 +349,23 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
   } else if (c.status === "open" && meId && c.from?.id && c.from.id !== meId) {
     // Someone else's comment: it can be read, and only its writer changes it.
   } else if (c.status === "open") {
+    const edit = () => {
+      const field = commentField(c.text, () => save());
+      field.dataset.writing = `${where}edit:${c.n}`;
+      const save = () => {
+        if (!field.value.trim()) return;
+        delete field.dataset.writing;
+        changeComment({ action: "edit", n: c.n, text: field.value }, "Comment changed");
+      };
+      text.replaceWith(field);
+      field.addEventListener("keydown", (e) => { if (e.key === "Escape" && inList) { e.stopPropagation(); field.replaceWith(text); } });
+      meta.replaceChildren(make("button", { type: "button", textContent: "Save", onclick: save }));
+      field.focus();
+      return field;
+    };
+    resume = () => resumeWriting(`${where}edit:${c.n}`, edit);
     meta.append(
-      make("button", { type: "button", textContent: "Edit", onclick: () => {
-        const field = commentField(c.text, () => save());
-        const save = () => field.value.trim() && changeComment({ action: "edit", n: c.n, text: field.value }, "Comment changed");
-        text.replaceWith(field);
-        field.addEventListener("keydown", (e) => { if (e.key === "Escape" && inList) { e.stopPropagation(); field.replaceWith(text); } });
-        meta.replaceChildren(make("button", { type: "button", textContent: "Save", onclick: save }));
-        field.focus();
-      } }),
+      make("button", { type: "button", textContent: "Edit", onclick: edit }),
       make("button", { type: "button", textContent: "Delete", onclick: () => {
         if (!inList) closeBox();
         changeComment({ action: "delete", n: c.n }, "Comment deleted");
@@ -329,6 +379,7 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
     meta.prepend(show);
   }
   node.append(meta);
+  resume?.();
   return node;
 }
 
@@ -406,3 +457,63 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("pointerdown", (e) => {
   if (commentBox.classList.contains("open") && !commentBox.contains(e.target as Node) && !commentLayer.contains(e.target as Node)) closeBox();
 });
+
+// --- comments being written when the page reloads, such as when the agent edits the file ---
+/** What was being written in the comment box and the list of changes before a reload. */
+interface WritingState {
+  draft?: { id: string; text: string; caret?: [number, number] } & QuoteContext;
+  writing?: [string, string][];
+  focus?: WritingFocus | null;
+}
+const WRITING_KEY = `${STATE_KEY}:writing`;
+function rememberWriting() {
+  const boxOpen = commentBox.classList.contains("open");
+  if (boxOpen) keepWriting(commentBox);
+  keepWriting(changesPanel);
+  const field = draft && boxOpen ? commentBox.querySelector("textarea") : null;
+  const state: WritingState = { writing: [...writing], focus: writingFocus };
+  if (draft && field?.value.trim()) {
+    state.draft = { ...draft, text: field.value, caret: field === document.activeElement ? [field.selectionStart, field.selectionEnd] : undefined };
+  }
+  if (!state.draft && !writing.size) return;
+  try { sessionStorage.setItem(WRITING_KEY, JSON.stringify(state)); } catch {}
+}
+
+let writtenBeforeReload: WritingState | null = null;
+try { writtenBeforeReload = JSON.parse(sessionStorage.getItem(WRITING_KEY) || "null"); sessionStorage.removeItem(WRITING_KEY); } catch {}
+
+// Once the comments are loaded, so they can be found on the page again.
+function reopenWriting() {
+  const state = writtenBeforeReload!;
+  writtenBeforeReload = null;
+  if (state.focus) writingFocus = state.focus;
+  let toList = false;
+  for (const [key, text] of state.writing ?? []) {
+    const [where, kind, n] = key.split(":");
+    const c = comments.find((c) => c.n === Number(n) && c.status === "open");
+    if (!c) continue; // done or deleted meanwhile: there's nothing to change any more
+    const place = commentPlaces.get(c.n);
+    if (where === "box" && place?.el) {
+      writing.set(key, text);
+      showComments([c], (place.range ?? place.el).getBoundingClientRect());
+    } else {
+      // Its text is gone from the page, so it's shown in the list of changes instead.
+      const listKey = `list:${kind}:${n}`;
+      writing.set(listKey, text);
+      if (writingFocus?.key === key) writingFocus.key = listKey;
+      toList ||= where === "box";
+    }
+  }
+  if (toList) openChanges();
+  else if (changesPanel.classList.contains("open")) renderChanges();
+  const d = state.draft;
+  if (!d) return;
+  const el = byId(d.id);
+  if (!el) {
+    showStatus("Your agent removed the part you were commenting on, so the comment you were writing couldn't be kept.", "error", true);
+    return;
+  }
+  const ctx: QuoteContext = { quote: d.quote, prefix: d.prefix, suffix: d.suffix };
+  const found = d.quote ? anchoring?.findQuote(el.textContent!, ctx) : null;
+  openDraft(el, ctx, (found && rangeIn(el, found.start, found.end)) || null, d.text, d.caret);
+}

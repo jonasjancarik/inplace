@@ -1190,6 +1190,57 @@ test.describe("comments", () => {
   });
 });
 
+test.describe("comments being written while the agent edits", () => {
+  test("a comment being written stays open with its words when the agent edits the file", async ({ editor, doc }) => {
+    const para = block(editor, "p", "The roof is already used");
+    const id = await idOf(para);
+    await selectText(para, "drying laundry");
+    await editor.locator("#inplace-toolbar").getByRole("button", { name: "Comment" }).click();
+    const box = editor.getByRole("dialog", { name: "Comment" });
+    await box.getByRole("textbox").pressSequentially("Which buildings");
+
+    // The agent changes another paragraph, and then the one being commented on.
+    doc.edit("<h1", "<h1 title=\"Proposal\"");
+    await expect(editor.locator("h1[title=Proposal]")).toBeVisible();
+    await expect(box.getByRole("textbox")).toHaveValue("Which buildings");
+    await expect(box.getByRole("textbox")).toBeFocused();
+    await expect(box.locator(".quote")).toHaveText("drying laundry");
+    doc.edit("The roof is already used for drying laundry", "Today the roof is only used for drying laundry");
+    await expect(block(editor, "p", "Today the roof")).toBeVisible();
+    await expect(box.getByRole("textbox")).toHaveValue("Which buildings");
+
+    await box.getByRole("textbox").pressSequentially(" share it?");
+    await box.getByRole("textbox").press("Enter");
+    await expect.poll(() => doc.output).toContain(`comment #1 on ${id} at "drying laundry": "Which buildings share it?"`);
+  });
+
+  test("an answer being written in the list of changes is kept when it's drawn again and when the page reloads", async ({ editor, doc }) => {
+    const port = new URL(doc.url).port;
+    const id = await editor.locator("h1[data-id]").getAttribute("data-id");
+    execFileSync(process.execPath, [CLI, "comment", id!, "Shorter title?", "--port", port]);
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const panel = editor.getByRole("dialog", { name: "Changes" });
+    await panel.getByRole("button", { name: "Answer" }).click();
+    const field = panel.getByRole("textbox", { name: "Answer" });
+    await field.pressSequentially("Keep it");
+
+    // Another comment from the agent draws the list again.
+    execFileSync(process.execPath, [CLI, "comment", id!, "And the subtitle?", "--port", port]);
+    await expect(panel.locator(".comments .comment")).toHaveCount(2);
+    await expect(field).toHaveValue("Keep it");
+    await expect(field).toBeFocused();
+
+    // An edit to the file reloads the page.
+    doc.edit("<h1", "<h1 title=\"Proposal\"");
+    await expect(editor.locator("h1[title=Proposal]")).toBeVisible();
+    await expect(field).toHaveValue("Keep it");
+    await field.pressSequentially(", but drop the subtitle");
+    await panel.getByRole("button", { name: "Send" }).click();
+    await expect.poll(() => doc.output).toContain('comment #1 answered by the user: "Keep it, but drop the subtitle"');
+    await expect(panel.getByRole("textbox")).toHaveCount(0);
+  });
+});
+
 test("an agent waiting for pauses gets an eye beside the block you edited, then a check that fades", async ({ page }) => {
   const doc = await startDoc(undefined, undefined, ["--pause", "0.4"]);
   const port = new URL(doc.url).port;

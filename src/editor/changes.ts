@@ -151,6 +151,7 @@ async function uncover(el: HTMLElement) {
 }
 
 function renderChanges() {
+  keepWriting(changesPanel);
   const list = make("div", { className: "list" });
   if (!canEdit) {
     list.append(make("p", { className: "access", textContent: canComment
