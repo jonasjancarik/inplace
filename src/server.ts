@@ -203,6 +203,9 @@ export class Document {
   }
 
   private write(text: string, by?: Author): void {
+    // Blocks an agent adds through its tools come without ids. Give them theirs before the change is recorded, or
+    // they'd be missing from the changes to review and from who wrote what, which go by id.
+    if (by && this.writeIds) text = assignIds(text).source;
     this.store.write(text);
     this.stamp = this.statStamp();
     if (by) this.remember(text, by);

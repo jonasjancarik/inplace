@@ -218,3 +218,15 @@ test("a copy without the changes names the ones it couldn't undo", () => {
   assert.deepEqual(copy.left.map((l) => l.id), ["p-1"]);
   assert.match(copy.left[0].why, /same words/);
 });
+
+test("blocks the agent adds through its tools without ids are pending too, with the ids they get", () => {
+  const { doc, read } = open();
+  doc.findReplace('<h1 data-id="h1-1">Plan</h1>', '<h1 data-id="h1-1">Plan</h1>\n<figure><img src="files/plan.png" alt="Plan"><figcaption>The plan</figcaption></figure>', false);
+  doc.replaceElement("p-3", "outer", "<p data-id=\"p-3\">Notes</p>", "<p data-id=\"p-3\">Notes</p>\n<p>Ask Ana about the beds.</p>");
+  const added = doc.pendingChanges().filter((p) => p.kind === "added").map((p) => p.id);
+  assert.equal(added.length, 2, `the caption and the new paragraph are pending: ${pending(doc).join(", ")}`);
+  for (const id of added) assert.match(read(), new RegExp(`data-id="${id}"`), "with the id that's in the file");
+  assert.match(read(), /<figcaption data-id="[\w-]+">The plan<\/figcaption>/);
+  for (const id of added) doc.undoAgentChange(id);
+  assert.doesNotMatch(read(), /The plan|Ask Ana/);
+});
