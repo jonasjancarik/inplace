@@ -117,6 +117,29 @@ export class CommentStore {
     return this.comments.filter((c) => includeDone || c.status === "open");
   }
 
+  /**
+   * A line saying which comments are still open from an earlier run, so an agent that has just
+   * started (perhaps a different one) handles them; undefined when there are none. `command`
+   * is how this agent reads them in full, such as `inplace comments`.
+   */
+  stillOpen(command: string): string | undefined {
+    const open = this.list(false);
+    // The user's comments, and the agent's that the user has answered, wait for the agent.
+    const todo = open.filter((c) => !c.by || c.answer !== undefined);
+    const asked = open.filter((c) => c.by && c.answer === undefined);
+    const lines: string[] = [];
+    if (todo.length) {
+      const which = todo.map((c) => `#${c.n} on ${c.id}${c.by ? " (your comment, answered by the user)" : ""}`).join(", ");
+      lines.push(`${todo.length === 1 ? "1 comment from before is" : `${todo.length} comments from before are`} still open: ` +
+        `${which}. Read ${todo.length === 1 ? "it" : "them"} in full with ${command} and deal with ${todo.length === 1 ? "it" : "them"} as usual.`);
+    }
+    if (asked.length) {
+      lines.push(`${asked.length === 1 ? "1 comment of yours is" : `${asked.length} comments of yours are`} still waiting for the user: ` +
+        `${asked.map((c) => `#${c.n} on ${c.id}`).join(", ")}.`);
+    }
+    return lines.length ? lines.join("\n") : undefined;
+  }
+
   get(n: number): Comment {
     const comment = this.comments.find((c) => c.n === n);
     if (!comment) throw new CommentNotFound(`no comment #${n}`);

@@ -158,7 +158,8 @@ class Session {
     // The guide comes with the first open, so agents get the instructions that match this version.
     const guide = this.guideSent ? [] : ["", "How to work on the document with the user:", "", agentGuide()];
     this.guideSent = true;
-    return [`Serving ${path}. Open it at:`, ...urls.map((u) => "  " + u), ...guide].join("\n");
+    const open = doc.comments.stillOpen("get_comments");
+    return [`Serving ${path}. Open it at:`, ...urls.map((u) => "  " + u), ...(open ? ["", open] : []), ...guide].join("\n");
   }
 
   /** Runs a tool on the open document. */

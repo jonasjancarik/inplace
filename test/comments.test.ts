@@ -67,6 +67,27 @@ test("comments survive a restart, and numbers are never reused", () => {
   assert.equal(again.comments.add({ id: "p-1", text: "Four" }).n, 4);
 });
 
+test("lists the comments still open from an earlier run, for the agent that opens the document next", () => {
+  const dir = mkdtempSync(join(tmpdir(), "inplace-comments-"));
+  const store = new CommentStore(join(dir, "comments.json"));
+  assert.equal(store.stillOpen("get_comments"), undefined);
+  store.add({ id: "p-1", text: "One" });
+  store.add({ id: "p-2", text: "Two" });
+  store.resolve(2);
+  store.add({ id: "td-3", text: "Ten or twelve?", by: AGENT });
+  store.answer(3, "Twelve.");
+  store.add({ id: "p-4", text: "Keep this?", by: AGENT });
+
+  const again = new CommentStore(join(dir, "comments.json"));
+  assert.equal(again.stillOpen("get_comments"),
+    "2 comments from before are still open: #1 on p-1, #3 on td-3 (your comment, answered by the user). " +
+    "Read them in full with get_comments and deal with them as usual.\n" +
+    "1 comment of yours is still waiting for the user: #4 on p-4.");
+  again.resolve(1);
+  again.resolve(3);
+  assert.equal(again.stillOpen("get_comments"), "1 comment of yours is still waiting for the user: #4 on p-4.");
+});
+
 test("the agent's comments are answered or dismissed by the user, never edited or deleted", () => {
   const dir = mkdtempSync(join(tmpdir(), "inplace-comments-"));
   const lines: [string, boolean][] = [];

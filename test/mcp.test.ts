@@ -181,6 +181,12 @@ test("get_comments lists the page's comments and resolve_comment marks them done
       /comment #2 answered by the user: "Twelve\."\n.*paused after 1 change: comment #2$/);
     const mine = JSON.parse((await server.tool("get_comments")).text);
     assert.deepEqual(mine.map((c: Record<string, unknown>) => [c.n, c.by, c.quote, c.answer]), [[2, AGENT, "Ten", "Twelve."]]);
+
+    // Opened again, say after a restart or by another agent, the open comment is pointed out.
+    await post(url, "comment", { action: "add", id: "p-1", text: "Name the benches too." });
+    await server.tool("close_document");
+    const reopened = await server.tool("open_document", { path, port: 0, host: "127.0.0.1" });
+    assert.match(reopened.text, /2 comments from before are still open: #2 on p-1 \(your comment, answered by the user\), #3 on p-1\. Read them in full with get_comments/);
   } finally {
     await server.stop();
   }

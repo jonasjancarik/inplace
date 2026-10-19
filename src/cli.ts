@@ -221,6 +221,9 @@ function serve(): void {
     console.log(`Editing ${path}`);
     for (const url of serverUrls(port, host, allowHosts)) console.log(`  ${url}`);
     if (tagger) console.log(TAGS_NOTICE);
+    // In the log file too, for an agent that only reads that.
+    const open = doc.comments.stillOpen(`\`inplace comments${port === 8765 ? "" : ` --port ${port}`}\``);
+    if (open) print(open);
     console.log("Changes made on the page are listed below.");
   });
 }
