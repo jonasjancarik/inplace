@@ -22,11 +22,11 @@ async function start(options: ServerOptions = {}) {
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   const port = (server.address() as AddressInfo).port;
   const send = (method: string, path: string, headers: Record<string, string>, body?: string) =>
-    new Promise<{ status: number; body: string }>((ok, fail) => {
+    new Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }>((ok, fail) => {
       const req = request({ host: "127.0.0.1", port, method, path, headers }, (res) => {
         let text = "";
         res.on("data", (d) => (text += d));
-        res.on("end", () => ok({ status: res.statusCode!, body: text }));
+        res.on("end", () => ok({ status: res.statusCode!, body: text, headers: res.headers }));
       });
       req.on("error", fail);
       req.end(body);
@@ -471,6 +471,32 @@ test("the agent's changes are listed with the history, and the page can undo or 
     assert.equal((await s.send("POST", "/__inplace/suggestion/keep-all", page, "{}")).status, 200);
     assert.deepEqual((await history()).pending, []);
     assert.match(readFileSync(s.path, "utf8"), />Hi</);
+  } finally {
+    s.close();
+  }
+});
+
+test("a copy of the page without the agent's changes can be opened, printed or downloaded", async () => {
+  const s = await start();
+  try {
+    const host = `localhost:${s.port}`;
+    await s.send("GET", "/__inplace/history", { host }); // inplace has seen the file
+    writeFileSync(s.path, readFileSync(s.path, "utf8").replace("Hello", "Hello there"));
+    await s.send("GET", "/__inplace/history", { host });
+    const view = await s.send("GET", "/?without-changes", { host });
+    assert.equal(view.status, 200);
+    assert.match(view.body, /<p data-id="p-1">Hello<\/p>/);
+    assert.doesNotMatch(view.body, /editor\.js|print\(\)/);
+    const print = await s.send("GET", "/doc.html?without-changes=print", { host });
+    assert.match(print.body, /<p data-id="p-1">Hello<\/p>/);
+    assert.match(print.body, /print\(\);[^<]*<\/script><\/body>/);
+    const download = await s.send("GET", "/?without-changes=download", { host });
+    assert.match(String(download.headers["content-disposition"]), /^attachment; filename="doc \(before your agent's changes\)\.html"; filename\*=UTF-8''doc%20%28before%20your%20agent%27s%20changes%29\.html$/);
+    assert.match(download.body, /<p data-id="p-1">Hello<\/p>/);
+    assert.deepEqual(JSON.parse((await s.send("GET", "/__inplace/without-changes", { host })).body), { left: [] });
+    // The file still has the agent's change, and it's still to review.
+    assert.match(readFileSync(s.path, "utf8"), /Hello there/);
+    assert.equal(JSON.parse((await s.send("GET", "/__inplace/history", { host })).body).pending.length, 1);
   } finally {
     s.close();
   }

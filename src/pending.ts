@@ -335,3 +335,29 @@ export function reverseChange(p: PendingChange, source: string): Reversal {
   }
   return { text, from: now, to, ...(where ? { where } : {}) };
 }
+
+/**
+ * `source` with every change in `changes` undone, for a copy without them; the file itself stays as
+ * it is. The newest go first, as an undo does, and one that doesn't fit is tried again after the
+ * rest, since undoing a neighbour can make room for it. `left` has the ones still in the copy.
+ */
+export function undoAll(changes: PendingChange[], source: string): { text: string; left: { change: PendingChange; why: string }[] } {
+  let text = source;
+  let todo = [...changes].reverse();
+  const why = new Map<string, string>();
+  for (let pass = 0; pass < 2 && todo.length; pass++) {
+    const failed: PendingChange[] = [];
+    for (const p of todo) {
+      try {
+        text = reverseChange(p, text).text;
+        why.delete(p.id);
+      } catch (e) {
+        if (!(e instanceof CantUndo)) throw e;
+        failed.push(p);
+        why.set(p.id, e.message);
+      }
+    }
+    todo = failed;
+  }
+  return { text, left: changes.filter((p) => why.has(p.id)).map((p) => ({ change: p, why: why.get(p.id)! })) };
+}

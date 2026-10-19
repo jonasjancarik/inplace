@@ -20,7 +20,7 @@ import { readEditorScript } from "./editor-script.js";
 import { AGENT, type Author, copyOf, diffBlocks, History, type Place, placeOf, YOU } from "./history.js";
 import { checkNewLinks, UnsafeLink } from "./links.js";
 import { mergeInner } from "./merge.js";
-import { CantUndo, PendingChanges, reverseChange } from "./pending.js";
+import { CantUndo, PendingChanges, reverseChange, undoAll } from "./pending.js";
 import { type DocumentStore, FileStore } from "./store.js";
 import { type ChangeFeed, newsNote } from "./wait.js";
 
@@ -283,6 +283,15 @@ export class Document {
     }[p.kind]();
     this.log(`${time()} ${line}`, true, p.kind === "added" ? [] : [id]);
     return this.version;
+  }
+
+  /**
+   * The document with all of the agent's changes still to review undone, for printing or saving a
+   * copy; the file stays as it is. `left` names the changes that couldn't be undone, and why.
+   */
+  withoutAgentChanges(): { text: string; left: { id: string; why: string }[] } {
+    const { text, left } = undoAll(this.pending.toJSON(), this.load().text);
+    return { text, left: left.map(({ change, why }) => ({ id: change.id, why })) };
   }
 
   /** Who last wrote each block, for the page's margin marks. */
@@ -660,8 +669,8 @@ export class Document {
   }
 }
 
-function send(res: ServerResponse, status: number, body: string | Buffer, type: string): void {
-  res.writeHead(status, { "Content-Type": type, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store" });
+function send(res: ServerResponse, status: number, body: string | Buffer, type: string, headers: Record<string, string> = {}): void {
+  res.writeHead(status, { "Content-Type": type, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store", ...headers });
   res.end(body);
 }
 
@@ -815,7 +824,27 @@ export function createInplaceHandler(
     if (doc.history.entries.at(-1)?.by.kind === "agent") agent.agentWrote();
   });
 
+  // The document as it was before the agent's changes still to review, without the editor: to
+  // look at (?without-changes), to print (=print, which opens the print dialog) or to save (=download).
+  const withoutChanges = (mode: string, res: ServerResponse) => {
+    let { text } = doc.withoutAgentChanges();
+    if (mode === "download") {
+      const name = doc.store.name.replace(/\.html?$/i, "") + " (before your agent's changes).html";
+      return send(res, 200, text, "text/html; charset=utf-8", {
+        "Content-Disposition": `attachment; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`,
+      });
+    }
+    if (mode === "print") {
+      const tag = `<script data-inplace-print>addEventListener("load", () => { addEventListener("afterprint", () => close()); print(); });</script>`;
+      const at = text.toLowerCase().lastIndexOf("</body>");
+      text = at === -1 ? text + tag : text.slice(0, at) + tag + text.slice(at);
+    }
+    send(res, 200, text, "text/html; charset=utf-8");
+  };
+
   const page = (req: IncomingMessage, res: ServerResponse) => {
+    const query = new URL(req.url ?? "/", "http://localhost").searchParams;
+    if (query.has("without-changes")) return withoutChanges(query.get("without-changes")!, res);
     const level = access?.(req) ?? "edit";
     const { text, version } = doc.load();
     // Below "edit" nothing on the page is editable or movable, whatever the file says.
@@ -1061,6 +1090,8 @@ export function createInplaceHandler(
         if (path === EDITOR_PREFIX + "wait") return wait(req, res, url.searchParams);
         if (path === EDITOR_PREFIX + "news") return news(req, res, url.searchParams);
         if (path === EDITOR_PREFIX + "stash") return json(res, 200, { entries: doc.stashEntries() });
+        // Which of the agent's changes a copy without them would still have, for the page to name.
+        if (path === EDITOR_PREFIX + "without-changes") return json(res, 200, { left: doc.withoutAgentChanges().left });
         if (path === EDITOR_PREFIX + "history") {
           doc.poll();
           // `me` is the person asking, so the page can tell "you" from other people.

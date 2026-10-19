@@ -192,3 +192,29 @@ test("the user's own removal of a changed block ends the change", () => {
   doc.removeBlock("li-3");
   assert.deepEqual(pending(doc), []);
 });
+
+test("a copy without the changes to review undoes all of them and leaves the file as it is", () => {
+  const { doc, agent, read } = open();
+  agent("opens in May", "opens in June");
+  agent(/\n  <li data-id="li-2">Two<\/li>/, "");
+  agent('<p data-id="p-3">', '<p data-id="p-4">A new paragraph.</p>\n<p data-id="p-3">');
+  agent(/(\n  <li data-id="li-1">One<\/li>)(\n  <li data-id="li-3">Three<\/li>)/, "$2$1");
+  const file = read();
+  const copy = doc.withoutAgentChanges();
+  assert.equal(copy.text, DOC);
+  assert.deepEqual(copy.left, []);
+  assert.equal(read(), file);
+  assert.equal(pending(doc).length, 4);
+});
+
+test("a copy without the changes names the ones it couldn't undo", () => {
+  const { doc, agent } = open();
+  agent("opens in May", "opens in June");
+  doc.saveBlock("p-1", "The roof garden opens in June.", "The roof garden opens in July.");
+  agent("Two beds", "Three beds");
+  const copy = doc.withoutAgentChanges();
+  assert.equal(inner(copy.text, "p-1"), "The roof garden opens in July.");
+  assert.equal(inner(copy.text, "p-2"), "Two beds stay open for anyone.");
+  assert.deepEqual(copy.left.map((l) => l.id), ["p-1"]);
+  assert.match(copy.left[0].why, /same words/);
+});
