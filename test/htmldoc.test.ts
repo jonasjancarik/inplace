@@ -34,8 +34,9 @@ test("picks innermost text blocks only", () => {
 
 test("assignIds only touches start tags", () => {
   const { source: out, added } = assignIds(DOC);
-  // 8 text blocks + section, div.body, table, tr, figure, svg, ul, li with a paragraph inside
-  assert.equal(added, 16);
+  // 8 text blocks + section, div.body, table, tr, figure, svg, ul, li with a paragraph inside, locked paragraph
+  assert.equal(added, 17);
+  assert.match(out, /<p data-id="p-\d+" data-locked>Generated total/);
   assert.ok(out.includes('<p data-id="p-1" class="lead">'));
   assert.ok(out.includes('<div data-id="div-2" class="pending">'));
   assert.ok(out.includes('<table data-id="table-1">') && out.includes('<tr data-id="tr-1" class="ft">'));
@@ -53,7 +54,7 @@ test("assignIds is stable and skips used ids", () => {
   // A new paragraph from the agent gets a fresh id, existing ones stay.
   const out = assignIds(once.replace("<h1", "<p>New one</p>\n<h1"));
   assert.equal(out.added, 1);
-  assert.ok(out.source.includes('<p data-id="p-3">New one</p>'));
+  assert.ok(out.source.includes('<p data-id="p-4">New one</p>'));
   assert.ok(out.source.includes('<p data-id="p-1" class="lead">'));
 });
 

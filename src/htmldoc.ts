@@ -268,8 +268,13 @@ export function editableBlocks(root: Node): Node[] {
   return [...walk(root)].filter(isEditableBlock);
 }
 
+// Text that can't be edited, but can still be commented on.
+function isLockedText(node: Node): boolean {
+  return (TEXT_CONTAINERS.has(node.tag) || node.tag === "pre") && isLocked(node) && !containsBlock(node) && containsText(node);
+}
+
 export function isAnchor(node: Node): boolean {
-  if (!ANCHOR_TAGS.has(node.tag) || isEditableBlock(node)) return false;
+  if (!(ANCHOR_TAGS.has(node.tag) || isLockedText(node)) || isEditableBlock(node)) return false;
   for (let n = node.parent; n; n = n.parent) {
     if (HIDDEN_TAGS.has(n.tag) || n.tag === "svg") return false;
   }

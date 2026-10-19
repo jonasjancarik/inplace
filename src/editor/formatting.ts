@@ -311,10 +311,13 @@ function updateToolbar() {
   if (linking) return;
   if (!canEdit) return updateCommentToolbar();
   const ctx = selectionInBlock();
-  if (!ctx || ctx.range.collapsed || drag) {
+  // Text that can't be edited here can still be commented on.
+  if (!ctx) return updateCommentToolbar();
+  if (ctx.range.collapsed || drag) {
     formatToolbar.style.display = "none";
     return;
   }
+  formatToolbar.classList.remove("comment-only");
   for (const button of formatToolbar.querySelectorAll<HTMLElement>("[data-format]")) {
     const f = FORMATS[button.dataset.format as FormatName];
     button.setAttribute("aria-pressed", String(!!activeAncestor(ctx.range, ctx.block, f.match)));
