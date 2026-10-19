@@ -42,18 +42,16 @@ function paintAuthors() {
   authorLayer.replaceChildren();
   if (!showAuthors || !Object.keys(authorMarks).length) return authorLayer.remove();
   if (!authorLayer.isConnected) document.body.append(authorLayer);
+  const items: { el: HTMLElement; mark: AuthorMark; colour: string }[] = [];
   for (const [id, mark] of Object.entries(authorMarks)) {
     // A change still to review has its own bar, which says more.
     if (reviewOn() && toReviewFor(id)) continue;
     const el = byId(id);
-    if (!el || !isShown(el)) continue;
-    const r = el.getBoundingClientRect();
-    if (!r.height) continue;
-    // Blocks inside blocks (a list item in a list) step outwards so their bars don't sit on top of each other.
-    let depth = 0;
-    for (let p = el.parentElement?.closest("[data-id]"); p && depth < 3; p = p.parentElement?.closest("[data-id]")) depth++;
+    if (el && isShown(el)) items.push({ el, mark, colour: colourOf(mark.by) });
+  }
+  for (const { mark, colour, css } of marginBars(items)) {
     const bar = make("div", { className: "bar", title: authorSentence(mark) });
-    bar.style.cssText = `left:${Math.max(0, r.left + scrollX - 12 - depth * 6)}px;top:${r.top + scrollY}px;height:${r.height}px;--by:${colourOf(mark.by)}`;
+    bar.style.cssText = `${css};--by:${colour}`;
     bar.addEventListener("pointerenter", () => { bar.title = authorSentence(mark); });
     authorLayer.append(bar);
   }

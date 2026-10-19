@@ -44,17 +44,18 @@ function paintToReview() {
   if (actionsFor && !(reviewOn() && toReviewFor(actionsFor.dataset.id))) hideActions();
   if (!shown.length) return reviewBars.remove();
   if (!reviewBars.isConnected) document.body.append(reviewBars);
+  const items: { el: HTMLElement; p: ToReview; colour: string }[] = [];
   for (const p of shown) {
     const el = byId(p.id);
-    if (!el || !isShown(el)) continue;
-    const r = el.getBoundingClientRect();
-    if (!r.height) continue;
-    let depth = 0;
-    for (let up = el.parentElement?.closest("[data-id]"); up && depth < 3; up = up.parentElement?.closest("[data-id]")) depth++;
+    if (el && isShown(el)) items.push({ el, p, colour: "" });
+  }
+  for (const { el, p, css } of marginBars(items)) {
     const bar = make("div", { className: "bar", title: reviewSentence(p) });
-    bar.style.cssText = `left:${Math.max(0, r.left + scrollX - 12 - depth * 6)}px;top:${r.top + scrollY}px;height:${r.height}px`;
+    bar.style.cssText = css;
     bar.addEventListener("pointerenter", () => showActions(el));
     reviewBars.append(bar);
+  }
+  for (const { el, p } of items) {
     // Hovering a changed word shows the word it replaced, as it does right after the change,
     // but without the tint. A block rewritten as a whole shows its old text.
     if (p.kind === "changed" && p.before !== undefined && !wordChanges.has(el) && !rewritten.has(el)) {

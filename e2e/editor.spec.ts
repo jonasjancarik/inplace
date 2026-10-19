@@ -585,6 +585,19 @@ test.describe("reviewing the agent's changes", () => {
     await expect.poll(() => doc.output).toMatch(/undid the agent's change to p-\d+: .*October.* → .*autumn/);
     await expect.poll(() => doc.output).toMatch(/undid the agent's addition of p-\d+, so it's gone again: "The beds arrive in April\."/);
   });
+
+  test("bars for a table cell and a list item stay in the margin, in one line with the others", async ({ editor, doc }) => {
+    writeFileSync(doc.path, doc.read()
+      .replace("last autumn confirmed", "last October confirmed")
+      .replace("Lightweight roof mix", "Light roof mix")
+      .replace("Two beds stay open", "Two beds are kept open"));
+    const bars = editor.locator("#inplace-pending-layer .bar");
+    await expect(bars).toHaveCount(3);
+    const lefts = await bars.evaluateAll((all) => all.map((b) => b.getBoundingClientRect().left));
+    expect(new Set(lefts).size).toBe(1);
+    const textLeft = await block(editor, "p", "October confirmed").evaluate((p) => p.getBoundingClientRect().left);
+    expect(lefts[0]).toBeLessThan(textLeft);
+  });
 });
 
 test.describe("working alongside an agent", () => {
