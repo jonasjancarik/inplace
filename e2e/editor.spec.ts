@@ -2,7 +2,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import type { Locator, Page } from "@playwright/test";
 
-import { block, caretAfter, CLI, type Doc, expect, hoverBlock, idOf, selectText, sourceOf, startDoc, test } from "./fixtures.ts";
+import { block, caretAfter, CLI, type Doc, expect, hoverBlock, idOf, selectText, sourceOf, serveDoc, startDoc, test } from "./fixtures.ts";
 
 const MOD = "ControlOrMeta";
 
@@ -537,6 +537,27 @@ test.describe("showing who wrote what", () => {
     await expect(bars).toHaveCount(1);
     await editor.emulateMedia({ media: "print" });
     await expect(editor.locator("#inplace-authors-layer")).toBeHidden();
+  });
+
+  test("bars come back after the server restarts, before anything else changes", async ({ editor, doc }) => {
+    doc.edit("last autumn confirmed", "last October confirmed");
+    await expect(block(editor, "p", "October confirmed")).toBeVisible();
+    await editor.getByRole("button", { name: "Changes" }).click();
+    await editor.getByRole("button", { name: "Keep: Edited paragraph" }).click();
+    await editor.getByRole("switch", { name: "Show who wrote what" }).check();
+    await expect(editor.locator("#inplace-authors-layer .bar")).toHaveCount(1);
+    // Nothing is left to review, so the new server starts with no changes of its own to report.
+    doc.stop();
+    const again = await serveDoc(doc.path);
+    try {
+      await editor.goto(again.url);
+      // A new port is a new origin, so the remembered switch is off here.
+      await editor.getByRole("button", { name: "Changes" }).click();
+      await editor.getByRole("switch", { name: "Show who wrote what" }).check();
+      await expect(editor.locator("#inplace-authors-layer .bar")).toHaveCount(1);
+    } finally {
+      again.stop();
+    }
   });
 });
 

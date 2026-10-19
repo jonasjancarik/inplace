@@ -8,10 +8,8 @@ const events = new EventSource("/__inplace/events");
 events.addEventListener("stash", (e) => showStashCount(Number(e.data)));
 events.addEventListener("agent", (e) => showAgentStatus(e.data));
 events.addEventListener("comments", () => loadComments());
-events.addEventListener("history", (e) => {
-  if (Number(e.data) > 0) return loadHistory();
-  if (seenChanges === null) markChangesSeen();
-});
+// Loads even at revision 0: after a server restart, who wrote what and the changes to review are still on disk.
+events.addEventListener("history", () => loadHistory());
 events.addEventListener("version", (e) => {
   if (busy) announced = e.data;
   else if (e.data !== version) reload();

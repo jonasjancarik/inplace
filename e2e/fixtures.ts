@@ -50,6 +50,11 @@ export async function startDoc(source = EXAMPLE, html?: string, args: string[] =
   const path = join(dir, "doc.html");
   if (html !== undefined) writeFileSync(path, html);
   else copyFileSync(source, path);
+  return serveDoc(path, args);
+}
+
+/** Starts a server on a document already on disk, such as one a stopped server was editing. */
+export async function serveDoc(path: string, args: string[] = []): Promise<Doc> {
   const port = await freePort();
   const proc = spawn(process.execPath, [CLI, path, "--port", String(port), "--host", "127.0.0.1", ...args], {
     stdio: ["ignore", "pipe", "inherit"],
