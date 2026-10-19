@@ -49,12 +49,19 @@ function paintAuthors() {
     const el = byId(id);
     if (el && isShown(el)) items.push({ el, mark, colour: colourOf(mark.by) });
   }
-  for (const { mark, colour, css } of marginBars(items)) {
+  for (const { mark, colour, css } of marginBars(items, barBlocks())) {
     const bar = make("div", { className: "bar", title: authorSentence(mark) });
     bar.style.cssText = `${css};--by:${colour}`;
     bar.addEventListener("pointerenter", () => { bar.title = authorSentence(mark); });
     authorLayer.append(bar);
   }
+}
+
+/** Every block with a bar beside it, of either kind, so both kinds share their lines in the margin. */
+function barBlocks() {
+  const ids = reviewOn() ? toReview.filter((p) => p.kind !== "removed").map((p) => p.id) : [];
+  if (showAuthors) ids.push(...Object.keys(authorMarks));
+  return [...new Set(ids)].map(byId).filter((el): el is HTMLElement => !!el && isShown(el) && !!el.getBoundingClientRect().height);
 }
 
 function authorsSwitch() {

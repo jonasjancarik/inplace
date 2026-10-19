@@ -49,7 +49,7 @@ function paintToReview() {
     const el = byId(p.id);
     if (el && isShown(el)) items.push({ el, p, colour: "" });
   }
-  for (const { el, p, css } of marginBars(items)) {
+  for (const { el, p, css } of marginBars(items, barBlocks())) {
     const bar = make("div", { className: "bar", title: reviewSentence(p) });
     bar.style.cssText = css;
     bar.addEventListener("pointerenter", () => showActions(el));

@@ -598,6 +598,46 @@ test.describe("reviewing the agent's changes", () => {
     const textLeft = await block(editor, "p", "October confirmed").evaluate((p) => p.getBoundingClientRect().left);
     expect(lefts[0]).toBeLessThan(textLeft);
   });
+
+  /** Open `html`, let the agent make `edits` to the file, and measure the bars and the blocks they mark. */
+  async function barsAfterEdits(page: Page, html: string, edits: [string, string][], blocks: [string, string][]) {
+    const doc = await startDoc(undefined, `<!doctype html><title>t</title>${html}`);
+    try {
+      await page.goto(doc.url);
+      await page.waitForFunction(() => document.querySelector("#inplace-toolbar"));
+      writeFileSync(doc.path, edits.reduce((text, [from, to]) => text.replace(from, to), doc.read()));
+      await expect(page.locator("#inplace-pending-layer .bar")).toHaveCount(edits.length);
+      const bars = await page.locator("#inplace-pending-layer .bar").evaluateAll((all) => all.map((b) => b.getBoundingClientRect().left + 4));
+      const boxes = await Promise.all(blocks.map(([sel, text]) => block(page, sel, text).evaluate((el) => el.getBoundingClientRect().toJSON() as DOMRect)));
+      return { bars, boxes };
+    } finally {
+      doc.stop();
+    }
+  }
+
+  test("blocks side by side each get their own line, beside their own column", async ({ page }) => {
+    const { bars, boxes: [left, right] } = await barsAfterEdits(page,
+      `<body style="margin:40px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:60px"><p>Left side</p><p>Right side</p></div></body>`,
+      [["Left side", "Left column"], ["Right side", "Right column"]], [["p", "Left column"], ["p", "Right column"]]);
+    bars.sort((a, b) => a - b);
+    expect(bars[0]).toBeLessThan(left.left);
+    expect(bars[1]).toBeGreaterThan(left.right);
+    expect(bars[1]).toBeLessThan(right.left);
+  });
+
+  test("a changed cell in a table with nothing around it gets its bar left of the table", async ({ page }) => {
+    const { bars, boxes: [table] } = await barsAfterEdits(page,
+      `<body style="margin:40px"><table><tr><td>First cell</td><td>Second cell</td></tr></table></body>`,
+      [["Second cell", "Last cell"]], [["table", "Last cell"]]);
+    expect(bars[0]).toBeLessThan(table.left);
+  });
+
+  test("with no room in the left margin, the bar goes to the right of the text", async ({ page }) => {
+    const { bars, boxes: [p] } = await barsAfterEdits(page,
+      `<body style="margin:0"><p style="margin:0;max-width:300px">Edge of the window</p></body>`,
+      [["Edge of the window", "Right at the edge"]], [["p", "Right at the edge"]]);
+    expect(bars[0]).toBeGreaterThan(p.right);
+  });
 });
 
 test.describe("working alongside an agent", () => {
