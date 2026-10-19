@@ -155,3 +155,17 @@ test("the by option names the agent in the marks and on its comments", async () 
     host.close();
   }
 });
+
+test("an agent that connects is told once about comments left open before it came", async () => {
+  const host = await mount({ guide: false });
+  try {
+    host.target.doc.comments.add({ id: "p-1", text: "Name the trees." });
+    const agent = host.client();
+    await agent.init();
+    assert.match((await agent.tool("read_document", { id: "p-1" })).text,
+      /\n\n1 comment from before is still open: #1 on p-1\. Read it in full with get_comments/);
+    assert.doesNotMatch((await agent.tool("read_document", { id: "p-1" })).text, /still open/, "only once");
+  } finally {
+    host.close();
+  }
+});

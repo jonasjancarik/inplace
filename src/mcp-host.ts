@@ -76,6 +76,7 @@ export function createMcpHandler(
 
   const tools = new DocumentTools(target, { join: "now", by: options.by });
   const guided = new Set<string>();
+  const told = new Set<string>();
   const backend: McpBackend = {
     instructions: options.instructions ?? defaultInstructions(target.name, offered.has("document_info")),
     tools: () => listed,
@@ -85,13 +86,21 @@ export function createMcpHandler(
       const host = extra.get(name);
       const text = host ? await host.run(args, { client, gone }) : name === "guide" ? agentGuide(str(args, "topic")) : await tools.call(name, args, client, gone);
       if (text === undefined) throw new Error(`unknown tool: ${name}`);
+      // A client joins at the latest change, so it's told once about comments left open before it came.
+      let result = text;
+      if (!told.has(client)) {
+        if (told.size >= MAX_GUIDED) told.clear();
+        told.add(client);
+        const open = offered.has("get_comments") && name !== "get_comments" ? target.doc.comments.stillOpen("get_comments") : undefined;
+        if (open) result = `${text}\n\n${open}`;
+      }
       if (name === "guide") guided.add(client); // it has read the guide its own way
-      if (options.guide === false || guided.has(client)) return text;
+      if (options.guide === false || guided.has(client)) return result;
       // The guide comes with a client's first successful call, so it has the instructions that match this version.
       if (guided.size >= MAX_GUIDED) guided.clear();
       guided.add(client);
       const guide = options.guide ?? agentGuide();
-      return `${text}\n\nHow to work on the document with the user:\n\n${guide}`;
+      return `${result}\n\nHow to work on the document with the user:\n\n${guide}`;
     },
   };
   const handle = mcpHandler(backend);
@@ -107,6 +116,7 @@ export function createMcpHandler(
     if (req.method === "DELETE") { // the client ends its session
       tools.leave(session);
       guided.delete(session);
+      told.delete(session);
       return send(204);
     }
     if (req.method !== "POST") return send(405, undefined, { Allow: "POST, DELETE" });
