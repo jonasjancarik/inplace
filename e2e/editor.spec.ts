@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import type { Locator, Page } from "@playwright/test";
 
 import { block, caretAfter, CLI, type Doc, expect, hoverBlock, idOf, selectText, sourceOf, serveDoc, startDoc, test } from "./fixtures.ts";
@@ -607,6 +607,71 @@ test.describe("reviewing the agent's changes", () => {
     expect(doc.read()).toBe(original.replace("raising monthly contributions", "raising the monthly contributions"));
     await expect.poll(() => doc.output).toMatch(/undid the agent's change to p-\d+: .*October.* → .*autumn/);
     await expect.poll(() => doc.output).toMatch(/undid the agent's addition of p-\d+, so it's gone again: "The beds arrive in April\."/);
+  });
+
+  test("Alt+Shift+U and Alt+Shift+K undo or keep the change to the block the caret is in, and say so", async ({ editor, doc }) => {
+    const original = doc.read();
+    writeFileSync(doc.path, original
+      .replace("last autumn confirmed", "last October confirmed")
+      .replace("raising monthly contributions", "raising the monthly contributions"));
+    const bars = editor.locator("#inplace-pending-layer .bar");
+    await expect(bars).toHaveCount(2);
+    const announced = editor.locator("#inplace-announce");
+
+    const survey = block(editor, "p", "The roof is already used");
+    await caretAfter(survey, "already");
+    const actions = editor.locator("#inplace-pending-actions");
+    await expect(actions.getByRole("button", { name: "Keep your agent's change to this paragraph" })).toHaveAttribute("title", /Alt\+Shift\+K|⌥⇧K/);
+    await editor.keyboard.press("Alt+Shift+KeyU");
+    await expect(survey).toContainText("last autumn confirmed");
+    await expect(bars).toHaveCount(1);
+    await expect(announced).toHaveText("Undid your agent’s change to this paragraph.");
+    // The caret comes back to the same paragraph after the reload.
+    await expect(survey).toBeFocused();
+
+    await caretAfter(block(editor, "p", "The association"));
+    await editor.keyboard.press("Alt+Shift+KeyK");
+    await expect(bars).toHaveCount(0);
+    await expect(announced).toHaveText("Kept your agent’s change to this paragraph.");
+    // Neither key typed anything into the file.
+    expect(doc.read()).toBe(original.replace("raising monthly contributions", "raising the monthly contributions"));
+  });
+
+  test("a copy without the changes to review can be printed or downloaded, and the file keeps them", async ({ editor, doc }) => {
+    const original = doc.read();
+    writeFileSync(doc.path, original
+      .replace("last autumn confirmed", "last October confirmed")
+      .replace("raising monthly contributions", "raising the monthly contributions"));
+    await expect(editor.locator("#inplace-pending-layer .bar")).toHaveCount(2);
+    // The user then changes the agent's new word, so that change can't be undone in the copy.
+    const survey = block(editor, "p", "The roof is already used");
+    await selectText(survey, "October");
+    await editor.keyboard.type("November");
+    await survey.blur();
+    await expect.poll(() => doc.read()).toContain("last November confirmed");
+    const changed = doc.read();
+
+    await editor.getByRole("button", { name: "Changes" }).click();
+    const review = editor.locator("#inplace-changes .to-review");
+    const [download] = await Promise.all([editor.waitForEvent("download"), review.getByRole("button", { name: "Download" }).click()]);
+    expect(download.suggestedFilename()).toBe("doc (before your agent's changes).html");
+    const saved = readFileSync((await download.path())!, "utf8");
+    expect(saved).toContain("raising monthly contributions");
+    expect(saved).toContain("last November confirmed");
+    expect(saved).not.toContain("editor.js");
+    await expect(review.locator(".copy-left")).toContainText("The copy still has this change, because it couldn’t be undone:");
+    await expect(review.locator(".copy-left li")).toHaveText("Edited paragraph: it has been changed again since, in the same words.");
+
+    const printed = editor.context().waitForEvent("response", (r) => r.url().includes("without-changes=print"));
+    const [popup] = await Promise.all([editor.waitForEvent("popup"), review.getByRole("button", { name: "Print" }).click()]);
+    expect((await printed).status()).toBe(200);
+    // It opens the print dialog, and closes once that's done.
+    if (!popup.isClosed()) await popup.waitForEvent("close");
+    const body = await (await editor.request.get(`${doc.url}?without-changes=print`)).text();
+    expect(body).toContain("raising monthly contributions");
+    expect(body).toContain("print()");
+    expect(body).not.toContain("editor.js");
+    expect(doc.read()).toBe(changed);
   });
 
   test("bars for a table cell and a list item stay in the margin, in one line with the others", async ({ editor, doc }) => {

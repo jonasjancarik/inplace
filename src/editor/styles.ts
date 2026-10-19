@@ -202,6 +202,13 @@ style.textContent = `
   #inplace-changes .to-review .act:hover{background:#f1f4f2}
   #inplace-changes .to-review .keep-all:focus-visible,#inplace-changes .to-review .act:focus-visible{outline:2px solid #4a7bd4;outline-offset:1px}
   #inplace-changes .to-review .act:disabled{color:#a0a8a4;cursor:default;background:#fff}
+  #inplace-changes .to-review .copy{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:0 8px 6px;font-size:12px;color:#56615b}
+  #inplace-changes .to-review .copy span{margin-right:4px}
+  #inplace-changes .to-review .copy-left{margin:0 8px 6px;padding:6px 8px;border-radius:6px;background:#fbf3e4;font-size:12px;color:#5b4a2a}
+  #inplace-changes .to-review .copy-left p{margin:0 0 2px}
+  #inplace-changes .to-review .copy-left ul{margin:0;padding-left:16px}
+  #inplace-changes .to-review .copy-left li{list-style:disc}
+  #inplace-announce{position:fixed;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   #inplace-review-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;flex-wrap:wrap;align-items:center;
     gap:6px 16px;padding:9px 16px;background:#1f2a24;color:#fff;font:13px/1.35 -apple-system,system-ui,sans-serif;
     box-shadow:0 2px 10px #0003}

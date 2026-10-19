@@ -10,6 +10,27 @@ let actionsFor: HTMLElement | null = null;
 let hideActionsTimer = 0;
 const oldWordTips = new Set<Element>(); // blocks whose old words show on hover because of a change to review
 const TOO_LARGE = "This block is too large to undo here. Ask your agent to change it back.";
+// With the caret in a block with a change to review. Alt and Shift with a letter types nothing on
+// Windows and Linux, and is no browser's shortcut; on a Mac it would type a symbol, which this replaces.
+const KEEP_SHORTCUT = MOD === "⌘" ? "⌥⇧K" : "Alt+Shift+K";
+const UNDO_SHORTCUT = MOD === "⌘" ? "⌥⇧U" : "Alt+Shift+U";
+const ANNOUNCE_KEY = `${STATE_KEY}:announce`;
+let copyLeft: { id: string; why: string }[] | null = null; // changes the last copy without them still had
+
+// What happened, for screen readers: a polite live region nobody sees.
+const announcer = make("div", { id: "inplace-announce", role: "status" });
+announcer.dataset.inplaceUi = "";
+document.body.append(announcer);
+function announce(text: string) {
+  announcer.textContent = "";
+  setTimeout(() => (announcer.textContent = text), 50);
+}
+// An undo reloads the page, so what it did is said once the new page is up.
+try {
+  const said = sessionStorage.getItem(ANNOUNCE_KEY);
+  sessionStorage.removeItem(ANNOUNCE_KEY);
+  if (said) setTimeout(() => announce(said), 300);
+} catch {}
 
 // Declared as functions, so the bars in authors.ts can ask before this part has run.
 function reviewOn() {
@@ -85,9 +106,10 @@ function showActions(el: HTMLElement) {
   actionsFor = el;
   const what = `your agent's change to this ${noun(p.tag)}`;
   reviewActions.replaceChildren(
-    make("button", { type: "button", textContent: "Keep", ariaLabel: `Keep ${what}`, title: "Keep this change", onclick: () => keepAgentChange(p.id) }),
+    make("button", { type: "button", textContent: "Keep", ariaLabel: `Keep ${what}`, title: `Keep this change (${KEEP_SHORTCUT})`,
+      ariaKeyShortcuts: "Alt+Shift+K", onclick: () => keepAgentChange(p.id) }),
     make("button", { type: "button", textContent: "Undo", ariaLabel: `Undo ${what}`, disabled: !p.undoable,
-      title: p.undoable ? "Put back what was here before" : TOO_LARGE, onclick: () => undoAgentChange(p.id) }));
+      title: p.undoable ? `Put back what was here before (${UNDO_SHORTCUT})` : TOO_LARGE, ariaKeyShortcuts: "Alt+Shift+U", onclick: () => undoAgentChange(p.id) }));
   if (!reviewActions.isConnected) document.body.append(reviewActions);
   reviewActions.style.display = "flex";
   // To the right of the block when there's room, otherwise just above its right end.
@@ -115,6 +137,23 @@ document.addEventListener("mouseover", (e) => {
     clearTimeout(hideActionsTimer);
     hideActionsTimer = setTimeout(hideActions, 400);
   }
+});
+// Keep or undo the change to the block the caret is in, without reaching for the buttons.
+document.addEventListener("keydown", (e) => {
+  if (!e.altKey || !e.shiftKey || e.metaKey || e.ctrlKey || (e.code !== "KeyK" && e.code !== "KeyU") || composing(e) || !reviewOn()) return;
+  const sel = getSelection();
+  const at = sel?.rangeCount ? sel.getRangeAt(0).startContainer : null;
+  const here = (at?.nodeType === 1 ? at as Element : at?.parentElement) ?? document.activeElement;
+  const el = reviewActions.contains(document.activeElement) ? actionsFor : reviewBlockAt(here?.closest("[data-inplace-ui]") ? document.activeElement : here);
+  const p = toReviewFor(el?.dataset.id);
+  if (!p) return;
+  e.preventDefault();
+  if (e.code === "KeyK") return void keepAgentChange(p.id);
+  if (!p.undoable) {
+    showStatus(TOO_LARGE, "error", 6000);
+    return announce(TOO_LARGE);
+  }
+  undoAgentChange(p.id);
 });
 document.addEventListener("focusin", (e) => {
   if (reviewActions.contains(e.target as Node)) return;
@@ -151,13 +190,69 @@ function toReviewGroup() {
     make("div", { className: "head" },
       make("h3", { textContent: `Your agent’s changes to review (${toReview.length})` }),
       make("button", { type: "button", className: "keep-all", textContent: "Keep all", onclick: () => keepAgentChange() })),
+    make("div", { className: "copy" },
+      make("span", { textContent: "A copy without these changes:" }),
+      make("button", { type: "button", className: "act", textContent: "Print", title: "Print the document as it was before these changes",
+        onclick: () => copyWithoutChanges("print") }),
+      make("button", { type: "button", className: "act", textContent: "Download", title: "Save the document as it was before these changes",
+        onclick: () => copyWithoutChanges("download") })),
+    ...copyLeftNote(),
     items);
+}
+
+/** Which changes the last copy still had, because they couldn't be undone. */
+function copyLeftNote() {
+  const left = (copyLeft || []).filter((l) => toReview.some((p) => p.id === l.id));
+  if (!left.length) return [];
+  return [make("div", { className: "copy-left" },
+    make("p", { textContent: left.length === 1 ? "The copy still has this change, because it couldn’t be undone:"
+      : `The copy still has ${left.length} of these changes, because they couldn’t be undone:` }),
+    // The server's reason is a whole sentence, for the undo itself; here only the "because" part is new.
+    make("ul", {}, ...left.map((l) => make("li", {
+      textContent: `${reviewWords(toReview.find((p) => p.id === l.id)!)}: ${l.why.replace(/^This can.t be undone, because /, "")}` }))))];
+}
+
+/**
+ * Print or download the document with every change to review undone. The file keeps them: the
+ * server undoes them on a copy. Changes it couldn't undo are listed under the buttons.
+ */
+async function copyWithoutChanges(how: "print" | "download") {
+  // Opened right away, while the click still counts, or the browser may block it.
+  const win = how === "print" ? window.open("", "_blank") : null;
+  if (how === "print" && !win) return showStatus("Your browser blocked the window to print from. Allow pop-ups for this page and try again.", "error", 8000);
+  // What the user just typed belongs in the copy too.
+  for (const unsaved of pending()) {
+    const el = byId(unsaved);
+    if (el && !(await save(el))) return win?.close();
+  }
+  const url = `${location.pathname}?without-changes=${how}`;
+  if (win) win.location.href = url;
+  else {
+    const link = make("a", { href: url, download: "" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+  try {
+    copyLeft = (await (await fetch("/__inplace/without-changes")).json()).left;
+  } catch {
+    copyLeft = null;
+  }
+  const n = copyLeft?.length || 0;
+  announce(n ? `The copy still has ${n === 1 ? "one change" : `${n} changes`} that couldn’t be undone. They’re listed under the buttons.`
+    : how === "print" ? "Opened a copy without these changes to print." : "Downloaded a copy without these changes.");
+  if (changesPanel.classList.contains("open")) renderChanges();
 }
 /** Keep one of the agent's changes, or all of them: they only leave the list. */
 async function keepAgentChange(id?: string) {
   hideActions();
+  const p = id ? toReview.find((c) => c.id === id) : undefined;
   const res = await post(id ? "suggestion/keep" : "suggestion/keep-all", id ? { id } : {});
-  if (!res.ok) showStatus(res.body.error || "Couldn’t keep this change.", "error", 6000);
+  if (!res.ok) {
+    const error = res.body.error || "Couldn’t keep this change.";
+    showStatus(error, "error", 6000);
+    announce(error);
+  } else announce(p ? `Kept your agent’s change to this ${noun(p.tag)}.` : "Kept all of your agent’s changes.");
   await loadHistory();
 }
 
@@ -168,12 +263,16 @@ async function undoAgentChange(id: string) {
     const el = byId(unsaved);
     if (el && !(await save(el))) return;
   }
+  const p = toReview.find((c) => c.id === id);
   const res = await post("suggestion/undo", { id });
   if (!res.ok) {
-    showStatus(res.body.error || "Couldn’t undo this change.", "error", 8000);
+    const error = res.body.error || "Couldn’t undo this change.";
+    showStatus(error, "error", 8000);
+    announce(error);
     return loadHistory();
   }
   version = res.body.version;
+  try { sessionStorage.setItem(ANNOUNCE_KEY, `Undid your agent’s change to this ${noun(p?.tag || "")}.`); } catch {}
   // Not marked as the agent's change after the reload: it's the user's own.
   reload([...document.querySelectorAll<HTMLElement>("[data-id]")].map((el) => el.dataset.id!).concat(id));
 }
