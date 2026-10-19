@@ -171,7 +171,13 @@ An agent normally reads these lines only when it next does something: when you l
 
 ### Passing comments to Codex while it works
 
-Add this to `~/.codex/hooks.json`, next to any hooks already there:
+When Codex opens a document without this hook set up, it offers to add it. You can also add it yourself:
+
+```bash
+npx -y github:jonasjancarik/inplace setup codex
+```
+
+This adds a hook to `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`), keeping the hooks already there and backing the file up first. If the hook is already there, it does nothing. To add it by hand instead, put this in the file next to the hooks already there:
 
 ```json
 {
@@ -194,7 +200,7 @@ Add this to `~/.codex/hooks.json`, next to any hooks already there:
 
 After each of Codex's tool calls, the hook asks inplace whether you've left a comment or paused since Codex last looked. If you have, Codex gets a short note listing them as soon as that tool call is done, and deals with your comments once it finishes the step it's on. If not, the hook prints nothing, and when inplace isn't running, it fails quietly, so you can leave it installed. Codex runs a new hook only after you've approved it, so approve this one when Codex says a hook needs review.
 
-Each comment and pause is reported once, and nothing that an `inplace wait` already returned. Your edits still come in full with Codex's next wait, as before. If inplace runs on another port, change `8765` in the URL. The hook works for every Codex conversation, so if two of them are working at once, the note goes to whichever one makes the next tool call.
+Each comment and pause is reported once, and nothing that an `inplace wait` already returned. Your edits still come in full with Codex's next wait, as before. If inplace runs on another port, run `setup codex --port <n>`, or change `8765` in the URL. Each port needs its own hook. The hook works for every Codex conversation, so if two of them are working at once, the note goes to whichever one makes the next tool call.
 
 The hook needs `curl`, which comes with macOS, Linux and Windows 10 and later. Without a hook, `inplace pending` prints the same note, and an agent can run it between the steps of a longer task.
 
@@ -240,6 +246,7 @@ inplace comments [--port 8765] [--all]
 inplace resolve <n> [--reply <text>] [--port 8765]
 inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
 inplace guide [<topic> | all]
+inplace setup codex [--port 8765]
 inplace mcp [--allow-host <name>] [--pause 5] [--log <file>] [--no-tags]
 inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
                    [--pause 5] [--log <file>] [--no-tags]
