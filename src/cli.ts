@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import { AgentStatus } from "./agent.js";
+import { addInplaceHook, codexHookHint, codexHooksPath } from "./codex.js";
 import { agentGuide } from "./guide.js";
 import { PauseCommand, PauseWatcher } from "./idle.js";
 import { newToken, runMcpHttpServer, runMcpServer } from "./mcp.js";
@@ -20,6 +21,7 @@ const USAGE = `usage: inplace <file.html> [--port 8765] [--host 127.0.0.1] [--al
        inplace resolve <n> [--reply <text>] [--port 8765]
        inplace comment <data-id> <text> [--quote <text>] [--option <answer>]... [--port 8765]
        inplace guide [<topic> | all]
+       inplace setup codex [--port 8765]
        inplace mcp [--allow-host <name>] [--pause 5] [--log <file>] [--no-tags]
        inplace mcp --http [--port 8766] [--host 127.0.0.1] [--token <secret>] [--allow-host <name>]
                           [--pause 5] [--log <file>] [--no-tags]
@@ -70,6 +72,11 @@ the element, and --option (up to three times) suggests an answer the user can pi
 inplace guide prints the instructions an agent needs to work on a document with you, leaving out
 the parts few sessions need. Name a part to print only that one, or all to print everything.
 
+inplace setup codex adds a hook to Codex's hooks.json ($CODEX_HOME, default ~/.codex) that passes
+the user's comments to Codex after each of its tool calls, so they reach it while it's busy. It keeps
+the hooks already there, backs the file up first, and does nothing if the hook is already there.
+Codex asks you to approve the new hook before it runs it.
+
 inplace mcp runs an MCP server on stdin/stdout instead, with tools to open, read and edit a
 document and read the changes, and a Claude Code channel event at each pause. Change lines go
 to stderr and the --log file.
@@ -102,7 +109,7 @@ const { values, positionals } = parseArgs({
   },
 });
 
-const ARGUMENTS: Record<string, number> = { resolve: 2, comment: 3 };
+const ARGUMENTS: Record<string, number> = { resolve: 2, comment: 3, setup: 2 };
 const fits = positionals[0] === "guide" ? positionals.length <= 2 : positionals.length === (ARGUMENTS[positionals[0]] ?? 1);
 if (values.help || !fits) {
   console.log(USAGE);
@@ -136,6 +143,8 @@ if (positionals[0] === "wait") {
   waitForPause();
 } else if (positionals[0] === "pending") {
   pending();
+} else if (positionals[0] === "setup") {
+  setup();
 } else if (positionals[0] === "comments" || positionals[0] === "resolve" || positionals[0] === "comment") {
   comments();
 } else if (positionals[0] === "guide") {
@@ -231,6 +240,8 @@ function serve(): void {
     // In the log file too, for an agent that only reads that.
     const open = doc.comments.stillOpen(`\`inplace comments${port === 8765 ? "" : ` --port ${port}`}\``);
     if (open) print(open);
+    const hook = codexHookHint(port);
+    if (hook) print(hook);
     console.log("Changes made on the page are listed below.");
   });
 }
@@ -297,6 +308,30 @@ function waitForPause(): void {
   }
 
   attempt();
+}
+
+/** `inplace setup codex`: add the hook that passes comments to Codex while it's busy. */
+function setup(): void {
+  if (positionals[1] !== "codex") {
+    console.error("inplace: setup knows only codex: inplace setup codex [--port 8765]");
+    process.exit(2);
+  }
+  const port = Number(values.port ?? "8765");
+  if (!(Number.isInteger(port) && port > 0)) {
+    console.error("inplace: --port takes a port number");
+    process.exit(2);
+  }
+  const path = codexHooksPath();
+  try {
+    const { result, backup } = addInplaceHook(path, port);
+    console.log(result === "present"
+      ? `The inplace hook for port ${port} is already in ${path}.`
+      : `Added the inplace hook for port ${port} to ${path}${backup ? ` (the file as it was is in ${backup})` : ""}.\n` +
+        "Codex asks you to approve the new hook, and runs it only once you have.");
+  } catch (e) {
+    console.error(`inplace: ${(e as Error).message}`);
+    process.exit(1);
+  }
 }
 
 /** `inplace pending`: what the user did since the agent last looked, without waiting for a pause. */

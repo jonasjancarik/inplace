@@ -18,6 +18,7 @@ import { DOCUMENT_TOOLS, DocumentTools, GUIDE_TOOL, str } from "./mcp-tools.js";
 import { type CommentTagger } from "./comments.js";
 import { agentGuide } from "./guide.js";
 import { PauseWatcher } from "./idle.js";
+import { codexHookHint } from "./codex.js";
 import { createInplaceServer, Document, serverUrls } from "./server.js";
 import { ChangeFeed } from "./wait.js";
 
@@ -92,6 +93,8 @@ class Session {
   private closed = new AbortController();
   /** The client said it takes Claude Code channel events (set at initialize, stdio only). */
   channel = false;
+  /** The client's name from initialize, to tell when it's Codex. */
+  client: string | undefined;
   private guideSent = false;
 
   /**
@@ -146,7 +149,8 @@ class Session {
       http.listen(port, host, ok);
     });
     this.closed = new AbortController();
-    const urls = serverUrls((http.address() as { port: number }).port, host, this.allowHosts);
+    const actualPort = (http.address() as { port: number }).port;
+    const urls = serverUrls(actualPort, host, this.allowHosts);
     this.doc = doc;
     this.http = http;
     this.pauses = pauses;
@@ -159,7 +163,8 @@ class Session {
     const guide = this.guideSent ? [] : ["", "How to work on the document with the user:", "", agentGuide()];
     this.guideSent = true;
     const open = doc.comments.stillOpen("get_comments");
-    return [`Serving ${path}. Open it at:`, ...urls.map((u) => "  " + u), ...(open ? ["", open] : []), ...guide].join("\n");
+    const hook = codexHookHint(actualPort, process.env, this.client);
+    return [`Serving ${path}. Open it at:`, ...urls.map((u) => "  " + u), ...(open ? ["", open] : []), ...(hook ? ["", hook] : []), ...guide].join("\n");
   }
 
   /** Runs a tool on the open document. */
@@ -196,6 +201,8 @@ function sessionBackend(session: Session): McpBackend {
     initialize(params) {
       const experimental = (params.capabilities as { experimental?: Record<string, unknown> } | undefined)?.experimental;
       session.channel = session.notify !== undefined && experimental?.["claude/channel"] !== undefined;
+      const info = params.clientInfo as { name?: unknown } | undefined;
+      session.client = typeof info?.name === "string" ? info.name : undefined;
     },
     async call(name, args, client, gone) {
       switch (name) {
