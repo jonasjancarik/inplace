@@ -143,6 +143,8 @@ style.textContent = `
   #inplace-changes .comments{margin:0 0 8px;padding:0 8px 8px;border-bottom:1px solid #eef1ef}
   #inplace-changes .comments h3{all:unset;display:block;margin:4px 0 4px;font-size:12px;font-weight:600;color:#56615b}
   #inplace-changes .comment{padding:6px 0}
+  #inplace-changes .comment.goes-to{margin:0 -8px;padding:6px 8px;border-radius:8px;cursor:pointer}
+  #inplace-changes .comment.goes-to:hover{background:#f5f7f6}
   #inplace-changes .comment.done{opacity:.6}
   #inplace-changes .comments .clear{display:block;margin-top:4px;font-size:12px}
   #inplace-changes .aside{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;padding:9px 11px;

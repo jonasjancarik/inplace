@@ -1094,6 +1094,12 @@ test.describe("comments", () => {
     await expect(listed).toContainText("Which buildings share it?");
     await expect(listed).toContainText("Not done yet");
 
+    // Clicking the comment itself, not only Show, scrolls to the text it's about.
+    await editor.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    await listed.locator(".text").click();
+    await expect(editor.getByRole("dialog", { name: "Changes" })).toBeHidden();
+    await expect(para).toBeInViewport();
+
     await editor.reload();
     await expect.poll(() => highlighted(editor)).toEqual(["drying laundry"]);
     await expect(editor.locator("#inplace-comment-layer .marker")).toHaveCount(1);

@@ -372,11 +372,17 @@ function commentView(c: PageComment, { inList = false }: { inList?: boolean } = 
       } }));
   }
   if (inList && place?.el) {
-    const show = make("button", { type: "button", textContent: "Show", onclick: () => {
+    const goTo = () => {
       closeChanges();
       place.el!.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    } });
-    meta.prepend(show);
+    };
+    meta.prepend(make("button", { type: "button", textContent: "Show", onclick: goTo }));
+    // Clicking anywhere else on the comment does the same, unless it's on a control or selects text.
+    node.classList.add("goes-to");
+    node.addEventListener("click", (e) => {
+      if ((e.target as Element).closest("button, textarea, input, a") || !getSelection()!.isCollapsed) return;
+      goTo();
+    });
   }
   node.append(meta);
   resume?.();
