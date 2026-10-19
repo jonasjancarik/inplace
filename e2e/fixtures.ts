@@ -9,6 +9,8 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 const ROOT = resolve(import.meta.dirname, "..");
 export const CLI = join(ROOT, "dist", "src", "cli.js");
 export const EXAMPLE = join(ROOT, "examples", "garden-proposal.html");
+// The servers these tests start keep comments and the rest here, not in the user's own folder.
+process.env.INPLACE_STATE_DIR ??= mkdtempSync(join(tmpdir(), "inplace-state-"));
 
 function freePort(): Promise<number> {
   return new Promise((ok, fail) => {

@@ -693,3 +693,32 @@ export function replaceElement(
   }
   return source.slice(0, from) + html + source.slice(to);
 }
+
+/** The `<meta>` that names a document, so what inplace keeps beside it follows it when it's moved. */
+export const DOCUMENT_ID_META = "inplace-id";
+
+function documentIdNode(source: string): Node | null {
+  for (const node of walk(parse(source))) {
+    if (node.tag === "meta" && node.attrs.get("name") === DOCUMENT_ID_META) return node;
+  }
+  return null;
+}
+
+/** The id in the document's `<meta name="inplace-id">`, if it has one. */
+export function documentIdOf(source: string): string | undefined {
+  return documentIdNode(source)?.attrs.get("content") || undefined;
+}
+
+/**
+ * The document with its `<meta name="inplace-id">` set to `id`: at the start of the head, or
+ * where the parser starts one when the file doesn't write it out.
+ */
+export function withDocumentId(source: string, id: string): string {
+  const meta = `<meta name="${DOCUMENT_ID_META}" content="${id}">`;
+  const existing = documentIdNode(source);
+  if (existing) return source.slice(0, existing.start) + meta + source.slice(existing.end);
+  const nodes = [...walk(parse(source))];
+  const head = nodes.find((n) => n.tag === "head") ?? nodes.find((n) => n.tag === "html");
+  const at = head ? head.openEnd : nodes[0]?.start ?? source.length;
+  return source.slice(0, at) + meta + source.slice(at);
+}

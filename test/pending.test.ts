@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { CantUndo } from "../src/pending.js";
 import { Document } from "../src/server.js";
 
-const DOC = `<!doctype html><html><body>
+const DOC = `<!doctype html><html><head><meta name="inplace-id" content="0a1b2c3d4e5f"></head><body>
 <h1 data-id="h1-1">Plan</h1>
 <p data-id="p-1">The roof garden opens in May.</p>
 <p data-id="p-2">Two beds stay open for anyone.</p>

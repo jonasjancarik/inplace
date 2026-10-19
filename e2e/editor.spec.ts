@@ -19,7 +19,9 @@ test.describe("opening a document", () => {
   test("ids are written to the file and nothing else changes", async ({ editor, doc }) => {
     const original = (await import("node:fs")).readFileSync((await import("./fixtures.ts")).EXAMPLE, "utf8");
     await expect(editor.locator("h1")).toHaveAttribute("data-id", "h1-1");
-    expect(doc.read().replace(/ data-id="[^"]+"/g, "")).toBe(original);
+    const meta = /<meta name="inplace-id" content="[0-9a-f]{12}">/;
+    expect(doc.read()).toMatch(meta);
+    expect(doc.read().replace(/ data-id="[^"]+"/g, "").replace(meta, "")).toBe(original);
   });
 });
 

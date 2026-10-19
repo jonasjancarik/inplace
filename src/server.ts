@@ -8,8 +8,8 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node
 import { fileURLToPath } from "node:url";
 
 import {
-  assignIds, blockHashes, BlockConflict, BlockNotFound, cutChunk, editableIds, elementText, findBlock, insertBlock, movableIds, moveBlock, parse,
-  patchBlock, putChunk, removeBlock, replaceElement, retagBlock,
+  assignIds, blockHashes, BlockConflict, BlockNotFound, cutChunk, documentIdOf, editableIds, elementText, findBlock, insertBlock, movableIds, moveBlock, parse,
+  patchBlock, putChunk, removeBlock, replaceElement, retagBlock, withDocumentId,
 } from "./htmldoc.js";
 import { AgentStatus } from "./agent.js";
 import { Authorship } from "./authorship.js";
@@ -336,10 +336,13 @@ export class Document {
     let text = this.refresh();
     if (this.writeIds) {
       const result = assignIds(text);
-      if (result.added) {
-        text = result.source;
+      // The id the store finds the comments and the rest by, so they follow the file when it's moved.
+      const id = this.store.documentId?.();
+      const next = id && documentIdOf(result.source) !== id ? withDocumentId(result.source, id) : result.source;
+      if (next !== text) {
+        text = next;
         this.write(text);
-        this.log(`${time()} added data-id to ${result.added} element${result.added === 1 ? "" : "s"}`, false);
+        if (result.added) this.log(`${time()} added data-id to ${result.added} element${result.added === 1 ? "" : "s"}`, false);
       }
     }
     return { text, version: this.version };
