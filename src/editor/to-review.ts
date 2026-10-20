@@ -71,7 +71,7 @@ function paintToReview() {
     if (el && isShown(el)) items.push({ el, p, colour: "" });
   }
   for (const { el, p, css } of marginBars(items, barBlocks())) {
-    const bar = make("div", { className: "bar", title: reviewSentence(p) });
+    const bar = make("div", { className: "bar", title: p.reason ? `${reviewSentence(p)}\nWhy: ${p.reason}` : reviewSentence(p) });
     bar.style.cssText = css;
     bar.addEventListener("pointerenter", () => showActions(el));
     reviewBars.append(bar);
@@ -184,7 +184,8 @@ function toReviewGroup() {
       make("div", { className: "acts" },
         make("button", { type: "button", className: "act keep", textContent: "Keep", ariaLabel: `Keep: ${reviewWords(p)}`, onclick: () => keepAgentChange(p.id) }),
         make("button", { type: "button", className: "act", textContent: "Undo", ariaLabel: `Undo: ${reviewWords(p)}`, disabled: !p.undoable,
-          title: p.undoable ? "" : TOO_LARGE, onclick: () => undoAgentChange(p.id) }))));
+          title: p.undoable ? "" : TOO_LARGE, onclick: () => undoAgentChange(p.id) })),
+      ...(p.reason ? [make("p", { className: "why" }, make("span", { className: "why-label", textContent: "Why" }), p.reason)] : [])));
   }
   return make("div", { className: "to-review" },
     make("div", { className: "head" },

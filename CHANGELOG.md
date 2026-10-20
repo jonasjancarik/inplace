@@ -6,6 +6,7 @@ inplace is installed straight from GitHub (`npx github:jonasjancarik/inplace`) a
 
 ## Unreleased
 
+- **Your agent can say why it made a change.** `replace_element` and `find_replace` take an optional `reason`, one short sentence. It shows under the change in the list of changes to review, and in the tooltip on its blue bar. A later edit to the same block without a reason keeps the earlier one.
 - For hosts: `Document.replaceAll(text, who, what)` replaces the whole file on a person's behalf, such as putting back an earlier version. It counts as their change in who wrote what, clears the agent's changes waiting for review, and tells the agent in one change line (`what`).
 - Fixed: blocks an agent added through `find_replace` or `replace_element` without `data-id`s (a new figure or paragraph, say) got no blue bar, no Keep or Undo and no "who wrote what" mark, because the change was recorded before inplace gave them ids. They now get their ids as the agent's change is written. Edits the agent makes to the file directly were already fine.
 - Fixed: for hosts that name people with `author(req)`, a pause with a comment from a named person (`comment #3 by Ana on p-2`) didn't tell the agent that comment lines are the user's requests, because the check only knew the shape without a name.

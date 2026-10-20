@@ -241,3 +241,14 @@ test("putting back a whole earlier version is the person's change, not the agent
   assert.deepEqual(pending(doc), [], "the agent's change is gone with the version it was in");
   assert.match(lines.at(-1)!, /put back the version from 9:00 \(Ana\)$/);
 });
+
+test("the reason the agent gives for an edit is kept with the change, and a later edit without one leaves it", () => {
+  const { doc } = open();
+  doc.findReplace("opens in May", "opens in June", false, undefined, "The permit moved the opening");
+  assert.equal(doc.pendingChanges().find((p) => p.id === "p-1")?.reason, "The permit moved the opening");
+  doc.replaceElement("p-1", "inner", "The roof garden opens in June.", "The roof garden opens in July.");
+  assert.equal(doc.pendingChanges().find((p) => p.id === "p-1")?.reason, "The permit moved the opening");
+  doc.replaceElement("p-1", "inner", "The roof garden opens in July.", "The roof garden opens in August.", undefined, "Delay confirmed");
+  assert.equal(doc.pendingChanges().find((p) => p.id === "p-1")?.reason, "Delay confirmed");
+  assert.equal(doc.pendingChanges().find((p) => p.id === "p-2")?.reason, undefined);
+});

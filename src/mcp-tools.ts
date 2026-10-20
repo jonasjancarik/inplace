@@ -68,6 +68,7 @@ export const DOCUMENT_TOOLS: ToolDefinition[] = [
         part: { type: "string", enum: ["inner", "outer"], description: "inner: its content; outer: the element itself" },
         expected: { type: "string", description: "The current HTML of that part" },
         html: { type: "string", description: "The new HTML of that part" },
+        reason: { type: "string", description: "Optional. Why you made this change, in one short sentence the user will read next to it, e.g. \"Matches the 2025 figure in data.csv\"" },
       },
       required: ["id", "part", "expected", "html"],
     },
@@ -82,6 +83,7 @@ export const DOCUMENT_TOOLS: ToolDefinition[] = [
         find: { type: "string", description: "Exact source text to find" },
         replace: { type: "string", description: "Text to put in its place" },
         all: { type: "boolean", description: "Replace every occurrence (default false)" },
+        reason: { type: "string", description: "Optional. Why you made this change, in one short sentence the user will read next to it, e.g. \"Matches the 2025 figure in data.csv\"" },
       },
       required: ["find", "replace"],
     },
@@ -139,6 +141,12 @@ export const DOCUMENT_TOOLS: ToolDefinition[] = [
 export const str = (args: Record<string, unknown>, key: string): string => {
   if (typeof args[key] !== "string") throw new Error(`${key} is required`);
   return args[key] as string;
+};
+
+/** The reason the agent gave for an edit: one trimmed line, or nothing. */
+const reasonOf = (args: Record<string, unknown>): string | undefined => {
+  const text = typeof args.reason === "string" ? args.reason.replace(/\s+/g, " ").trim() : "";
+  return text ? (text.length > 300 ? `${text.slice(0, 299)}…` : text) : undefined;
 };
 
 export interface ToolsOptions {
@@ -253,7 +261,7 @@ export class DocumentTools {
     if (part !== "inner" && part !== "outer") throw new Error('part must be "inner" or "outer"');
     const id = str(args, "id");
     try {
-      this.target.doc.replaceElement(id, part, str(args, "expected"), str(args, "html"), this.options.by);
+      this.target.doc.replaceElement(id, part, str(args, "expected"), str(args, "html"), this.options.by, reasonOf(args));
     } catch (e) {
       if (e instanceof BlockConflict) {
         throw new Error(`${id} has changed since you read it, probably because the user edited it. Nothing was ` +
@@ -266,7 +274,7 @@ export class DocumentTools {
   }
 
   findReplace(args: Record<string, unknown>): string {
-    const count = this.target.doc.findReplace(str(args, "find"), str(args, "replace"), args.all === true, this.options.by);
+    const count = this.target.doc.findReplace(str(args, "find"), str(args, "replace"), args.all === true, this.options.by, reasonOf(args));
     return `Replaced ${count} occurrence${count === 1 ? "" : "s"}. The page reloads by itself.`;
   }
 

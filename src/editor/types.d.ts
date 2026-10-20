@@ -45,6 +45,7 @@ interface ToReview {
   moved?: boolean;
   before?: string;
   since: string;
+  reason?: string;
   undoable: boolean;
 }
 

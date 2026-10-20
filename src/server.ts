@@ -202,13 +202,13 @@ export class Document {
     return this.store.read();
   }
 
-  private write(text: string, by?: Author): void {
+  private write(text: string, by?: Author, reason?: string): void {
     // Blocks an agent adds through its tools come without ids. Give them theirs before the change is recorded, or
     // they'd be missing from the changes to review and from who wrote what, which go by id.
     if (by && this.writeIds) text = assignIds(text).source;
     this.store.write(text);
     this.stamp = this.statStamp();
-    if (by) this.remember(text, by);
+    if (by) this.remember(text, by, reason);
     else {
       this.last = text;
       if (this.authors.refit(text)) this.saveAuthors();
@@ -216,11 +216,11 @@ export class Document {
     this.announce(digest(text));
   }
 
-  private remember(text: string, by: Author): void {
+  private remember(text: string, by: Author, reason?: string): void {
     if (this.last !== null && this.last !== text) {
       const changes = diffBlocks(this.last, text);
       if (this.authors.record(changes, by, text)) this.saveAuthors();
-      if (this.pending.record(changes, by, this.last, text)) this.savePending(false);
+      if (this.pending.record(changes, by, this.last, text, undefined, reason)) this.savePending(false);
       if (this.history.add(by, changes)) for (const listener of this.historyListeners) listener();
     }
     this.last = text;
@@ -651,16 +651,16 @@ export class Document {
   }
 
   /** An agent's edit through tools rather than the file; see replaceElement. */
-  replaceElement(id: string, part: "inner" | "outer", expected: string, html: string, by?: AgentName): void {
+  replaceElement(id: string, part: "inner" | "outer", expected: string, html: string, by?: AgentName, reason?: string): void {
     const text = this.load().text;
     const replaced = replaceElement(text, id, part, expected, html);
     if (replaced === text) return;
-    this.write(replaced, agentAuthor(by));
+    this.write(replaced, agentAuthor(by), reason);
     this.log(`${time()} the agent replaced ${part === "inner" ? "the inside of " : ""}${id}`, false);
   }
 
   /** Replace `find` with `replace` in the file's source; returns how many were replaced. */
-  findReplace(find: string, replace: string, all: boolean, by?: AgentName): number {
+  findReplace(find: string, replace: string, all: boolean, by?: AgentName, reason?: string): number {
     if (!find) throw new Error("find is empty");
     const text = this.load().text;
     const count = text.split(find).length - 1;
@@ -668,7 +668,7 @@ export class Document {
     if (count > 1 && !all) throw new Error(`found ${count} times; make find longer so it's unique, or pass all: true`);
     const replaced = all ? text.split(find).join(replace) : text.replace(find, () => replace);
     if (replaced === text) return 0;
-    this.write(replaced, agentAuthor(by));
+    this.write(replaced, agentAuthor(by), reason);
     this.log(`${time()} the agent replaced ${count} occurrence${count === 1 ? "" : "s"} of ${JSON.stringify(clip(find, 60))}`, false);
     return count;
   }

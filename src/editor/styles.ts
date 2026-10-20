@@ -194,6 +194,9 @@ style.textContent = `
   #inplace-changes .to-review h3{all:unset;margin-right:auto;font-size:12px;font-weight:600;color:#56615b}
   #inplace-changes .to-review li{position:relative}
   #inplace-changes .to-review .kind{padding-right:104px;line-height:20px}
+  #inplace-changes .to-review .why{margin:-2px 8px 6px 8px;padding:5px 9px;border-radius:6px;background:#f3f6fc;box-shadow:inset 2px 0 0 #4a7bd4;
+    font-size:12px;line-height:1.4;color:#3b4a5e}
+  #inplace-changes .to-review .why-label{margin-right:6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4a7bd4}
   #inplace-changes .to-review .acts{position:absolute;top:5px;right:8px;display:flex;gap:4px}
   #inplace-changes .to-review .keep-all,#inplace-changes .to-review .act{all:unset;flex:none;padding:1px 9px;border-radius:6px;cursor:pointer;
     font-size:12px;line-height:16px;font-weight:500;color:#1f2a24;background:#fff;box-shadow:inset 0 0 0 1px #d4dad6}

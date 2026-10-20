@@ -30,6 +30,7 @@ export interface PendingChange {
   afterPrint?: string; // a fingerprint of that markup
   tooLarge?: true; // the block was too large to keep, so it can only be kept
   since: string; // ISO time of the first change
+  reason?: string; // why the agent made its latest change, in its own words
 }
 
 /** What the page needs to show a pending change. */
@@ -40,6 +41,7 @@ export interface PendingSummary {
   moved?: true;
   before?: string; // its plain text before the change, for changed and removed blocks
   since: string;
+  reason?: string;
   undoable: boolean;
 }
 
@@ -117,15 +119,17 @@ export class PendingChanges {
    * become pending; anyone's write can end one, when the block it's about is removed (or, for a
    * removal, put back). Returns true if the list changed.
    */
-  record(changes: BlockChange[], by: Author, was: string, now: string, at = new Date()): boolean {
+  record(changes: BlockChange[], by: Author, was: string, now: string, at = new Date(), reason?: string): boolean {
     let touched = false;
     const after = byId(now);
     if (by.kind === "agent") {
       const before = byId(was);
       const refresh = new Set<string>(); // pending blocks to take the agent's latest markup of
+      const explained = new Set<string>(); // pending blocks this write gives its reason to
       for (const c of changes) {
         // A change inside a block the agent added is part of the addition.
         const host = this.addedAround(c.kind === "removed" ? before.get(c.id) : after.get(c.id));
+        explained.add(host ?? c.id);
         if (host) {
           refresh.add(host);
           continue;
@@ -172,6 +176,11 @@ export class PendingChanges {
           p.place ??= c.place;
         }
         refresh.add(c.id);
+      }
+      // A write without a reason leaves the one given earlier for the block.
+      if (reason) for (const id of explained) {
+        const p = this.items.get(id);
+        if (p) p.reason = reason;
       }
       for (const id of refresh) {
         const p = this.items.get(id);
@@ -229,6 +238,7 @@ export class PendingChanges {
       id: p.id, kind: p.kind, tag: p.tag, ...(p.moved ? { moved: true as const } : {}),
       ...(p.before && (p.kind === "changed" || p.kind === "removed") ? { before: plainText(inner(p.before)) } : {}),
       since: p.since,
+      ...(p.reason ? { reason: p.reason } : {}),
       undoable: p.kind === "added" || p.kind === "moved" || !!p.before,
     }));
   }
