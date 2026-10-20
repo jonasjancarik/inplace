@@ -230,3 +230,14 @@ test("blocks the agent adds through its tools without ids are pending too, with 
   for (const id of added) doc.undoAgentChange(id);
   assert.doesNotMatch(read(), /The plan|Ask Ana/);
 });
+
+test("putting back a whole earlier version is the person's change, not the agent's to review", () => {
+  const { doc, read, lines } = open();
+  const earlier = read();
+  doc.findReplace("opens in May", "opens in June", false);
+  assert.deepEqual(pending(doc), ["changed p-1"]);
+  doc.replaceAll(earlier, { id: "u1", name: "Ana" }, "put back the version from 9:00");
+  assert.match(read(), /opens in May/);
+  assert.deepEqual(pending(doc), [], "the agent's change is gone with the version it was in");
+  assert.match(lines.at(-1)!, /put back the version from 9:00 \(Ana\)$/);
+});

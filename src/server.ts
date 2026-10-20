@@ -458,6 +458,22 @@ export class Document {
     return () => this.stashListeners.delete(listener);
   }
 
+  /**
+   * Replace the whole file on someone's behalf, such as putting back an earlier version of it. It's their change: who
+   * wrote what marks it as theirs, the agent's changes waiting for review leave the list (the person chose the whole
+   * page as it is), and the agent hears about it in one line saying `what` happened.
+   */
+  replaceAll(text: string, who?: Person, what = "replaced the whole document"): string {
+    const before = this.refresh();
+    const next = this.writeIds ? assignIds(text).source : text;
+    if (next !== before) {
+      this.write(next, personAuthor(who));
+      if (this.pending.clear()) this.savePending();
+      this.log(`${time()} ${what}${named(who)}`, true);
+    }
+    return this.version;
+  }
+
   moveBlock(id: string, target: string, position: "before" | "after", who?: Person): string {
     const text = this.refresh();
     const moved = moveBlock(text, id, target, position);
