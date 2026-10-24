@@ -303,6 +303,8 @@ To read the whole document with every change in place, turn on **Show what chang
 
 To see who wrote each part, turn on **Show who wrote what** in the list of changes. A thin bar appears in the margin beside every block that was changed while inplace has been watching, green for you and blue for your agent. Hover over it for the details, such as "Your agent changed this 20 minutes ago". Blocks nobody has changed yet, and blocks edited in the file while inplace wasn't running, get no bar, because inplace can't tell who wrote them. The bars are off by default, are remembered for each document in your browser, and are never printed or shown in the review view. Who wrote what is kept beside the document, not in it. A block with an agent's change you haven't kept or undone yet shows the bar for reviewing it instead (see "Reviewing what the agent changed").
 
+The page's comments, highlights, list of changes and other controls follow the page's own light or dark colours. A page that switches to dark colours with `color-scheme: dark`, usually inside `@media (prefers-color-scheme: dark)`, gets dark controls too; any other page keeps the light ones.
+
 ## Limitations
 
 - It's built for one document and a small number of people at a time, on your own computer. There's no login, so only share it on your network (`--host 0.0.0.0`) when you trust the people on it.
